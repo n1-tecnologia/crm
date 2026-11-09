@@ -291,6 +291,7 @@ if (process.env.AUTOMACOES_WORKER_ATIVO === "true") {
 if (process.env.MENSAGERIA_WORKER_ATIVO === "true") {
   const processador = criarProcessadorDeEntrada({
     workerId: process.env.MENSAGERIA_WORKER_ID ?? `apps-api-entrada-${process.pid}`,
+    acordarSaida: () => acordadores.saida(),
     registrar: (nivel, mensagem, dados) => {
       app.log[nivel](dados ?? {}, mensagem);
     },

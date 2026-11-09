@@ -59,6 +59,7 @@ import {
 } from "@n1/dominio/crm/conversas";
 import { statusInicialDeEnvio, type Mensagem } from "@n1/dominio/crm/mensagens";
 import type { Canal } from "@n1/dominio/crm/canais";
+import { avisarCrm } from "../../mensageria/avisar";
 import { enfileirarEnvio } from "../../mensageria/fila-de-saida";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { registrarAtividade } from "../../repositorios/crm/atividades";
@@ -165,6 +166,13 @@ function resumoDoCanal(canal: Canal): ConversaDetalhada["canal"] {
   };
 }
 
+/**
+ * 16-07 / 3.8.2: o aviso ao tempo real, no MESMO cliente da transação do gesto (o Postgres só o entrega no `commit`).
+ * Só ids: a aba relê a Conversa pelas rotas que conferem o acesso.
+ */
+const avisarConversaMudou = (cliente: PoolClient, membro: MembroDaSessao, conversaId: string) =>
+  avisarCrm(cliente, { workspaceId: membro.workspaceId, tipo: "conversa.mudou", conversaId });
+
 export function criarServicoDeConversas(deps: { readonly pool: () => Pool; readonly acesso: AcessoAoCrm }): ServicoDeConversas {
   /** Resolver e reabrir: Papel, depois a Conversa travada NESTE Espaço, depois a transição. */
   async function mudarSituacao(membro: MembroDaSessao, id: string, acao: AcaoDeSituacao): Promise<ResultadoCrm<ConversaDetalhada>> {
@@ -188,6 +196,7 @@ export function criarServicoDeConversas(deps: { readonly pool: () => Pool; reado
 
         const atualizada = await conversas.definirSituacao(membro.workspaceId, id, proxima.value.situacao);
         if (!atualizada) return conversaNaoEncontrada();
+        await avisarConversaMudou(cliente, membro, atualizada.id);
         const canal = await criarRepositorioDeCanaisPg(cliente).obter(membro.workspaceId, atualizada.canalId);
         if (!canal) return canalNaoEncontrado();
         return sucesso({ conversa: atualizada, canal: resumoDoCanal(canal) });
@@ -268,7 +277,10 @@ export function criarServicoDeConversas(deps: { readonly pool: () => Pool; reado
             if (ocupante && ocupante.id !== atual.id) {
               if (entrada.resolverExistente !== true) return jaAberta(ocupante);
               const travada = await conversas.obter(membro.workspaceId, ocupante.id, { travar: true });
-              if (travada) await conversas.definirSituacao(membro.workspaceId, travada.id, "resolvida");
+              if (travada) {
+                await conversas.definirSituacao(membro.workspaceId, travada.id, "resolvida");
+                await avisarConversaMudou(cliente, membro, travada.id);
+              }
             }
           }
 
@@ -279,6 +291,7 @@ export function criarServicoDeConversas(deps: { readonly pool: () => Pool; reado
             participantesComContato(atual.participantes, atual.contatoId, destino.id),
           );
           if (!movida) return conversaNaoEncontrada();
+          await avisarConversaMudou(cliente, membro, movida.id);
           const origem = travados.get(lida.contatoId);
           await registrarAtividadeDaConversa(cliente, membro, movida, ACOES_DO_CRM.conversaMovida, {
             ...(origem ? { antes: nomeDeExibicaoDoContato(origem) } : {}),
@@ -324,6 +337,7 @@ export function criarServicoDeConversas(deps: { readonly pool: () => Pool; reado
 
           const atualizada = await conversas.definirAtribuicao(membro.workspaceId, id, destino);
           if (!atualizada) return conversaNaoEncontrada();
+          await avisarConversaMudou(cliente, membro, atualizada.id);
           // Os nomes são os de exibição; um registro que não achamos fica sem nome em vez de com o id.
           const nomeAntes = atual.atribuido ? await nomeDoAtribuido(cliente, membro.workspaceId, atual.atribuido) : undefined;
           const nomeDepois = destino ? await nomeDoAtribuido(cliente, membro.workspaceId, destino) : undefined;
@@ -361,6 +375,7 @@ export function criarServicoDeConversas(deps: { readonly pool: () => Pool; reado
 
           const atualizada = await conversas.enviarParaLixeira(membro.workspaceId, id);
           if (!atualizada) return conversaNaoEncontrada();
+          await avisarConversaMudou(cliente, membro, atualizada.id);
           await registrarAtividadeDaConversa(cliente, membro, atualizada, ACOES_DO_CRM.conversaParaLixeira);
           const canal = await criarRepositorioDeCanaisPg(cliente).obter(membro.workspaceId, atualizada.canalId);
           if (!canal) return canalNaoEncontrado();
@@ -399,6 +414,7 @@ export function criarServicoDeConversas(deps: { readonly pool: () => Pool; reado
 
           const atualizada = await conversas.restaurar(membro.workspaceId, id);
           if (!atualizada) return conversaNaoEncontrada();
+          await avisarConversaMudou(cliente, membro, atualizada.id);
           await registrarAtividadeDaConversa(cliente, membro, atualizada, ACOES_DO_CRM.conversaRestaurada);
           const canal = await criarRepositorioDeCanaisPg(cliente).obter(membro.workspaceId, atualizada.canalId);
           if (!canal) return canalNaoEncontrado();
@@ -535,6 +551,8 @@ export async function abrirConversaNoCliente(
   });
   // 3.7.1: o evento nasce no mesmo cliente da transação; se falhar, a Conversa e a Mensagem vão embora juntas.
   await enfileirarEnvio(cliente, membro.workspaceId, primeiraMensagem, canal);
+  // 16-07: a Conversa e a primeira Mensagem nascem juntas; um aviso só (`mensagem.nova`) cobre as duas.
+  await avisarCrm(cliente, { workspaceId: membro.workspaceId, tipo: "mensagem.nova", conversaId: conversa.id, mensagemId: primeiraMensagem.id });
 
   return sucesso({ conversa, canal: resumoDoCanal(canal), primeiraMensagem });
 }

@@ -43,6 +43,7 @@ import { recusaPorFaltaDeConsentimento } from "@n1/dominio/crm/consentimentos";
 import { statusInicialDeEnvio, validarEnvio, validarNovaMensagem, type Mensagem, type NovaMensagem } from "@n1/dominio/crm/mensagens";
 import { capacidadesDoCanal } from "@n1/dominio/crm/capacidades";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
+import { avisarCrm } from "../../mensageria/avisar";
 import { enfileirarEnvio, reenfileirarEnvio } from "../../mensageria/fila-de-saida";
 import { criarRepositorioDeCanaisPg } from "../../repositorios/crm/canais";
 import { criarRepositorioDeConsentimentosPg } from "../../repositorios/crm/consentimentos";
@@ -164,6 +165,8 @@ export function criarServicoDeMensagens(deps: {
           });
           // 3.7.1: no mesmo cliente da transação, antes do commit. Só a `enviada` sai; a `interna` não.
           if (entrada.direcao === "enviada") await enfileirar(cliente, membro.workspaceId, mensagem, canal);
+          // 16-07 / 3.8.2: o aviso ao tempo real no mesmo cliente; só chega às abas se a transação confirmar.
+          await avisarCrm(cliente, { workspaceId: membro.workspaceId, tipo: "mensagem.nova", conversaId: conversa.id, mensagemId: mensagem.id });
           return sucesso(mensagem);
         },
         FRASES,
@@ -200,6 +203,8 @@ export function criarServicoDeMensagens(deps: {
           if (!pendente) return naoFalhou();
           // Canal fora do ar: a Mensagem fica guardada `pendente`; a linha reabre quando ele voltar (B69).
           if (canal.conexao === "conectada") await reenfileirar(cliente, membro.workspaceId, pendente);
+          // 16-07: a Mensagem mudou de `falhou` para `pendente`; a aba troca o estado da entrega.
+          await avisarCrm(cliente, { workspaceId: membro.workspaceId, tipo: "mensagem.status", conversaId: conversa.id, mensagemId: pendente.id });
           return sucesso(pendente);
         },
         FRASES,

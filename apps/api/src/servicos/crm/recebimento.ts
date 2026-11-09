@@ -21,7 +21,8 @@
  * (agora o detentor ou a aberta já existem). A segunda falha, ou qualquer outro erro, sobe.
  *
  * Não sobe a revisão do Espaço (a função de `repositorios/crm/referencias.ts` que a avança): travaria a linha do Espaço a cada Mensagem
- * e faria toda aba reidratar o Espaço inteiro. O aviso à tela é o SSE (16-07).
+ * e faria toda aba reidratar o Espaço inteiro. O aviso à tela é o `avisarCrm` (16-07, SSE), no mesmo cliente da
+ * transação: a Mensagem gravada vira `mensagem.nova`, e a repetida não avisa.
  *
  * Nem `conteudo`, nem `cargaBruta`, nem telefone são escritos em log (T-16-02): este módulo não loga.
  */
@@ -38,6 +39,7 @@ import {
   destinoDaRecebida,
   type RecebidaDoProvedor,
 } from "@n1/dominio/crm/recebimento";
+import { avisarCrm } from "../../mensageria/avisar";
 import { criarRepositorioDeCanaisPg } from "../../repositorios/crm/canais";
 import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
 import { criarRepositorioDeConversasPg } from "../../repositorios/crm/conversas";
@@ -250,6 +252,10 @@ async function processar(
   });
   // Outra transação gravou este `idExterno` depois da checagem: desfaz o que esta criou e relê a repetida.
   if (!gravada) return recusa<never>(409, "Mensagem já recebida.", { codigo: REPETIDA_NA_CORRIDA });
+
+  // 16-07 / 3.8.2: a Mensagem recebida avisa as abas do Espaço no mesmo cliente da transação (só chega depois do
+  // `commit`). A repetida (acima) não grava nada e por isso não avisa.
+  await avisarCrm(cliente, { workspaceId, tipo: "mensagem.nova", conversaId: conversa.id, mensagemId: gravada.id });
 
   return sucesso({ mensagem: gravada, conversa, contatoId, contatoNovo, conversaNova, conversaReaberta, repetida: false });
 }

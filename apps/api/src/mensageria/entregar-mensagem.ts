@@ -21,7 +21,7 @@
  * sem Bearer, sem documento). Nada aqui loga conteúdo, telefone nem segredo.
  */
 
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import type { Canal } from "@n1/dominio/crm/canais";
 import { pool as poolPadrao } from "../persistencia/conexao";
 import { EVENTOS } from "../persistencia/outbox";
@@ -40,6 +40,7 @@ import { criarRepositorioDeMensagensPg } from "../repositorios/crm/mensagens";
 import type { ChavesDoCofre } from "../servicos/cofre";
 import { identificadorDoCanal } from "../servicos/crm/conversas";
 import { relogioDoSistema, type Relogio } from "../testes/relogio";
+import { avisarCrm } from "./avisar";
 import { ErroDeProvedor, type EnvioAoProvedor } from "./provedor";
 import { canalParaProvedor, provedorDoCanal, registroPadrao, type RegistroDeProvedores } from "./registro";
 
@@ -78,6 +79,24 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
   const relogio = deps.relogio ?? relogioDoSistema;
 
   /**
+   * Uma transação no cliente do pool: o desfecho da entrega e o aviso ao tempo real (16-07) saem juntos, e a aba só é
+   * avisada de uma gravação que o `commit` confirmou.
+   */
+  async function emTransacao(fn: (cliente: PoolClient) => Promise<void>): Promise<void> {
+    const cliente = await pool().connect();
+    try {
+      await cliente.query("begin");
+      await fn(cliente);
+      await cliente.query("commit");
+    } catch (erro) {
+      await cliente.query("rollback").catch(() => undefined);
+      throw erro;
+    } finally {
+      cliente.release();
+    }
+  }
+
+  /**
    * O provedor JÁ aceitou: se o banco falhar agora, repetir a linha inteira reenviaria ao cliente. Por isso se
    * tenta gravar de novo aqui, e se nada resolver a linha desiste (`ENVIADO_SEM_REGISTRO`) em vez de voltar à fila.
    */
@@ -85,8 +104,11 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
     let ultimoErro: unknown;
     for (let i = 0; i < TENTATIVAS_DE_GRAVAR_O_ACEITE; i += 1) {
       try {
-        // `undefined` = já não estava `pendente` (alguém resolveu antes): nada a gravar, e a linha encerra igual.
-        await criarRepositorioDeMensagensPg(pool()).gravarEnvio(workspaceId, mensagemId, { idExterno, em: relogio.agora().toISOString() });
+        await emTransacao(async (cliente) => {
+          // `undefined` = já não estava `pendente` (alguém resolveu antes): nada a gravar nem a avisar, e a linha encerra igual.
+          const gravada = await criarRepositorioDeMensagensPg(cliente).gravarEnvio(workspaceId, mensagemId, { idExterno, em: relogio.agora().toISOString() });
+          if (gravada) await avisarCrm(cliente, { workspaceId, tipo: "mensagem.status", conversaId: gravada.conversaId, mensagemId: gravada.id });
+        });
         return { desfecho: "entregue" };
       } catch (erro) {
         ultimoErro = erro;
@@ -96,7 +118,10 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
   }
 
   async function recusarEnvio(workspaceId: string, mensagemId: string, motivo: string, code: string): Promise<DesfechoDaEntrega> {
-    await criarRepositorioDeMensagensPg(pool()).marcarFalha(workspaceId, mensagemId, motivo);
+    await emTransacao(async (cliente) => {
+      const marcada = await criarRepositorioDeMensagensPg(cliente).marcarFalha(workspaceId, mensagemId, motivo);
+      if (marcada) await avisarCrm(cliente, { workspaceId, tipo: "mensagem.status", conversaId: marcada.conversaId, mensagemId: marcada.id });
+    });
     return permanente(code, motivo);
   }
 

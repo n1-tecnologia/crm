@@ -6,7 +6,7 @@
  * Como cada linha termina:
  *   - `processado`: todos os eventos foram tratados. `resultado` diz o que NÃO virou Mensagem
  *     (`ignorado:<motivo>`, `sem_tratamento:<tipo>`). O evento `status` muda a Mensagem pelo domínio
- *     (`atualizarStatusDeEntrega`: só avança) e deixa `ignorado:status_sem_mensagem` quando nenhuma Mensagem do
+ *     (`atualizarStatusDeEntrega`: só avança) e, quando ela mudou, avisa o tempo real (`mensagem.status`, 16-07), e deixa `ignorado:status_sem_mensagem` quando nenhuma Mensagem do
  *     Canal tem o id externo, ou `ignorado:status_atrasado` quando o status não avança. O evento `conexao` só muda
  *     Canal REAL: num Canal simulado fica `ignorado:<motivo>` com o motivo da conexão simulada (a conexão simulada é dos botões da ficha,
  *     D-15-12); num real grava a conexão, sobe a revisão do Espaço e, se voltou a `conectada`, reenfileira as
@@ -39,6 +39,7 @@ import { lerChavesDoCofre, type ChavesDoCofre } from "../servicos/cofre";
 import { criarServicoDeRecebimento, type ServicoDeRecebimento } from "../servicos/crm/recebimento";
 import type { Relogio } from "../testes/relogio";
 import { relogioDoSistema } from "../testes/relogio";
+import { avisarCrm } from "./avisar";
 import { FRASES_DA_SAIDA } from "./entregar-mensagem";
 import { reenfileirarPendentesDoCanal } from "./fila-de-saida";
 import { canalParaProvedor, provedorDoCanal, registroPadrao, type RegistroDeProvedores } from "./registro";
@@ -52,6 +53,11 @@ export interface OpcoesDoProcessadorDeEntrada {
   readonly registro?: RegistroDeProvedores;
   readonly recebimento?: ServicoDeRecebimento;
   readonly relogio?: Relogio;
+  /**
+   * 16-07: acorda o worker de saída depois do commit que reenfileirou as Mensagens `pendente` de um Canal que
+   * voltou a `conectada` (evento `conexao`), para elas não esperarem o intervalo de reserva do worker.
+   */
+  readonly acordarSaida?: () => void;
   /** Padrão 10 s: só a reserva; quem acorda o processador é a rota do webhook. */
   readonly intervaloMs?: number;
   /** Padrão 8. */
@@ -160,6 +166,10 @@ export function criarProcessadorDeEntrada(opcoes: OpcoesDoProcessadorDeEntrada):
         quando.toISOString(),
         motivo,
       );
+      // 16-07 / 3.8.2: só quando o status de fato mudou; o aviso sai no mesmo cliente, depois do `commit`.
+      if (r?.mudou) {
+        await avisarCrm(cliente, { workspaceId: linha.workspace_id, tipo: "mensagem.status", conversaId: r.mensagem.conversaId, mensagemId: r.mensagem.id });
+      }
       await cliente.query("commit");
       if (r === undefined) return "ignorado:status_sem_mensagem";
       return r.mudou ? undefined : "ignorado:status_atrasado";
@@ -186,6 +196,7 @@ export function criarProcessadorDeEntrada(opcoes: OpcoesDoProcessadorDeEntrada):
       const canais = criarRepositorioDeCanaisPg(cliente);
       const canal = await canais.obter(linha.workspace_id, linha.canal_id, { travar: true });
       let resultado: string | undefined;
+      let reenfileirou = false;
       if (!canal) {
         resultado = "ignorado:canal_nao_encontrado";
       } else if (canal.estado === "arquivado") {
@@ -197,9 +208,13 @@ export function criarProcessadorDeEntrada(opcoes: OpcoesDoProcessadorDeEntrada):
           await canais.definirConexao(linha.workspace_id, linha.canal_id, { conexao, conexaoSimulada: false });
           await avancarRevisaoDoEspaco(cliente, linha.workspace_id);
         }
-        if (conexao === "conectada") await reenfileirarPendentesDoCanal(cliente, linha.workspace_id, linha.canal_id);
+        if (conexao === "conectada") {
+          await reenfileirarPendentesDoCanal(cliente, linha.workspace_id, linha.canal_id);
+          reenfileirou = true;
+        }
       }
       await cliente.query("commit");
+      if (reenfileirou) opcoes.acordarSaida?.();
       return resultado;
     } catch (erro) {
       await cliente.query("rollback").catch(() => undefined);
