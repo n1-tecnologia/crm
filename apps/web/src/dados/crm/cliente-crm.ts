@@ -89,3 +89,9 @@ export async function chamarCrm<T>(
 export function invalidarCrm(prefixo: string): Promise<unknown> {
   return mutate((chave) => typeof chave === "string" && chave.startsWith(prefixo));
 }
+
+/** Esqueleto (16-08): a implementacao vem no commit seguinte. */
+export function invalidarCrmComArrays(prefixo: string): Promise<unknown> {
+  void prefixo;
+  return Promise.resolve(undefined);
+}
