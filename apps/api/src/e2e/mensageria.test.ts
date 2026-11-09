@@ -46,7 +46,7 @@ describeComBanco("Fase 16 ponta a ponta: a resposta escrita na Caixa sai pelo pr
         userId === "usuario-ana" ? { ...membroBase, id: "mem_ana", userId, state: "ativo" as const } : undefined,
     });
 
-  const worker = () => criarWorkerDeSaida({ workerId: "teste-saida", chaves });
+  const worker = () => criarWorkerDeSaida({ workerId: "teste-saida", workspaceId: ws, chaves });
 
   const escrever = async (conteudo: string) => {
     const resposta = await app().inject({ method: "POST", url: "/mensagens", headers: MEMBRO, payload: { conversaId, direcao: "enviada", conteudo } });

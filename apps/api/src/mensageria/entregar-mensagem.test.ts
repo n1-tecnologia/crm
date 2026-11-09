@@ -30,7 +30,7 @@ describeComBanco("entregador de mensagens: a política de tentativas que não du
   const membro: MembroDaSessao = { id: "mem_ana", workspaceId: ws, state: "ativo" };
   let sequencia = 0;
 
-  const worker = () => criarWorkerDeSaida({ workerId: "teste-politica", chaves });
+  const worker = () => criarWorkerDeSaida({ workerId: "teste-politica", workspaceId: ws, chaves });
 
   /** Um Canal, um Contato e uma Conversa novos; devolve o necessário para escrever e olhar o desfecho. */
   async function cenario(opcoes: { simulado?: boolean; identificador?: "whatsapp" | "nenhum" } = {}) {

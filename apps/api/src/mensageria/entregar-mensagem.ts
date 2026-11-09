@@ -174,6 +174,11 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
 export interface OpcoesDoWorkerDeSaida extends DependenciasDoEntregador {
   /** Identifica esta instância em `locked_by` — dois processos precisam de valores distintos. */
   readonly workerId: string;
+  /**
+   * Só as linhas deste Espaço (como no worker do outbox). Em produção fica ausente: um worker global. Os testes o
+   * passam para não reivindicar a fila de outro arquivo de teste que rode ao mesmo tempo na mesma tabela.
+   */
+  readonly workspaceId?: string;
   /** Padrão 5 s: só a reserva; quem acorda o worker é o ouvinte do tempo real (16-07). */
   readonly intervaloMs?: number;
   /** Padrão 5 (5 s, 30 s, 2 min, 10 min: a escada de `backoff()` cortada). */
@@ -186,9 +191,10 @@ const TRAVA_VENCE_EM_MS = 120_000;
 
 /** O worker do outbox só com `mensagem.enviar.v1`, entregando pelo provedor do Canal. */
 export function criarWorkerDeSaida(opcoes: OpcoesDoWorkerDeSaida): OutboxWorker {
-  const { workerId, intervaloMs, maxTentativas, registrar, ...deps } = opcoes;
+  const { workerId, workspaceId, intervaloMs, maxTentativas, registrar, ...deps } = opcoes;
   return criarOutboxWorker({
     workerId,
+    ...(workspaceId === undefined ? {} : { workspaceId }),
     tiposDeEvento: [TIPO_DO_EVENTO],
     entregador: criarEntregadorDeMensagens(deps),
     recuperarTravasVencidasMs: TRAVA_VENCE_EM_MS,
