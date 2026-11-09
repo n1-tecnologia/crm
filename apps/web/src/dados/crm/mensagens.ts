@@ -93,3 +93,20 @@ export function useUrlDoAnexo(mensagemId: string, indice: number, baixado: boole
     { refreshInterval: 240_000, revalidateOnFocus: false, shouldRetryOnError: valeRepetir },
   );
 }
+
+export interface PedidoDeTicketDeAnexo {
+  readonly conversaId: string;
+  readonly nome: string;
+  readonly tipoDeMidia: string;
+  readonly tamanhoBytes: number;
+}
+
+export interface TicketDeAnexo {
+  readonly submissionId: string;
+  readonly objectId: string;
+  readonly uploadUrl: string;
+}
+
+export async function pedirTicketDeAnexo(_entrada: PedidoDeTicketDeAnexo): Promise<TicketDeAnexo> {
+  throw new Error("não implementado");
+}

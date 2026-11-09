@@ -23,7 +23,7 @@ vi.mock("./cliente-crm", async (original) => {
 });
 
 import { ErroDeApi, invalidarCrm } from "./cliente-crm";
-import { chaveDasMensagens, chaveDoAnexo, enviarMensagem, reenviarMensagem, useMensagens, useUrlDoAnexo } from "./mensagens";
+import { chaveDasMensagens, chaveDoAnexo, enviarMensagem, pedirTicketDeAnexo, reenviarMensagem, useMensagens, useUrlDoAnexo } from "./mensagens";
 
 function resposta(status: number, corpo: unknown): Response {
   return { ok: status >= 200 && status < 300, status, json: async () => corpo } as Response;
@@ -137,5 +137,41 @@ describe("useUrlDoAnexo (16-11, 3.9.5)", () => {
   it("(d) anexo que o provedor não entregou (baixado: false) não chama a rede", () => {
     renderHook(() => useUrlDoAnexo("m1", 0, false), { wrapper: envoltorio });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("pedirTicketDeAnexo e enviarMensagem com anexos (16-11, 3.9.5 / D-16-10)", () => {
+  const pedido = { conversaId: "c1", nome: "foto.png", tipoDeMidia: "image/png", tamanhoBytes: 2048 } as const;
+
+  it("(e) POST /mensagens/anexos leva a Conversa, o nome, o tipo e o tamanho e devolve o ticket, sem invalidar nada", async () => {
+    const ticket = { submissionId: "s1", objectId: "o1", uploadUrl: "https://armazem.test/upload/o1" };
+    fetchMock.mockResolvedValueOnce(resposta(200, { ok: true, dados: ticket }));
+    expect(await pedirTicketDeAnexo(pedido)).toEqual(ticket);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://api/mensagens/anexos");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(JSON.stringify(pedido));
+    expect(invalidarCrm).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [422, "ARQUIVO_GRANDE_DEMAIS"],
+    [422, "TIPO_NAO_ENVIADO_PELO_CANAL"],
+    [409, "CANAL_ARQUIVADO"],
+  ])("(e) numa recusa %i (%s) a ErroDeApi sobe com a frase e o codigo", async (status, codigo) => {
+    fetchMock.mockResolvedValueOnce(resposta(status, { ok: false, error: "O arquivo passa do limite.", codigo }));
+    const erro = (await pedirTicketDeAnexo(pedido).catch((e: unknown) => e)) as ErroDeApi;
+    expect(erro).toBeInstanceOf(ErroDeApi);
+    expect(erro.status).toBe(status);
+    expect(erro.codigo).toBe(codigo);
+    expect(erro.message).toBe("O arquivo passa do limite.");
+  });
+
+  it("(e) enviarMensagem leva os anexos no corpo", async () => {
+    const entrada = { conversaId: "c1", direcao: "enviada", conteudo: "", anexos: [{ submissionId: "s1", objectId: "o1" }] } as const;
+    fetchMock.mockResolvedValueOnce(resposta(201, { ok: true, dados: { id: "m1" } }));
+    await enviarMensagem(entrada);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.body).toBe(JSON.stringify(entrada));
   });
 });
