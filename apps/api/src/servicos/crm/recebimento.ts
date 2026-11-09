@@ -1,8 +1,8 @@
 /**
  * Serviço de recebimento (3.6.2, MSG-01): uma Mensagem que chega do provedor acha ou cria o Contato,
  * reaproveita, reabre ou abre a Conversa e grava a Mensagem, tudo numa transação só. É a regra que o
- * webhook (16-03) e os provedores usam, e a ÚNICA porta da `recebida` (a antiga `registrarRecebida`
- * saiu de `ServicoDeMensagens`).
+ * webhook (16-03) e os provedores usam, e a ÚNICA porta da `recebida` (a porta antiga, que só gravava
+ * numa Conversa já aberta, saiu de `ServicoDeMensagens`).
  *
  * Ordem dentro da transação:
  *   1. o Canal vem de `(workspaceId, canalId)` de QUEM CHAMA — nunca do evento (T-16-01);
