@@ -50,8 +50,9 @@ O mesmo formato do `apps/api/.env`: uma `CHAVE=valor` por linha, sem aspas e
 sem valor em várias linhas (é o `carregarEnv()` que lê). Dono `n1crm`, modo 600.
 
 **Não vão nele** — o serviço já define, e o que o serviço define vence o
-arquivo: `HOST`, `PORT`, `TRUST_PROXY`, `TZ` e os três workers
-(`AGENTE_CONTAS_A_PAGAR_ATIVO`, `OUTBOX_WORKER_ATIVO`, `AUTOMACOES_WORKER_ATIVO`).
+arquivo: `HOST`, `PORT`, `TRUST_PROXY`, `TZ`, os três workers
+(`AGENTE_CONTAS_A_PAGAR_ATIVO`, `OUTBOX_WORKER_ATIVO`, `AUTOMACOES_WORKER_ATIVO`) e os
+dois da mensageria (`MENSAGERIA_WORKER_ATIVO`, `COLETA_DE_ORFAOS_ATIVA`).
 
 **Muda em relação ao do notebook:**
 
@@ -76,6 +77,7 @@ Mudou o arquivo? Reinicie (como root): `systemctl restart n1-crm-api`.
 | Qual versão está no ar | `cat /opt/n1-crm/current/REVISION` |
 | Voltar uma versão | `ln -sfn /opt/n1-crm/releases/<sha> /opt/n1-crm/current && systemctl restart n1-crm-api` |
 | Ligar os workers | `systemctl edit n1-crm-api` → `[Service]` + `Environment=OUTBOX_WORKER_ATIVO=true` (e desligar no notebook: dois processando o mesmo outbox duplicam envio) |
+| Ligar a mensageria | drop-in `mensageria.conf`, como root, só do dono: ver "Mensageria (Fase 16)", abaixo |
 
 Publicar à mão, da raiz do repositório (o mesmo passo do CI):
 
@@ -339,9 +341,75 @@ da imagem (a existência de `v2.3.7` foi conferida no registro, mas a versão a
 usar é do dono) e os nomes das variáveis do `evolution.env`, que vêm de fontes
 de terceiros.
 
-**Fica para a Sessão 4:** conectar o número de WhatsApp, guardar a chave de API
-no cofre do CRM e ligar o webhook da Evolution ao `apps/api`. Nada disso é
-feito aqui.
+**O que a Fase 16 puxou da Sessão 4:** ligar um Canal a uma instância que o dono
+já conectou na Evolution (guardar a chave da INSTÂNCIA no cofre do CRM e apontar o
+webhook dela para o `apps/api`) é o comando `npm run canal:ligar-evolution` (ver
+"Mensageria (Fase 16)", abaixo). **Fica para a Sessão 4:** o QR code e o botão
+"Conectar" na ficha do Canal, `CONNECTION_UPDATE` e a conferência da conexão. Nada
+disso é feito pelos scripts desta pasta.
+
+## Mensageria (Fase 16)
+
+O `apps/api` ganha, nesta fase, a entrada e a saída de mensagens, o tempo real e a
+mídia (ver `src/mensageria/CONTEXT.md`). **Nada disso liga sozinho em produção:** a
+unidade `n1-crm-api.service` fixa `MENSAGERIA_WORKER_ATIVO=false` e
+`COLETA_DE_ORFAOS_ATIVA=false`, como os três workers de antes, e a `013` só entra
+quando o dono publica.
+
+**Publicar a `013` (só o dono, com backup antes).**
+
+1. Backup manual do schema `plataforma` (`pg_dump -Fc --schema=plataforma --no-owner --no-acl`),
+   restaurado num Postgres descartável para conferir as contagens, como foi feito antes do corte da Fase 15.
+2. `npm run migrar -w @n1/api -- --seco` primeiro: lista cada migração como `aplicada` ou `pendente`
+   sem escrever nada. Só a `013` deve aparecer `pendente`.
+3. `publicar.sh` (o `instalar-release.sh` roda `migrar` e `banco:conceder`). A `013` cria
+   `plataforma.webhooks_recebidos` e o índice do `mensagem.enviar.v1`; `banco:conceder` dá ao `n1_api`
+   o que ele precisa sobre a tabela nova.
+
+**Ligar os workers em produção (só o dono, como root, na VPS).** O drop-in não mexe no arquivo da
+unidade, então um `publicar.sh` depois não o desfaz:
+
+```bash
+install -d /etc/systemd/system/n1-crm-api.service.d
+printf '[Service]\nEnvironment=MENSAGERIA_WORKER_ATIVO=true\n' > /etc/systemd/system/n1-crm-api.service.d/mensageria.conf
+systemctl daemon-reload && systemctl restart n1-crm-api
+journalctl -u n1-crm-api -n 30   # esperado: "processador de entrada da mensageria ativo" e "worker de saída da mensageria ativo"
+```
+
+Uma flag liga o processador de entrada e o worker de saída. `MENSAGERIA_WORKER_ID` (opcional) dá o nome
+do de entrada; o de saída é `<nome>-saida`. A coleta de órfãos (`COLETA_DE_ORFAOS_ATIVA=true`) é outra linha do
+mesmo drop-in, e só faz sentido com o bucket configurado. Para desligar, troque para `false` (ou apague o
+arquivo) e `systemctl restart n1-crm-api`. Duas instâncias do processo não duplicam trabalho (a fila usa
+`for update skip locked`), mas o worker de um notebook ligado ao MESMO banco competiria com a VPS: desligue o do notebook.
+
+**O tempo real e o orçamento de conexões.** O ouvinte `LISTEN` (`TEMPO_REAL_ATIVO`, ligado por padrão) é uma
+conexão a mais por processo, fora do pool: o orçamento é **10 do pool + 1 do ouvinte**. O `GET /eventos` é um
+fluxo SSE longo e depende de dois detalhes da borda:
+
+- `X-Accel-Buffering: no`, que a própria rota manda: sem ele o nginx seguraria o fluxo em buffer e a aba não
+  receberia nada até o fechamento. Nenhum `location` novo é preciso (a rota passa pelo `location /`).
+- A batida de 25 s do servidor (`: batida`) fica abaixo do `proxy_read_timeout 120s` do nginx, então a conexão
+  não cai por silêncio. O servidor fecha o fluxo em 45 min e a aba reconecta sozinha.
+
+**Ainda não provado em produção (suposição A9):** que o pooler do Supabase em modo sessão (porta 5432) com o papel
+`n1_api` entrega `LISTEN/NOTIFY`. Se não entregar, o ouvinte conecta mas nada chega: a tela continua correta pela
+releitura de 5 s da revisão do Espaço. A prova é do dono, em `16-16`.
+
+**O webhook por Canal.** `POST /webhooks/mensageria/:canalId` passa pelo `location /` e não tem máscara no log do
+nginx: o `canalId` na URL não é segredo, e o segredo do Canal vai no cabeçalho `x-n1-webhook-segredo`, que o
+`access_log` (`n1_mascarado`) não registra. O limite de 300 por minuto por IP é da própria API.
+
+**Ligar um Canal à Evolution** (depois de a instância existir e estar conectada na Evolution, o que o dono faz
+fora daqui): `EVOLUTION_URL`, `API_URL_PUBLICA` e `COFRE_CHAVE` do runtime, mais a chave GLOBAL da Evolution só na
+linha de comando, rodando primeiro com `--seco`:
+
+```bash
+cd /opt/n1-crm/current && EVOLUTION_API_KEY=<chave global> \
+  npm run canal:ligar-evolution -w @n1/api -- --canal <id> --instancia <nome> --seco
+```
+
+O comando escreve no banco do `DATABASE_URL` com a `COFRE_CHAVE` do ambiente: para o Canal de produção, rode-o com
+as de produção. A chave global nunca entra no `api.env` nem no cofre.
 
 ## Por que assim
 
