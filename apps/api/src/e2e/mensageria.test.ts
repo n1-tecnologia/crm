@@ -128,4 +128,20 @@ describeComBanco("Fase 16 ponta a ponta: a resposta escrita na Caixa sai pelo pr
     expect(depois.idExterno).toMatch(/^teste-/);
     expect(depois.statusEntregaEm).not.toBeNull();
   });
+
+  it("erro transitório duas vezes: a terceira tentativa entrega e a Mensagem fica enviada, com três envios ao provedor", async () => {
+    const erro = { ok: false, transitorio: true, codigo: "HTTP_503", motivo: "indisponível" } as const;
+    provedorDeTeste.programarEnvio(erro, erro);
+    const criada = await escrever("de novo");
+
+    for (const esperado of ["pendente", "pendente", "enviada"]) {
+      await disponivelAgora(criada.id);
+      expect(await worker().processarUm()).toBe(true);
+      expect((await mensagem(criada.id)).statusEntrega).toBe(esperado);
+    }
+
+    expect(provedorDeTeste.enviados).toHaveLength(3);
+    expect(await linhaDaFila(criada.id)).toMatchObject({ status: "delivered", attempts: 3 });
+    expect((await mensagem(criada.id)).idExterno).toMatch(/^teste-/);
+  });
 });
