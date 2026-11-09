@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 16
 current_phase_name: "Base da mensageria: entrada, saída, tempo real e mídia"
 status: executing
-stopped_at: Completed 16-12-PLAN.md
-last_updated: "2026-11-09T20:27:22.085Z"
+stopped_at: Completed 16-13-PLAN.md
+last_updated: "2026-11-09T20:47:42.159Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 16 execution started
-state_head: 6051536fba690718e1858e3ecf3af1b1233a60af
+state_head: 08df406236091e8a6496bf5361868e21fee70b9e
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 288
-  completed_plans: 281
+  completed_plans: 282
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 16 (Base da mensageria: entrada, saída, tempo real e mídia) — EXECUTING
-Plan: 13 of 16
+Plan: 14 of 16
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 16 execution started
 
@@ -502,6 +502,7 @@ Progress: [██████░░░░] 63%
 | Phase 16 P10 | 20 min | 3 tasks | 12 files |
 | Phase 16 P11 | 9 min | 3 tasks | 9 files |
 | Phase 16 P12 | 11 min | 3 tasks | 15 files |
+| Phase 16 P13 | 16 min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -842,6 +843,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 16]: 16-11: o compositor do fio só oferece Imagem, Áudio, Vídeo e Documento pelos tipos de tiposAceitosParaOCanal; microfone, localização, figurinha, Flow e 'ver uma vez' saíram (D-16-10); a pré-conferência de tipo e teto é recusaDoAnexoDaMensagem, a api confere de novo
 - [Phase 16]: 16-12: o envio da Evolution devolve ambiguo para tempo esgotado, resposta perdida, 500 e 2xx sem key.id; so conexao recusada e 429/502/503/504 sao transitorios
 - [Phase 16]: 16-12: credencial do Canal no cofre tipo whatsapp-nao-oficial = JSON { instancia, apikey } (token da instancia); registroPadrao liga a Evolution so com EVOLUTION_URL
+- [Phase 16]: 16-13: o cofre guarda só o token da instância da Evolution; sem token o comando canal:ligar-evolution recusa em vez de usar a chave global (decisão do dono, A10)
+- [Phase 16]: 16-13: conexao_confirmada aceita Canal já conectado (rodar de novo troca o segredo e tira a marca de simulada); conectar e conexao_perdida ficam para a Sessão 4
 
 ### Pending Todos
 
@@ -903,6 +906,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-09T20:27:21.784Z
-Stopped at: Completed 16-12-PLAN.md
+Last session: 2026-11-09T20:47:41.890Z
+Stopped at: Completed 16-13-PLAN.md
 Resume file: None

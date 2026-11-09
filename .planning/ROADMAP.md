@@ -914,7 +914,7 @@ Plans:
 **Ajuste (D-16-04):** a fase inclui um adaptador mínimo da Evolution (fronteira em `COVERAGE.md`) e uma prova ao vivo com a instância do dono; o "Pronto quando" da fase passa a ter as duas partes de `16-CONTEXT.md` (provedor de teste nos testes automáticos; WhatsApp real ao vivo).
 **Requirements**: MSG-01 a MSG-06 (IDs locais da fase, definidos em `16-CONTEXT.md` `<domain>`)
 **Depends on:** Phase 15 (a ordem do plano: unificar o CRM primeiro, mensageria depois)
-**Plans:** 12/16 plans executed (14 ondas; 16-15 e 16-16 têm checkpoints do dono — pré-voo, publicação, prova ao vivo e a decisão do áudio; nenhum plano autônomo toca produção)
+**Plans:** 13/16 plans executed (14 ondas; 16-15 e 16-16 têm checkpoints do dono — pré-voo, publicação, prova ao vivo e a decisão do áudio; nenhum plano autônomo toca produção)
 
 Plans:
 
@@ -951,7 +951,7 @@ Plans:
 - [x] 16-12-PLAN.md — D-16-04 + D-16-06: adaptador da Evolution (cliente, tradutor, provedor)
 
 **Wave 11** *(blocked on Wave 10 completion)*
-- [ ] 16-13-PLAN.md — D-16-05: `canal:ligar-evolution`, `conexao_confirmada`, `conferirNumeroConectado`
+- [x] 16-13-PLAN.md — D-16-05: `canal:ligar-evolution`, `conexao_confirmada`, `conferirNumeroConectado`
 
 **Wave 12** *(blocked on Wave 11 completion)*
 - [ ] 16-14-PLAN.md — Cronograma (`andamento.mjs`), `CONTEXT.md`, `.env.example`, unidade systemd e o gate `npm run check`
