@@ -117,6 +117,15 @@ const ASSINATURA_PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47]); // \x89PNG
 const MARCADOR_RIFF = Buffer.from("RIFF", "ascii");
 const MARCADOR_WEBP = Buffer.from("WEBP", "ascii"); // RIFF....WEBP
 const ESPACOS_ASCII = new Set([0x20, 0x09, 0x0d, 0x0a]);
+const ASSINATURA_OGG = Buffer.from("OggS", "ascii");
+const ASSINATURA_ID3 = Buffer.from("ID3", "ascii");
+const MARCADOR_FTYP = Buffer.from("ftyp", "ascii"); // no byte 4 de MP4, M4A e 3GP
+const INICIO_DE_ZIP = Uint8Array.from([0x50, 0x4b, 0x03, 0x04]); // PK\x03\x04: o primeiro arquivo do pacote
+const ZIP_VAZIO = Uint8Array.from([0x50, 0x4b, 0x05, 0x06]); // PK\x05\x06: só o fim do diretório
+
+const TIPO_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const TIPO_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const TIPO_PPTX = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
 function comecaCom(bytes: Uint8Array, marcador: Uint8Array, offset = 0): boolean {
   if (bytes.length < offset + marcador.length) return false;
@@ -126,14 +135,98 @@ function comecaCom(bytes: Uint8Array, marcador: Uint8Array, offset = 0): boolean
   return true;
 }
 
+/** Quantos bytes do começo valem para decidir se um arquivo é texto (csv e txt não têm assinatura). */
+const BYTES_PARA_DECIDIR_SE_E_TEXTO = 4096;
+
 /**
- * MIME declarado pelo cliente não basta (T-02-06/Tampering): confere os
- * primeiros bytes do conteúdo contra a assinatura de arquivo do tipo
- * alegado. XML não tem assinatura binária fixa — exige que o primeiro
- * caractere não-espaço seja `<`.
+ * csv e txt não têm assinatura: só valem se o conteúdo for TEXTO. Recusa `NUL` e os controles C0 que não sejam tab, LF,
+ * CR e FF. Não exige UTF-8: o CSV que o Excel brasileiro exporta costuma sair em Windows-1252, com `;` (A7).
+ */
+export function pareceTexto(bytes: Uint8Array): boolean {
+  const limite = Math.min(bytes.length, BYTES_PARA_DECIDIR_SE_E_TEXTO);
+  for (let i = 0; i < limite; i += 1) {
+    const b = bytes[i]!;
+    if (b === 0x00) return false;
+    if (b < 0x20 && b !== 0x09 && b !== 0x0a && b !== 0x0c && b !== 0x0d) return false;
+  }
+  return true;
+}
+
+export type FamiliaDeZip = "docx" | "xlsx" | "pptx" | "zip";
+
+const TAMANHO_DO_FIM_DO_DIRETORIO = 22;
+const MAIOR_COMENTARIO_DE_ZIP = 0xffff;
+const ASSINATURA_DO_FIM_DO_DIRETORIO = 0x06054b50;
+const ASSINATURA_DE_ENTRADA_DO_DIRETORIO = 0x02014b50;
+const TAMANHO_DA_ENTRADA_DO_DIRETORIO = 46;
+
+const u16 = (bytes: Uint8Array, i: number): number => bytes[i]! | (bytes[i + 1]! << 8);
+const u32 = (bytes: Uint8Array, i: number): number => (bytes[i]! | (bytes[i + 1]! << 8) | (bytes[i + 2]! << 16) | (bytes[i + 3]! << 24)) >>> 0;
+
+/** A posição do registro de fim do diretório central (EOCD), nos últimos 64 KiB, ou `undefined`. */
+function acharFimDoDiretorio(bytes: Uint8Array): number | undefined {
+  if (bytes.length < TAMANHO_DO_FIM_DO_DIRETORIO) return undefined;
+  const maisBaixo = Math.max(0, bytes.length - TAMANHO_DO_FIM_DO_DIRETORIO - MAIOR_COMENTARIO_DE_ZIP);
+  for (let i = bytes.length - TAMANHO_DO_FIM_DO_DIRETORIO; i >= maisBaixo; i -= 1) {
+    // O comprimento do comentário tem de fechar exatamente no fim do arquivo: um comentário que imita o EOCD não passa.
+    if (u32(bytes, i) === ASSINATURA_DO_FIM_DO_DIRETORIO && i + TAMANHO_DO_FIM_DO_DIRETORIO + u16(bytes, i + 20) === bytes.length) return i;
+  }
+  return undefined;
+}
+
+/**
+ * Decide, sem descomprimir nada, de que família de ZIP um arquivo é (T-16-32: nenhuma zip-bomb se abre). Acha o fim do
+ * diretório central, lê SÓ os nomes das entradas e confere a estrutura: `[Content_Types].xml` e a pasta `word/`, `xl/` ou
+ * `ppt/` dizem docx, xlsx ou pptx; um zip consistente sem isso é `zip`; o que não tem diretório central consistente
+ * (bytes que só começam com `PK`) devolve `undefined`. ZIP64 não é lido e também devolve `undefined`: um arquivo de
+ * até 25 MiB não precisa dele. A leitura nunca passa do diretório declarado, então um número de entradas inflado acaba cedo.
+ */
+export function familiaDoZip(bytes: Uint8Array): FamiliaDeZip | undefined {
+  const fim = acharFimDoDiretorio(bytes);
+  if (fim === undefined) return undefined;
+  const entradas = u16(bytes, fim + 10);
+  const tamanhoDoDiretorio = u32(bytes, fim + 12);
+  const inicioDoDiretorio = u32(bytes, fim + 16);
+  if (entradas === 0xffff || tamanhoDoDiretorio === 0xffffffff || inicioDoDiretorio === 0xffffffff) return undefined;
+  const fimDoDiretorio = inicioDoDiretorio + tamanhoDoDiretorio;
+  if (fimDoDiretorio > fim) return undefined;
+  if (entradas === 0) return tamanhoDoDiretorio === 0 ? "zip" : undefined;
+
+  const nomes = new TextDecoder("utf-8");
+  let temTiposDeConteudo = false;
+  let temWord = false;
+  let temPlanilha = false;
+  let temApresentacao = false;
+  let posicao = inicioDoDiretorio;
+  for (let n = 0; n < entradas; n += 1) {
+    if (posicao + TAMANHO_DA_ENTRADA_DO_DIRETORIO > fimDoDiretorio) return undefined;
+    if (u32(bytes, posicao) !== ASSINATURA_DE_ENTRADA_DO_DIRETORIO) return undefined;
+    const tamanhoDoNome = u16(bytes, posicao + 28);
+    const proxima = posicao + TAMANHO_DA_ENTRADA_DO_DIRETORIO + tamanhoDoNome + u16(bytes, posicao + 30) + u16(bytes, posicao + 32);
+    if (proxima > fimDoDiretorio) return undefined;
+    const nome = nomes.decode(bytes.subarray(posicao + TAMANHO_DA_ENTRADA_DO_DIRETORIO, posicao + TAMANHO_DA_ENTRADA_DO_DIRETORIO + tamanhoDoNome));
+    if (nome === "[Content_Types].xml") temTiposDeConteudo = true;
+    else if (nome.startsWith("word/")) temWord = true;
+    else if (nome.startsWith("xl/")) temPlanilha = true;
+    else if (nome.startsWith("ppt/")) temApresentacao = true;
+    posicao = proxima;
+  }
+  if (!temTiposDeConteudo) return "zip";
+  if (temWord) return "docx";
+  if (temPlanilha) return "xlsx";
+  if (temApresentacao) return "pptx";
+  return "zip";
+}
+
+/**
+ * MIME declarado pelo cliente não basta (T-02-06/Tampering): confere o CONTEÚDO contra a assinatura de arquivo do tipo
+ * alegado — `audio/ogg; codecs=opus` vale como `audio/ogg`. XML não tem assinatura binária fixa — exige que o primeiro
+ * caractere não-espaço seja `<`; csv e txt só valem se o conteúdo for texto (`pareceTexto`). docx, xlsx e pptx começam
+ * por `PK` como qualquer zip, então além disso o diretório central tem de trazer `[Content_Types].xml` e a pasta do
+ * formato (`familiaDoZip`). Para o zip e o Office, passe o conteúdo INTEIRO: o diretório central fica no fim do arquivo.
  */
 export function assinaturaConfereComTipo(primeirosBytes: Uint8Array, mediaType: string): boolean {
-  switch (mediaType) {
+  switch (normalizarTipoDeMidia(mediaType)) {
     case "application/pdf":
       return comecaCom(primeirosBytes, ASSINATURA_PDF);
     case "image/jpeg":
@@ -148,20 +241,35 @@ export function assinaturaConfereComTipo(primeirosBytes: Uint8Array, mediaType: 
       while (indice < primeirosBytes.length && ESPACOS_ASCII.has(primeirosBytes[indice]!)) indice += 1;
       return primeirosBytes[indice] === 0x3c; // '<'
     }
+    case "audio/ogg":
+      return comecaCom(primeirosBytes, ASSINATURA_OGG);
+    case "audio/mpeg":
+      // ID3 (com etiqueta) ou o quadro MPEG de camada III sem etiqueta: 0xFF 0xFB, 0xF3 ou 0xF2.
+      return (
+        comecaCom(primeirosBytes, ASSINATURA_ID3) ||
+        (primeirosBytes[0] === 0xff && (primeirosBytes[1] === 0xfb || primeirosBytes[1] === 0xf3 || primeirosBytes[1] === 0xf2))
+      );
+    case "audio/mp4":
+    case "video/mp4":
+    case "video/3gpp":
+      return comecaCom(primeirosBytes, MARCADOR_FTYP, 4);
+    case "audio/aac":
+      // Cabeçalho ADTS: 0xFFF1 (MPEG-4) ou 0xFFF9 (MPEG-2).
+      return primeirosBytes[0] === 0xff && (primeirosBytes[1] === 0xf1 || primeirosBytes[1] === 0xf9);
+    case "application/zip":
+      return (comecaCom(primeirosBytes, INICIO_DE_ZIP) || comecaCom(primeirosBytes, ZIP_VAZIO)) && familiaDoZip(primeirosBytes) !== undefined;
+    case TIPO_DOCX:
+      return comecaCom(primeirosBytes, INICIO_DE_ZIP) && familiaDoZip(primeirosBytes) === "docx";
+    case TIPO_XLSX:
+      return comecaCom(primeirosBytes, INICIO_DE_ZIP) && familiaDoZip(primeirosBytes) === "xlsx";
+    case TIPO_PPTX:
+      return comecaCom(primeirosBytes, INICIO_DE_ZIP) && familiaDoZip(primeirosBytes) === "pptx";
+    case "text/csv":
+    case "text/plain":
+      return pareceTexto(primeirosBytes);
     default:
       return false;
   }
-}
-
-// Esqueletos do RED (16-09, Task 2): as assinaturas existem; a regra vem no GREEN.
-export type FamiliaDeZip = "docx" | "xlsx" | "pptx" | "zip";
-
-export function familiaDoZip(_bytes: Uint8Array): FamiliaDeZip | undefined {
-  return undefined;
-}
-
-export function pareceTexto(_bytes: Uint8Array): boolean {
-  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -344,7 +452,8 @@ export async function confirmarObjeto(
   if (erroDownload || !blob) return { ok: false, motivo: "objeto_ausente" };
 
   const conteudo = new Uint8Array(await blob.arrayBuffer());
-  if (!assinaturaConfereComTipo(conteudo.subarray(0, 4096), tipoReservado)) {
+  // O conteúdo inteiro: o diretório central do zip e do Office fica no fim do arquivo.
+  if (!assinaturaConfereComTipo(conteudo, tipoReservado)) {
     return { ok: false, motivo: "assinatura_nao_confere" };
   }
 
