@@ -95,6 +95,8 @@ export function backoff(tentativa: number): number {
 const PADROES_SENSIVEIS: readonly RegExp[] = [
   /bearer\s+\S+/gi,
   /token=[^\s&"']+/gi,
+  // `apikey: <valor>` / `apikey=<valor>`: a chave do provedor (Evolution) nunca pode ir a `last_error_summary` nem a `motivo_falha` (16-05, T-16-17).
+  /apikey["']?\s*[:=]\s*["']?[^\s"',}]+/gi,
   // CNPJ (com a barra — é o que distingue de um CPF de 11 dígitos).
   /\d{2}\.?\d{3}\.?\d{3}\/\d{4}-?\d{2}/g,
   // CPF.
@@ -116,10 +118,16 @@ export function sanitizarErro(erro: unknown, code = "ERRO_DESCONHECIDO"): { read
   return { code, summary };
 }
 
-export interface OpcoesOutboxWorker {
-  /** Origem do `automation/`, sem barra final — cada evento acrescenta o caminho do webhook correspondente. */
-  readonly destinoUrl: string;
-  readonly token: string;
+/** O que o entregador de um worker decide sobre UMA linha (16-05): o worker só aplica o desfecho à linha do outbox. */
+export type DesfechoDaEntrega =
+  | { readonly desfecho: "entregue" }
+  | { readonly desfecho: "tentar_de_novo"; readonly erro: { readonly code: string; readonly summary: string } }
+  | { readonly desfecho: "desistir"; readonly erro: { readonly code: string; readonly summary: string } };
+
+/** `ultimaTentativa`: esta é a última que a linha terá (`attempts >= maxTentativas`); quem entrega decide o que gravar no Agregado. */
+export type EntregadorDoOutbox = (linha: LinhaOutbox, contexto: { readonly ultimaTentativa: boolean }) => Promise<DesfechoDaEntrega>;
+
+interface OpcoesComunsDoOutboxWorker {
   /** Identifica esta instância em `locked_by` — dois processos precisam de valores distintos. */
   readonly workerId: string;
   /**
@@ -132,11 +140,8 @@ export interface OpcoesOutboxWorker {
   readonly relogio?: Relogio;
   /** Padrão 10 (RESEARCH.md). */
   readonly maxTentativas?: number;
-  readonly fetchImpl?: typeof fetch;
   /** Intervalo entre ciclos de `iniciar()`, em ms. Padrão 5 s. */
   readonly intervaloMs?: number;
-  /** Tempo máximo de espera por uma entrega antes de tratar como falha de rede. Padrão 10 s. */
-  readonly timeoutMs?: number;
   /**
    * Os tipos de evento que este worker reivindica (filtro inclusivo). Ausente, o worker pega tudo MENOS os
    * eventos da mensageria (`mensagem.%`): a fila de saída da mensageria tem entregador próprio, e com
@@ -145,7 +150,35 @@ export interface OpcoesOutboxWorker {
    * hoje: um evento novo do `automation/` continua saindo sem editar este filtro.
    */
   readonly tiposDeEvento?: readonly NomeDeEvento[];
+  /**
+   * Uma linha `delivering` cujo `locked_at` passou deste prazo (ms) é de um worker que caiu: volta a `pending`
+   * antes de cada reivindicação (ou vira `failed/TRAVA_VENCIDA` se já gastou as tentativas). Ausente, não há
+   * recuperação (o worker do `automation/` nunca teve). Só olha os `tiposDeEvento` deste worker.
+   */
+  readonly recuperarTravasVencidasMs?: number;
+  /** Só código e id: nunca o corpo, o texto nem o erro cru. Sem ele, um erro do ciclo sobe como sempre subiu. */
+  readonly registrar?: (nivel: "info" | "warn" | "error", mensagem: string, dados?: Record<string, unknown>) => void;
 }
+
+/** O worker do `automation/`: entrega por HTTP ao `destinoUrl`. */
+export interface OpcoesDoOutboxWorkerHttp extends OpcoesComunsDoOutboxWorker {
+  /** Origem do `automation/`, sem barra final — cada evento acrescenta o caminho do webhook correspondente. */
+  readonly destinoUrl: string;
+  readonly token: string;
+  readonly fetchImpl?: typeof fetch;
+  /** Tempo máximo de espera por uma entrega antes de tratar como falha de rede. Padrão 10 s. */
+  readonly timeoutMs?: number;
+  readonly entregador?: undefined;
+}
+
+/** Um worker com entregador próprio (a saída da mensageria): nada de HTTP ao `automation/`. */
+export interface OpcoesDoOutboxWorkerComEntregador extends OpcoesComunsDoOutboxWorker {
+  readonly entregador: EntregadorDoOutbox;
+  readonly destinoUrl?: undefined;
+  readonly token?: undefined;
+}
+
+export type OpcoesOutboxWorker = OpcoesDoOutboxWorkerHttp | OpcoesDoOutboxWorkerComEntregador;
 
 export interface OutboxWorker {
   /** Começa o laço de `intervaloMs` em `intervaloMs`. Chamar duas vezes é no-op. */
@@ -163,6 +196,11 @@ export interface OutboxWorker {
    * disponível.
    */
   processarUm(): Promise<boolean>;
+  /**
+   * Dispara uma volta agora, sem esperar o intervalo (quem acorda é quem acabou de gravar a linha, 16-05).
+   * Sem volta em voo, inicia uma; com uma em voo, só pede mais uma ao terminar: nunca duas ao mesmo tempo.
+   */
+  acordar(): void;
 }
 
 async function reivindicar(
@@ -202,9 +240,9 @@ async function reivindicar(
 export function criarOutboxWorker(opcoes: OpcoesOutboxWorker): OutboxWorker {
   const relogio = opcoes.relogio ?? relogioDoSistema;
   const maxTentativas = opcoes.maxTentativas ?? 10;
-  const fetchImpl = opcoes.fetchImpl ?? fetch;
+  const fetchImpl = (opcoes.entregador ? undefined : opcoes.fetchImpl) ?? fetch;
   const intervaloMs = opcoes.intervaloMs ?? 5_000;
-  const timeoutMs = opcoes.timeoutMs ?? 10_000;
+  const timeoutMs = (opcoes.entregador ? undefined : opcoes.timeoutMs) ?? 10_000;
 
   async function marcarEntregue(id: string): Promise<void> {
     const cliente = await pool().connect();
@@ -249,16 +287,17 @@ export function criarOutboxWorker(opcoes: OpcoesOutboxWorker): OutboxWorker {
     }
   }
 
-  async function entregar(linha: LinhaOutbox): Promise<void> {
+  /** O caminho HTTP ao `automation/` (o worker sem `entregador`). */
+  async function entregarPorHttp(linha: LinhaOutbox, destinoUrl: string, token: string): Promise<void> {
     const caminho = CAMINHO_POR_EVENTO[linha.event_type as keyof typeof CAMINHO_POR_EVENTO] ?? "/webhooks/plataforma/desconhecido";
     let resposta: Response | undefined;
     let erroDeRede: unknown;
     try {
-      resposta = await fetchImpl(`${opcoes.destinoUrl}${caminho}`, {
+      resposta = await fetchImpl(`${destinoUrl}${caminho}`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          authorization: `Bearer ${opcoes.token}`,
+          authorization: `Bearer ${token}`,
           "idempotency-key": linha.id,
           "x-request-id": randomUUID(),
         },
@@ -277,7 +316,7 @@ export function criarOutboxWorker(opcoes: OpcoesOutboxWorker): OutboxWorker {
     const status = resposta?.status;
     const permanente = status !== undefined && [400, 401, 403, 404, 422].includes(status);
     const erroClassificado = sanitizarErro(
-      erroDeRede ?? new Error(`HTTP ${status ?? "sem resposta"} de ${opcoes.destinoUrl}${caminho}`),
+      erroDeRede ?? new Error(`HTTP ${status ?? "sem resposta"} de ${destinoUrl}${caminho}`),
       status !== undefined ? `HTTP_${status}` : "ERRO_DE_REDE",
     );
 
@@ -288,7 +327,59 @@ export function criarOutboxWorker(opcoes: OpcoesOutboxWorker): OutboxWorker {
     await marcarPendente(linha.id, linha.attempts, erroClassificado);
   }
 
+  /** Um entregador próprio decide o desfecho; o worker só o aplica à linha (16-05). */
+  async function entregarPeloEntregador(linha: LinhaOutbox, entregador: EntregadorDoOutbox): Promise<void> {
+    const ultimaTentativa = linha.attempts >= maxTentativas;
+    let resultado: DesfechoDaEntrega;
+    try {
+      resultado = await entregador(linha, { ultimaTentativa });
+    } catch (erro) {
+      resultado = { desfecho: "tentar_de_novo", erro: sanitizarErro(erro, "ERRO_DO_ENTREGADOR") };
+    }
+    if (resultado.desfecho === "entregue") {
+      await marcarEntregue(linha.id);
+    } else if (resultado.desfecho === "desistir" || ultimaTentativa) {
+      await marcarFalha(linha.id, resultado.erro);
+    } else {
+      await marcarPendente(linha.id, linha.attempts, resultado.erro);
+    }
+  }
+
+  /**
+   * Trava vencida: o worker que reivindicou a linha caiu antes de marcá-la. Antes de cada reivindicação, volta a
+   * `pending` (ou, se já gastou as tentativas, `failed/TRAVA_VENCIDA`: uma linha que derruba o processo não volta
+   * para sempre). Só toca os `tiposDeEvento` deste worker e, com `workspaceId`, só o Espaço dele.
+   */
+  async function recuperarTravasVencidas(): Promise<void> {
+    if (opcoes.recuperarTravasVencidasMs === undefined) return;
+    const parametros: unknown[] = [opcoes.recuperarTravasVencidasMs / 1000, maxTentativas];
+    let filtros = "";
+    if (opcoes.workspaceId !== undefined) {
+      parametros.push(opcoes.workspaceId);
+      filtros += ` and workspace_id = $${parametros.length}`;
+    }
+    if (opcoes.tiposDeEvento !== undefined) {
+      parametros.push([...opcoes.tiposDeEvento]);
+      filtros += ` and event_type = any($${parametros.length}::text[])`;
+    } else {
+      filtros += " and event_type not like 'mensagem.%'";
+    }
+    const vencida = `status = 'delivering' and locked_at < now() - make_interval(secs => $1)${filtros}`;
+    await pool().query(
+      `update plataforma.integration_outbox
+          set status = 'failed', locked_at = null, locked_by = null, last_error_code = 'TRAVA_VENCIDA',
+              last_error_summary = 'O worker caiu no meio da entrega e a linha já tinha gastado as tentativas.'
+        where ${vencida} and attempts >= $2::int`,
+      parametros,
+    );
+    await pool().query(
+      `update plataforma.integration_outbox set status = 'pending', locked_at = null, locked_by = null where ${vencida} and attempts < $2::int`,
+      parametros,
+    );
+  }
+
   async function processarUm(): Promise<boolean> {
+    await recuperarTravasVencidas();
     const cliente = await pool().connect();
     let linha: LinhaOutbox | undefined;
     try {
@@ -297,36 +388,63 @@ export function criarOutboxWorker(opcoes: OpcoesOutboxWorker): OutboxWorker {
       cliente.release();
     }
     if (!linha) return false;
-    await entregar(linha);
+    if (opcoes.entregador) await entregarPeloEntregador(linha, opcoes.entregador);
+    else await entregarPorHttp(linha, opcoes.destinoUrl, opcoes.token);
     return true;
   }
 
   let temporizador: ReturnType<typeof setInterval> | undefined;
-  // A volta em voo, só para `parar()` poder esperá-la: uma promessa À PARTE,
-  // resolvida no `finally`. A da volta segue como antes (`void`, sem
-  // `catch`), para uma rejeição continuar se comportando exatamente igual.
+  // A volta em voo: `parar()` a espera, e `acordar()` durante ela só pede mais uma (nunca duas juntas).
+  // Uma volta esvazia a fila (o que estiver disponível agora): uma linha que falha volta com `available_at`
+  // no futuro, então o laço termina. Um erro vai a `registrar`; sem `registrar` sobe como sempre subiu
+  // (a promessa da volta segue sem `catch`).
   let emVoo: Promise<void> | undefined;
+  let pedirOutraVolta = false;
+  let parado = false;
+
+  async function rodarVolta(): Promise<void> {
+    try {
+      do {
+        pedirOutraVolta = false;
+        while (!parado && (await processarUm())) {
+          // até a fila esvaziar
+        }
+      } while (pedirOutraVolta && !parado);
+    } catch (erro) {
+      if (!opcoes.registrar) throw erro;
+      opcoes.registrar("error", "volta do worker do outbox falhou", { erro: erro instanceof Error ? erro.name : "erro" });
+    }
+  }
+
+  function dispararVolta(): void {
+    if (parado) return;
+    if (emVoo) {
+      pedirOutraVolta = true;
+      return;
+    }
+    let terminou!: () => void;
+    emVoo = new Promise<void>((resolve) => {
+      terminou = resolve;
+    });
+    void rodarVolta().finally(() => {
+      emVoo = undefined;
+      terminou();
+    });
+  }
 
   return {
     iniciar() {
       if (temporizador) return;
-      temporizador = setInterval(() => {
-        if (emVoo) return;
-        let terminou!: () => void;
-        emVoo = new Promise<void>((resolve) => {
-          terminou = resolve;
-        });
-        void processarUm().finally(() => {
-          emVoo = undefined;
-          terminou();
-        });
-      }, intervaloMs);
+      parado = false;
+      temporizador = setInterval(dispararVolta, intervaloMs);
     },
     async parar() {
+      parado = true;
       if (temporizador) clearInterval(temporizador);
       temporizador = undefined;
       await emVoo;
     },
     processarUm,
+    acordar: dispararVolta,
   };
 }

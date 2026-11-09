@@ -12,7 +12,9 @@
  * 08-06 entrega `inserir` (a primeira Mensagem da Conversa); 08-12 acrescenta
  * a lista do fio, a última recebida (a janela de RN-CXE-19) e a ingestão da
  * `recebida`, que é idempotente por (Canal, id externo) — INV-CXE-08 — e é o
- * único lugar que escreve e lê `carga_bruta`.
+ * único lugar que escreve e lê `carga_bruta`. 16-05 acrescenta `obter`,
+ * `gravarEnvio` e `marcarFalha`: o desfecho da entrega pelo provedor, a única
+ * mudança de status que o repositório faz.
  */
 
 import type { Pool, PoolClient } from "pg";
@@ -73,6 +75,18 @@ export interface RepositorioDeMensagens {
   /** Grava a `recebida`; `undefined` quando o id externo já existe no Canal (INV-CXE-08). */
   inserirRecebida(workspaceId: string, linha: LinhaDeMensagemRecebida): Promise<Mensagem | undefined>;
   obterPorIdExterno(workspaceId: string, canalId: string, idExterno: string): Promise<Mensagem | undefined>;
+  /** A Mensagem por id, no Espaço, ou `undefined`. Nunca a carga bruta. */
+  obter(workspaceId: string, id: string): Promise<Mensagem | undefined>;
+  /**
+   * O provedor aceitou o envio (16-05): grava o id dele e `enviada`. SÓ de `pendente` (a corrida com um
+   * "Tentar de novo" ou com o retorno do provedor não regride nem repete); `undefined` quando já não era.
+   */
+  gravarEnvio(workspaceId: string, id: string, resultado: { readonly idExterno: string; readonly em: string }): Promise<Mensagem | undefined>;
+  /**
+   * O envio não saiu (ou não se sabe se saiu): `falhou` com o motivo em português de produto. SÓ de `pendente` ou
+   * `enviada`; `undefined` quando já estava em outro estado (`entregue`, `lida`, `falhou`).
+   */
+  marcarFalha(workspaceId: string, id: string, motivo: string): Promise<Mensagem | undefined>;
   /**
    * O payload cru do provedor. SÓ ingestão e teste — nunca rota (A9): é dado
    * pessoal e a anonimização futura precisa zerá-lo.
@@ -239,6 +253,36 @@ export function criarRepositorioDeMensagensPg(cliente: Pool | PoolClient): Repos
            from plataforma.mensagens
           where workspace_id = $1 and canal_id = $2 and id_externo = $3`,
         [workspaceId, canalId, idExterno],
+      );
+      return rows[0] ? linhaParaMensagem(rows[0]) : undefined;
+    },
+
+    async obter(workspaceId, id) {
+      const { rows } = await cliente.query<LinhaDoBancoDeMensagem>(
+        `select ${COLUNAS_DE_MENSAGEM} from plataforma.mensagens where workspace_id = $1 and id = $2`,
+        [workspaceId, id],
+      );
+      return rows[0] ? linhaParaMensagem(rows[0]) : undefined;
+    },
+
+    async gravarEnvio(workspaceId, id, resultado) {
+      const { rows } = await cliente.query<LinhaDoBancoDeMensagem>(
+        `update plataforma.mensagens
+            set id_externo = $3, status_entrega = 'enviada', status_entrega_em = $4::timestamptz, motivo_falha = null
+          where workspace_id = $1 and id = $2 and direcao = 'enviada' and status_entrega = 'pendente'
+          returning ${COLUNAS_DE_MENSAGEM}`,
+        [workspaceId, id, resultado.idExterno, resultado.em],
+      );
+      return rows[0] ? linhaParaMensagem(rows[0]) : undefined;
+    },
+
+    async marcarFalha(workspaceId, id, motivo) {
+      const { rows } = await cliente.query<LinhaDoBancoDeMensagem>(
+        `update plataforma.mensagens
+            set status_entrega = 'falhou', status_entrega_em = now(), motivo_falha = $3
+          where workspace_id = $1 and id = $2 and direcao = 'enviada' and status_entrega in ('pendente', 'enviada')
+          returning ${COLUNAS_DE_MENSAGEM}`,
+        [workspaceId, id, motivo],
       );
       return rows[0] ? linhaParaMensagem(rows[0]) : undefined;
     },
