@@ -23,7 +23,7 @@ vi.mock("./cliente-crm", async (original) => {
 });
 
 import { ErroDeApi, invalidarCrm } from "./cliente-crm";
-import { chaveDasMensagens, enviarMensagem, reenviarMensagem, useMensagens } from "./mensagens";
+import { chaveDasMensagens, chaveDoAnexo, enviarMensagem, reenviarMensagem, useMensagens, useUrlDoAnexo } from "./mensagens";
 
 function resposta(status: number, corpo: unknown): Response {
   return { ok: status >= 200 && status < 300, status, json: async () => corpo } as Response;
@@ -118,5 +118,24 @@ describe("reenviarMensagem (16-11, 3.7.3)", () => {
     expect(erro.status).toBe(status);
     expect(erro.codigo).toBe(codigo);
     expect(invalidarCrm).not.toHaveBeenCalled();
+  });
+});
+
+describe("useUrlDoAnexo (16-11, 3.9.5)", () => {
+  it("(d) a chave é /mensagens/<id>/anexos/<indice>", () => {
+    expect(chaveDoAnexo("m1", 0)).toBe("/mensagens/m1/anexos/0");
+  });
+
+  it("(d) anexo guardado: pede GET /mensagens/<id>/anexos/<indice> e devolve a URL e o vencimento", async () => {
+    fetchMock.mockResolvedValue(resposta(200, { ok: true, dados: { url: "https://armazem.test/a?assinatura=1", expiraEm: "2026-11-09T20:05:00.000Z" } }));
+    const { result } = renderHook(() => useUrlDoAnexo("m1", 0, true), { wrapper: envoltorio });
+    await waitFor(() => expect(result.current.data?.dados.url).toBe("https://armazem.test/a?assinatura=1"));
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe("http://api/mensagens/m1/anexos/0");
+  });
+
+  it("(d) anexo que o provedor não entregou (baixado: false) não chama a rede", () => {
+    renderHook(() => useUrlDoAnexo("m1", 0, false), { wrapper: envoltorio });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

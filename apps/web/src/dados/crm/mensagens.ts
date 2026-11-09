@@ -70,3 +70,18 @@ export async function reenviarMensagem(id: string): Promise<Mensagem> {
   await Promise.all([invalidarCrm("/mensagens"), invalidarCrm("/conversas")]);
   return resposta.dados;
 }
+
+export interface RespostaDaUrlDoAnexo {
+  readonly ok: true;
+  readonly dados: { readonly url: string; readonly expiraEm: string };
+}
+
+/** `/mensagens/<id>/anexos/<indice>` — a chave de SWR da URL assinada do anexo. */
+export function chaveDoAnexo(_mensagemId: string, _indice: number): string {
+  return "";
+}
+
+/** A URL assinada de um anexo guardado. */
+export function useUrlDoAnexo(_mensagemId: string, _indice: number, _baixado: boolean) {
+  return useSWR<RespostaDaUrlDoAnexo, Error>(null, (chave: string) => chamarCrm<RespostaDaUrlDoAnexo>(chave));
+}

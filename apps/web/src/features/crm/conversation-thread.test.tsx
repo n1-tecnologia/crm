@@ -864,3 +864,36 @@ describe("ConversationThread — o estado de entrega de cada Mensagem enviada (1
     expect(screen.getByText("Enviando…")).toBeTruthy();
   });
 });
+
+describe("ConversationThread — os anexos no fio (16-11, 3.9.5)", () => {
+  const anexoDeVoz = { tipoDeMidia: "audio/ogg", nome: "voz.ogg", objectKey: "workspace/ws/voz.ogg", tamanhoBytes: 2048, baixado: true } as const;
+
+  function comAnexos(anexos: Mensagem["anexos"], conteudo: string | null) {
+    const [recebida] = mensagensDaApi.cnv_suporte as [Mensagem];
+    mensagensDaApi.cnv_suporte = [{ ...recebida, anexos, conteudo }];
+    const padrao = rotaPadrao;
+    rotaPadrao = async (url, init) => {
+      if (/^\/mensagens\/[^/]+\/anexos\/\d+$/.test(new URL(url).pathname)) {
+        return resposta(200, { ok: true, dados: { url: "https://armazem.test/voz?assinatura=1", expiraEm: "2026-11-09T20:05:00.000Z" } });
+      }
+      return padrao(url, init);
+    };
+  }
+
+  it("(32) a Mensagem recebida com áudio mostra o player com a URL de GET /mensagens/:id/anexos/0, e a legenda como texto", async () => {
+    comAnexos([anexoDeVoz], "ouça isto");
+    montar({ conversaId: "cnv_suporte" });
+    await waitFor(() => expect(document.querySelector("[data-fio='mensagens'] audio")).not.toBeNull());
+    const audio = document.querySelector("[data-fio='mensagens'] audio") as HTMLAudioElement;
+    expect(audio.getAttribute("src")).toBe("https://armazem.test/voz?assinatura=1");
+    expect(screen.getByText("ouça isto")).toBeTruthy();
+    expect(fetchMock.mock.calls.some((c) => String(c[0]) === `http://api/mensagens/cnv_suporte_m1/anexos/0`)).toBe(true);
+  });
+
+  it("(33) anexo que o provedor não entregou aparece como indisponível, sem sumir da Mensagem", async () => {
+    comAnexos([{ tipoDeMidia: "image/jpeg", nome: "foto.jpg", referenciaExterna: "wamid-1", baixado: false }], null);
+    montar({ conversaId: "cnv_suporte" });
+    await waitFor(() => expect(screen.getByText("Arquivo indisponível: o provedor não entregou este arquivo.")).toBeTruthy());
+    expect(fetchMock.mock.calls.some((c) => /\/anexos\/\d+$/.test(String(c[0])))).toBe(false);
+  });
+});
