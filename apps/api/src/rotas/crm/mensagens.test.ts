@@ -544,22 +544,22 @@ describeComBanco("rotas de Mensagens — serviço real, Postgres local", () => {
     }
 
     it("POST /mensagens/anexos abre a sessão da Conversa e devolve o ticket; a chave reservada é do Espaço e da Conversa, e não sai na resposta", async () => {
-      const resposta = await pedirTicket(ids.comercial.conversaId);
+      const resposta = await pedirTicket(ids.suporte.conversaId);
       expect(resposta.statusCode).toBe(200);
       const dados = (resposta.json() as { ok: true; dados: { submissionId: string; objectId: string; uploadUrl: string } }).dados;
       expect(Object.keys(dados).sort()).toEqual(["objectId", "submissionId", "uploadUrl"]);
-      expect(armazenamento.chaveDoObjeto(dados.objectId).startsWith(`workspace/${ws}/conversas/${ids.comercial.conversaId}/`)).toBe(true);
-      expect(await armazenamento.sessao(dados.submissionId)).toEqual({ workspaceId: ws, formId: `conversa-${ids.comercial.conversaId}` });
+      expect(armazenamento.chaveDoObjeto(dados.objectId).startsWith(`workspace/${ws}/conversas/${ids.suporte.conversaId}/`)).toBe(true);
+      expect(await armazenamento.sessao(dados.submissionId)).toEqual({ workspaceId: ws, formId: `conversa-${ids.suporte.conversaId}` });
       expect(resposta.body).not.toContain("workspace/");
     });
 
     it("MSG-04: a Mensagem só com anexo (conteúdo vazio) é gravada com o anexo conferido e a sessão é consumida", async () => {
-      const { submissionId, objectId } = await subirAnexo(ids.comercial.conversaId);
+      const { submissionId, objectId } = await subirAnexo(ids.suporte.conversaId);
       const resposta = await appComArmazenamento().inject({
         method: "POST",
         url: "/mensagens",
         headers: AUTORIZACAO,
-        payload: { conversaId: ids.comercial.conversaId, direcao: "enviada", conteudo: "", anexos: [{ submissionId, objectId }] },
+        payload: { conversaId: ids.suporte.conversaId, direcao: "enviada", conteudo: "", anexos: [{ submissionId, objectId }] },
       });
       expect(resposta.statusCode).toBe(201);
       const criada = (resposta.json() as { dados: Mensagem }).dados;
@@ -572,13 +572,13 @@ describeComBanco("rotas de Mensagens — serviço real, Postgres local", () => {
     });
 
     it("GET /mensagens/{id}/anexos/0 devolve uma URL assinada do falso, sem download: a imagem abre no <img>", async () => {
-      const { submissionId, objectId } = await subirAnexo(ids.comercial.conversaId);
+      const { submissionId, objectId } = await subirAnexo(ids.suporte.conversaId);
       const criada = (
         await appComArmazenamento().inject({
           method: "POST",
           url: "/mensagens",
           headers: AUTORIZACAO,
-          payload: { conversaId: ids.comercial.conversaId, direcao: "enviada", conteudo: "", anexos: [{ submissionId, objectId }] },
+          payload: { conversaId: ids.suporte.conversaId, direcao: "enviada", conteudo: "", anexos: [{ submissionId, objectId }] },
         })
       ).json() as { dados: Mensagem };
       const antes = armazenamento.urlsEmitidas.length;

@@ -218,7 +218,7 @@ describeComBanco("ServicoDeRecebimento — Postgres local", () => {
       cargaBruta: {},
     };
     const r = valor(await servico.receberMensagem(c.ws, c.canalId, soAnexo));
-    expect(r.mensagem.anexos).toEqual([{ tipoDeMidia: "audio/ogg", nome: "audio.ogg", referenciaExterna: "midia-9" }]);
+    expect(r.mensagem.anexos).toEqual([{ tipoDeMidia: "audio/ogg", nome: "audio.ogg", referenciaExterna: "midia-9", baixado: false }]);
   });
   /** Põe a Conversa no estado de partida de um caso: situação, há quantas horas foi resolvida, lixeira, adiamento. */
   async function prepararConversa(

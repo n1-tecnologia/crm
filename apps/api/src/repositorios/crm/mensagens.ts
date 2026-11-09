@@ -37,10 +37,13 @@ export interface LinhaNovaDeMensagem {
   readonly canalId: string;
   readonly direcao: "enviada" | "interna";
   readonly ator: { readonly tipo: "member"; readonly id: string };
-  readonly conteudo: string;
+  /** `null` na Mensagem só com anexo (INV-CXE-07: texto OU anexo). */
+  readonly conteudo: string | null;
   /** `null` em `interna`; em `enviada`, o status inicial (B69). */
   readonly statusEntrega: StatusDeEntrega | null;
   readonly emRespostaAId?: string;
+  /** Os anexos já conferidos no bucket (16-09); sem eles, a coluna fica com o padrão `[]`. */
+  readonly anexos?: readonly AnexoDaMensagem[];
 }
 
 /**
@@ -137,7 +140,8 @@ export interface LinhaDoBancoDeMensagem {
   readonly identificador_id: string | null;
   readonly remetente_externo: string | null;
   readonly conteudo: string | null;
-  readonly anexos: readonly AnexoDaMensagem[];
+  /** As linhas antigas (08) não têm `baixado`: `linhaParaMensagem` lê `false`. */
+  readonly anexos: readonly (Omit<AnexoDaMensagem, "baixado"> & { readonly baixado?: boolean })[];
   readonly assunto: string | null;
   readonly enderecos_adicionais: readonly EnderecoAdicional[];
   readonly em_resposta_a_id: string | null;
@@ -172,7 +176,7 @@ export function linhaParaMensagem(linha: LinhaDoBancoDeMensagem): Mensagem {
     identificadorId: linha.identificador_id,
     remetenteExterno: linha.remetente_externo,
     conteudo: linha.conteudo,
-    anexos: linha.anexos,
+    anexos: linha.anexos.map((anexo) => ({ ...anexo, baixado: anexo.baixado ?? false })),
     assunto: linha.assunto,
     enderecosAdicionais: linha.enderecos_adicionais,
     emRespostaAId: linha.em_resposta_a_id,
@@ -197,9 +201,9 @@ export function criarRepositorioDeMensagensPg(cliente: Pool | PoolClient): Repos
       const { rows } = await cliente.query<LinhaDoBancoDeMensagem>(
         `insert into plataforma.mensagens
            (workspace_id, conversa_id, canal_id, direcao, ator_tipo, ator_id, conteudo,
-            status_entrega, status_entrega_em, em_resposta_a_id)
+            status_entrega, status_entrega_em, em_resposta_a_id, anexos)
          values ($1, $2, $3, $4, $5, $6, $7, $8::text,
-                 case when $8::text is null then null else now() end, $9)
+                 case when $8::text is null then null else now() end, $9, $10::jsonb)
          returning ${COLUNAS_DE_MENSAGEM}`,
         [
           workspaceId,
@@ -211,6 +215,7 @@ export function criarRepositorioDeMensagensPg(cliente: Pool | PoolClient): Repos
           linha.conteudo,
           linha.statusEntrega,
           linha.emRespostaAId ?? null,
+          JSON.stringify(linha.anexos ?? []),
         ],
       );
       return linhaParaMensagem(rows[0]!);

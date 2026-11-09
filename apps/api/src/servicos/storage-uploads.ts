@@ -16,6 +16,7 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
+import { normalizarTipoDeMidia, tetoDaMidia, TETO_PADRAO_DE_MIDIA_BYTES } from "@n1/dominio/crm/midia";
 import { clienteAdmin } from "../autenticacao/verificar-token";
 import { carregarEnv } from "../persistencia/conexao";
 import {
@@ -44,6 +45,23 @@ const PADRAO_TTL_DOWNLOAD_SEGUNDOS = 5 * 60;
 const PADRAO_TETO_SHA256_BYTES = 10 * 1024 * 1024;
 
 export const MAX_BYTES_POR_ARQUIVO = Number(process.env.UPLOAD_MAX_BYTES ?? PADRAO_MAX_BYTES_POR_ARQUIVO);
+
+/**
+ * D-16-08: os dois tetos de tamanho da Mensagem. `UPLOAD_MAX_BYTES_MIDIA` vale para áudio e vídeo (padrão 16 MiB) e
+ * `UPLOAD_MAX_BYTES` para os demais tipos (padrão 25 MiB). O `env` é parâmetro só para o teste.
+ */
+export function tetosDeMidia(env: NodeJS.ProcessEnv = process.env): { readonly midia: number; readonly demais: number } {
+  return {
+    midia: Number(env.UPLOAD_MAX_BYTES_MIDIA ?? TETO_PADRAO_DE_MIDIA_BYTES),
+    demais: Number(env.UPLOAD_MAX_BYTES ?? PADRAO_MAX_BYTES_POR_ARQUIVO),
+  };
+}
+export const MAX_BYTES_DE_MIDIA = tetosDeMidia().midia;
+
+/** O teto de tamanho do tipo: áudio e vídeo 16 MiB, o resto 25 MiB (D-16-08). */
+export function tetoDoTipo(mediaType: string): number {
+  return tetoDaMidia(mediaType, { midia: MAX_BYTES_DE_MIDIA, demais: MAX_BYTES_POR_ARQUIVO });
+}
 export const MAX_ARQUIVOS_POR_ENVIO = Number(process.env.UPLOAD_MAX_ARQUIVOS ?? PADRAO_MAX_ARQUIVOS_POR_ENVIO);
 export const TTL_UPLOAD = Number(process.env.UPLOAD_TTL_SEGUNDOS ?? PADRAO_TTL_UPLOAD_SEGUNDOS);
 export const TTL_DOWNLOAD = Number(process.env.DOWNLOAD_TTL_SEGUNDOS ?? PADRAO_TTL_DOWNLOAD_SEGUNDOS);
@@ -69,8 +87,8 @@ export function tipoAceito(mediaType: string): mediaType is TipoAceito {
   return (TIPOS_ACEITOS as readonly string[]).includes(mediaType);
 }
 
-export function tamanhoAceito(sizeBytes: number): boolean {
-  return sizeBytes > 0 && sizeBytes <= MAX_BYTES_POR_ARQUIVO;
+export function tamanhoAceito(sizeBytes: number, teto: number = MAX_BYTES_POR_ARQUIVO): boolean {
+  return sizeBytes > 0 && sizeBytes <= teto;
 }
 
 export function limiteDeArquivosAtingido(quantidadeAtual: number): boolean {
@@ -86,7 +104,10 @@ export function gerarObjectKey(args: {
   readonly workspaceId: string;
   readonly formId: string;
   readonly submissionId: string;
+  /** Sem ele, a chave do Formulário e da Tarefa (`workspace/<ws>/forms/<form>/<sessão>/<uuid>`); com ele, `<prefixo>/<uuid>`. */
+  readonly prefixo?: string;
 }): string {
+  if (args.prefixo !== undefined) return `${args.prefixo}/${randomUUID()}`;
   return `workspace/${args.workspaceId}/forms/${args.formId}/${args.submissionId}/${randomUUID()}`;
 }
 
@@ -171,6 +192,18 @@ async function sessaoValidaParaEmissao(submissionId: string) {
   return sessao;
 }
 
+/** O que muda no ticket da Mensagem (16-09); sem isto vale o do Formulário. */
+export interface OpcoesDeTicket {
+  /** Os tipos aceitos, já normalizados. Padrão: `TIPOS_ACEITOS`. */
+  readonly tipos?: readonly string[];
+  /** A chave do objeto vira `<prefixo>/<uuid>`. Padrão: `workspace/<ws>/forms/<form>/<sessão>/<uuid>`. */
+  readonly prefixoDaChave?: string;
+  /** O teto de tamanho do arquivo. Padrão: `MAX_BYTES_POR_ARQUIVO`. */
+  readonly tetoBytes?: number;
+  /** O tamanho que o cliente diz que vai subir: acima do teto, o ticket não sai. */
+  readonly tamanhoBytes?: number;
+}
+
 export interface TicketDeUpload {
   readonly objectId: string;
   readonly objectKey: string;
@@ -185,12 +218,21 @@ export interface TicketDeUpload {
  * objeto e pedir a URL assinada — nada é reservado se qualquer validação
  * recusar.
  */
-export async function emitirTicket(args: {
-  readonly submissionId: string;
-  readonly displayName: string;
-  readonly mediaType: string;
-}): Promise<TicketDeUpload> {
-  if (!tipoAceito(args.mediaType)) throw new Error(`tipo_nao_aceito: ${args.mediaType}`);
+export async function emitirTicket(
+  args: {
+    readonly submissionId: string;
+    readonly displayName: string;
+    readonly mediaType: string;
+  },
+  opcoes?: OpcoesDeTicket,
+): Promise<TicketDeUpload> {
+  // Sem `opcoes`, o comportamento do Formulário e da Tarefa: a lista `TIPOS_ACEITOS`, a chave de `forms/`, 25 MiB.
+  const tipo = normalizarTipoDeMidia(args.mediaType);
+  const tipos = opcoes?.tipos ?? TIPOS_ACEITOS;
+  if (!tipos.includes(tipo)) throw new Error(`tipo_nao_aceito: ${tipo}`);
+  if (opcoes?.tamanhoBytes !== undefined && !tamanhoAceito(opcoes.tamanhoBytes, opcoes.tetoBytes ?? MAX_BYTES_POR_ARQUIVO)) {
+    throw new Error(`tamanho_excedido: ${args.submissionId}`);
+  }
 
   const sessao = await sessaoValidaParaEmissao(args.submissionId);
 
@@ -203,13 +245,14 @@ export async function emitirTicket(args: {
     workspaceId: sessao.workspaceId,
     formId: sessao.formId,
     submissionId: args.submissionId,
+    ...(opcoes?.prefixoDaChave !== undefined ? { prefixo: opcoes.prefixoDaChave } : {}),
   });
 
   const objeto = await reservarObjeto({
     sessionId: args.submissionId,
     objectKey,
     displayName: args.displayName,
-    mediaType: args.mediaType,
+    mediaType: tipo,
   });
 
   const { data, error } = await armazenamento().createSignedUploadUrl(objectKey, { upsert: false });
@@ -232,8 +275,25 @@ export type MotivoDeRecusaDeConfirmacao =
   | "assinatura_nao_confere";
 
 export type ResultadoDeConfirmacao =
-  | { readonly ok: true; readonly objectId: string; readonly sizeBytes: number; readonly sha256?: string }
+  | {
+      readonly ok: true;
+      readonly objectId: string;
+      readonly sizeBytes: number;
+      readonly sha256?: string;
+      /** A chave do objeto, o tipo RESERVADO (normalizado) e o nome de exibição: quem grava o anexo não relê a sessão. */
+      readonly objectKey: string;
+      readonly mediaType: string;
+      readonly displayName: string;
+    }
   | { readonly ok: false; readonly motivo: MotivoDeRecusaDeConfirmacao };
+
+/** O que muda na confirmação da Mensagem (16-09); sem isto vale a do Formulário. */
+export interface OpcoesDeConfirmacao {
+  /** Os tipos aceitos, já normalizados. Padrão: `TIPOS_ACEITOS`. */
+  readonly tipos?: readonly string[];
+  /** O teto de tamanho por tipo. Padrão: `MAX_BYTES_POR_ARQUIVO` para todos. */
+  readonly tetoBytes?: (mediaType: string) => number;
+}
 
 /**
  * Verificação server-side de verdade (V02-02C): o objeto precisa pertencer
@@ -243,10 +303,15 @@ export type ResultadoDeConfirmacao =
  * conteúdo cuja assinatura bate com o `mediaType` reservado. Nunca lança —
  * toda recusa volta como `{ ok: false, motivo }`.
  */
-export async function confirmarObjeto(args: {
-  readonly submissionId: string;
-  readonly objectId: string;
-}): Promise<ResultadoDeConfirmacao> {
+export async function confirmarObjeto(
+  args: {
+    readonly submissionId: string;
+    readonly objectId: string;
+  },
+  opcoes?: OpcoesDeConfirmacao,
+): Promise<ResultadoDeConfirmacao> {
+  const tipos = opcoes?.tipos ?? TIPOS_ACEITOS;
+  const tetoDoTipoReservado = opcoes?.tetoBytes ?? (() => MAX_BYTES_POR_ARQUIVO);
   const objetos = await objetosDaSessao(args.submissionId);
   const objeto = objetos.find((o) => o.id === args.objectId);
   if (!objeto) return { ok: false, motivo: "objeto_nao_pertence_a_sessao" };
@@ -254,17 +319,21 @@ export async function confirmarObjeto(args: {
   const { data: info, error: erroInfo } = await armazenamento().info(objeto.objectKey);
   if (erroInfo || !info) return { ok: false, motivo: "objeto_ausente" };
 
-  const tamanho = info.size ?? 0;
-  if (!tamanhoAceito(tamanho)) return { ok: false, motivo: "tamanho_excedido" };
+  // O que vale é o tipo RESERVADO na sessão (o que o servidor aceitou no ticket), não só o que o bucket diz.
+  const tipoReservado = normalizarTipoDeMidia(objeto.mediaType);
+  if (!tipos.includes(tipoReservado)) return { ok: false, motivo: "tipo_nao_confere" };
 
-  const tipoDeclarado = info.contentType ?? objeto.mediaType;
-  if (!tipoAceito(tipoDeclarado)) return { ok: false, motivo: "tipo_nao_confere" };
+  const tamanho = info.size ?? 0;
+  if (!tamanhoAceito(tamanho, tetoDoTipoReservado(tipoReservado))) return { ok: false, motivo: "tamanho_excedido" };
+
+  const tipoDoBucket = normalizarTipoDeMidia(info.contentType ?? objeto.mediaType);
+  if (!tipos.includes(tipoDoBucket)) return { ok: false, motivo: "tipo_nao_confere" };
 
   const { data: blob, error: erroDownload } = await armazenamento().download(objeto.objectKey);
   if (erroDownload || !blob) return { ok: false, motivo: "objeto_ausente" };
 
   const conteudo = new Uint8Array(await blob.arrayBuffer());
-  if (!assinaturaConfereComTipo(conteudo.subarray(0, 4096), objeto.mediaType)) {
+  if (!assinaturaConfereComTipo(conteudo.subarray(0, 4096), tipoReservado)) {
     return { ok: false, motivo: "assinatura_nao_confere" };
   }
 
@@ -273,7 +342,15 @@ export async function confirmarObjeto(args: {
 
   await marcarEnviado({ objectId: objeto.id, sizeBytes: conteudo.byteLength, sha256 });
 
-  return { ok: true, objectId: objeto.id, sizeBytes: conteudo.byteLength, sha256 };
+  return {
+    ok: true,
+    objectId: objeto.id,
+    sizeBytes: conteudo.byteLength,
+    sha256,
+    objectKey: objeto.objectKey,
+    mediaType: tipoReservado,
+    displayName: objeto.displayName,
+  };
 }
 
 export interface UrlDeDownload {
@@ -286,10 +363,43 @@ export interface UrlDeDownload {
  * `getTask` (Plan 02-13) para o `automation/` baixar o anexo sem receber
  * credencial de Storage.
  */
-export async function urlDeDownload(objectKey: string): Promise<UrlDeDownload> {
-  const { data, error } = await armazenamento().createSignedUrl(objectKey, TTL_DOWNLOAD);
+export async function urlDeDownload(objectKey: string, opcoes?: { readonly download?: string }): Promise<UrlDeDownload> {
+  // `download` força `Content-Disposition: attachment` com este nome: o documento baixa, nunca abre no navegador.
+  const { data, error } = await armazenamento().createSignedUrl(
+    objectKey,
+    TTL_DOWNLOAD,
+    opcoes?.download !== undefined ? { download: opcoes.download } : undefined,
+  );
   if (error || !data) throw new Error(`falha_ao_gerar_url_de_download: ${error?.message ?? "sem dados do provedor"}`);
   return { downloadUrl: data.signedUrl, expiresAt: new Date(Date.now() + TTL_DOWNLOAD * 1000) };
+}
+
+/** Sobe os bytes direto pela service role (a entrada de mídia do provedor, 16-10). O objeto nunca se sobrescreve. */
+export async function subirObjeto(objectKey: string, bytes: Uint8Array, tipo: string): Promise<void> {
+  const { error } = await armazenamento().upload(objectKey, bytes, { contentType: tipo, upsert: false });
+  if (error) throw new Error(`falha_ao_subir_objeto: ${error.message}`);
+}
+
+/** Remove objetos do bucket (a coleta de órfãos). */
+export async function removerObjetos(objectKeys: readonly string[]): Promise<void> {
+  if (objectKeys.length === 0) return;
+  const { error } = await armazenamento().remove([...objectKeys]);
+  if (error) throw new Error(`falha_ao_remover_objetos: ${error.message}`);
+}
+
+/** Os arquivos diretos do prefixo (uma pasta, sem descer), com o instante de criação que o bucket informa. */
+export async function listarObjetos(
+  prefixo: string,
+  opcoes: { readonly limite: number },
+): Promise<readonly { readonly objectKey: string; readonly criadoEm: Date }[]> {
+  const { data, error } = await armazenamento().list(prefixo, { limit: opcoes.limite });
+  if (error || !data) throw new Error(`falha_ao_listar_objetos: ${error?.message ?? "sem dados do provedor"}`);
+  const arquivos: { objectKey: string; criadoEm: Date }[] = [];
+  for (const item of data) {
+    // Pasta não tem `id`; só interessa o arquivo, e só com o instante de criação que o bucket deu.
+    if (item.id !== null && item.created_at) arquivos.push({ objectKey: `${prefixo}/${item.name}`, criadoEm: new Date(item.created_at) });
+  }
+  return arquivos;
 }
 
 export interface ResultadoDeColeta {

@@ -243,7 +243,8 @@ async function processar(
     idExterno: evento.idExterno,
     criadoEm: evento.criadoEm,
     conteudo: evento.conteudo ?? null,
-    anexos: (evento.anexos ?? []).map((anexo) => ({ tipoDeMidia: anexo.tipoDeMidia, nome: anexo.nome, referenciaExterna: anexo.referenciaNoProvedor })),
+    // `baixado: false`: só a referência do provedor; a entrada de mídia (16-10) guarda o arquivo e o passa a `true`.
+    anexos: (evento.anexos ?? []).map((anexo) => ({ tipoDeMidia: anexo.tipoDeMidia, nome: anexo.nome, referenciaExterna: anexo.referenciaNoProvedor, baixado: false })),
     assunto: evento.assunto ?? null,
     enderecosAdicionais: [],
     remetenteExterno: evento.remetente.valor,

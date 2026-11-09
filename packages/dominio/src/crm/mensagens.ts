@@ -29,6 +29,7 @@
 import { fail, ok, type OperationResult } from "../state";
 import type { ConexaoDoCanal } from "./canais";
 import { LIMITES_CRM } from "./comum";
+import { categoriaDaMidia } from "./midia";
 
 export const DIRECOES_DA_MENSAGEM = ["recebida", "enviada", "interna"] as const satisfies readonly DirecaoDaMensagem[];
 export type DirecaoDaMensagem = "recebida" | "enviada" | "interna";
@@ -63,7 +64,7 @@ export interface AnexoDaMensagem {
   readonly nome: string;
   /** O id da mídia no provedor (a Mensagem `recebida`); some quando o arquivo é guardado. */
   readonly referenciaExterna?: string;
-  /** A chave do objeto no bucket. Nunca sai pela api: quem abre o arquivo pede uma URL assinada (3.9.3). */
+  /** A chave do objeto no bucket. Não dá acesso a nada: quem abre o arquivo pede uma URL assinada (3.9.3). */
   readonly objectKey?: string;
   readonly tamanhoBytes?: number;
   /** `true` quando o arquivo está guardado no bucket; `false` quando só há a referência do provedor (D-16-08). */
@@ -142,7 +143,16 @@ export function validarNovaMensagem(entrada: NovaMensagem): OperationResult<Nova
   if (!(DIRECOES_DE_ENVIO as readonly string[]).includes(entrada.direcao)) {
     return fail("Uma Mensagem recebida não é criada por uma pessoa.", "direcao");
   }
-  if (entrada.conteudo.trim() === "") return fail("Escreva a mensagem antes de enviar.", "conteudo");
+  const anexos = entrada.anexos ?? [];
+  if (anexos.length > MAX_ANEXOS_POR_MENSAGEM) return fail("Uma Mensagem leva um arquivo por vez.", "anexos");
+  for (const anexo of anexos) {
+    if (anexo.submissionId.trim() === "" || anexo.objectId.trim() === "") {
+      return fail("O arquivo anexado não foi reconhecido. Envie-o de novo.", "anexos");
+    }
+  }
+  if (entrada.conteudo.trim() === "" && anexos.length === 0) {
+    return fail("Escreva a mensagem ou anexe um arquivo antes de enviar.", "conteudo");
+  }
   if (entrada.conteudo.length > LIMITES_CRM.textoLongo) {
     return fail(`A Mensagem vai até ${LIMITES_CRM.textoLongo} caracteres.`, "conteudo");
   }
@@ -151,9 +161,15 @@ export function validarNovaMensagem(entrada: NovaMensagem): OperationResult<Nova
 
 /** 3.9.1: o Canal só envia as categorias que declara em `sendableMediaTypes` — um Canal que não envia vídeo recusa vídeo. */
 export function validarAnexosDoEnvio(
-  _anexos: readonly AnexoConfirmado[],
-  _sendableMediaTypes: readonly string[],
+  anexos: readonly AnexoConfirmado[],
+  sendableMediaTypes: readonly string[],
 ): OperationResult<void> {
+  for (const anexo of anexos) {
+    const categoria = categoriaDaMidia(anexo.tipoDeMidia);
+    if (categoria === undefined || !sendableMediaTypes.includes(categoria)) {
+      return fail("Este Canal não envia este tipo de arquivo.", "anexos");
+    }
+  }
   return ok(undefined);
 }
 
