@@ -153,6 +153,17 @@ export function assinaturaConfereComTipo(primeirosBytes: Uint8Array, mediaType: 
   }
 }
 
+// Esqueletos do RED (16-09, Task 2): as assinaturas existem; a regra vem no GREEN.
+export type FamiliaDeZip = "docx" | "xlsx" | "pptx" | "zip";
+
+export function familiaDoZip(_bytes: Uint8Array): FamiliaDeZip | undefined {
+  return undefined;
+}
+
+export function pareceTexto(_bytes: Uint8Array): boolean {
+  return false;
+}
+
 // ---------------------------------------------------------------------------
 // Orquestração — fala com a tabela de sessões (Task 1) e com o Storage do
 // Supabase. Sem `deps`: a suíte de integração roda contra o banco e o

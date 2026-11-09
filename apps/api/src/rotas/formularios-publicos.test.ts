@@ -146,6 +146,20 @@ describe("rotasDeFormulariosPublicos — superfície e segredo (sem banco)", () 
     expect(resposta.statusCode).toBe(400);
   });
 
+  it.each(["audio/ogg", "audio/mpeg", "video/mp4", "application/zip", "text/csv", "text/plain", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"])(
+    "(l) T-16-36: o ticket do Formulário recusa %s (a lista da Mensagem não alarga a do Formulário)",
+    async (mediaType) => {
+      const app = appComEstado(ESTADO_STUB);
+      const resposta = await app.inject({
+        method: "POST",
+        url: `/v1/public/forms/${SEGREDO_DE_FORMATO_VALIDO}/uploads`,
+        payload: { displayName: "arquivo", mediaType },
+      });
+      expect(resposta.statusCode).toBe(400);
+      expect(resposta.json()).toEqual({ ok: false, error: "Entrada inválida para este envio." });
+    },
+  );
+
   it("(e) limite de taxa por IP: a requisição além do máximo responde 429 com Retry-After", async () => {
     const limite = criarLimiteDeTaxa({ janelaMs: 60_000, maximo: 3 });
     const app = appComEstado(ESTADO_STUB, { limitePorIp: limite });
