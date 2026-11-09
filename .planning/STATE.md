@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 16
 current_phase_name: "Base da mensageria: entrada, saída, tempo real e mídia"
 status: executing
-stopped_at: Completed 16-11-PLAN.md
-last_updated: "2026-11-09T20:08:21.575Z"
+stopped_at: Completed 16-12-PLAN.md
+last_updated: "2026-11-09T20:27:22.085Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 16 execution started
-state_head: bc8e9e68a9318c16e6fff800ca6760362a29591b
+state_head: 6051536fba690718e1858e3ecf3af1b1233a60af
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 288
-  completed_plans: 280
+  completed_plans: 281
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 16 (Base da mensageria: entrada, saída, tempo real e mídia) — EXECUTING
-Plan: 12 of 16
+Plan: 13 of 16
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 16 execution started
 
@@ -501,6 +501,7 @@ Progress: [██████░░░░] 63%
 | Phase 16 P09 | 17min | 3 tasks | 16 files |
 | Phase 16 P10 | 20 min | 3 tasks | 12 files |
 | Phase 16 P11 | 9 min | 3 tasks | 9 files |
+| Phase 16 P12 | 11 min | 3 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -839,6 +840,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 16]: 16-10: a coleta de órfãos tem varredura de sessões própria pela porta do armazenamento (não usa coletarOrfaos) e só roda com COLETA_DE_ORFAOS_ATIVA=true, sob pg_try_advisory_lock
 - [Phase 16]: 16-11: o player de mídia do fio guarda a primeira URL assinada e só pede outra depois de um erro dele; o link de documento usa sempre a mais nova (a chave SWR /mensagens/<id>/anexos/<indice> é revalidada por invalidarCrm('/mensagens'), e uma URL nova reiniciaria o áudio)
 - [Phase 16]: 16-11: o compositor do fio só oferece Imagem, Áudio, Vídeo e Documento pelos tipos de tiposAceitosParaOCanal; microfone, localização, figurinha, Flow e 'ver uma vez' saíram (D-16-10); a pré-conferência de tipo e teto é recusaDoAnexoDaMensagem, a api confere de novo
+- [Phase 16]: 16-12: o envio da Evolution devolve ambiguo para tempo esgotado, resposta perdida, 500 e 2xx sem key.id; so conexao recusada e 429/502/503/504 sao transitorios
+- [Phase 16]: 16-12: credencial do Canal no cofre tipo whatsapp-nao-oficial = JSON { instancia, apikey } (token da instancia); registroPadrao liga a Evolution so com EVOLUTION_URL
 
 ### Pending Todos
 
@@ -900,6 +903,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-09T20:08:21.206Z
-Stopped at: Completed 16-11-PLAN.md
+Last session: 2026-11-09T20:27:21.784Z
+Stopped at: Completed 16-12-PLAN.md
 Resume file: None
