@@ -144,4 +144,53 @@ describeComBanco("Fase 16 ponta a ponta: a resposta escrita na Caixa sai pelo pr
     expect(await linhaDaFila(criada.id)).toMatchObject({ status: "delivered", attempts: 3 });
     expect((await mensagem(criada.id)).idExterno).toMatch(/^teste-/);
   });
+
+  const reenviar = (id: string) => app().inject({ method: "POST", url: `/mensagens/${id}/reenviar`, headers: MEMBRO });
+
+  const linhasDaFila = async (mensagemId: string) =>
+    (await pool().query<{ n: number }>("select count(*)::int as n from plataforma.integration_outbox where workspace_id = $1 and aggregate_id = $2", [ws, mensagemId]))
+      .rows[0]!.n;
+
+  it("Tentar de novo (16-06): a Mensagem que falhou volta a pendente, a MESMA linha do outbox reabre e a segunda tentativa sai pelo provedor", async () => {
+    provedorDeTeste.programarEnvio({ ok: false, transitorio: false, codigo: "HTTP_400", motivo: "número sem WhatsApp" });
+    const criada = await escrever("tente de novo");
+
+    expect(await worker().processarUm()).toBe(true);
+    const falhou = await mensagem(criada.id);
+    expect(falhou).toMatchObject({ statusEntrega: "falhou", motivoFalha: "número sem WhatsApp" });
+    expect(await linhaDaFila(criada.id)).toMatchObject({ status: "failed" });
+
+    const resposta = await reenviar(criada.id);
+    expect(resposta.statusCode).toBe(200);
+    expect((resposta.json() as Envelope).dados).toMatchObject({ id: criada.id, statusEntrega: "pendente", motivoFalha: null });
+    // continua UMA linha só para a Mensagem (índice único da 013), de volta a `pending` e sem tentativas
+    expect(await linhasDaFila(criada.id)).toBe(1);
+    expect(await linhaDaFila(criada.id)).toMatchObject({ status: "pending", attempts: 0, last_error_code: null });
+
+    expect(await worker().processarUm()).toBe(true);
+    const enviada = await mensagem(criada.id);
+    expect(enviada.statusEntrega).toBe("enviada");
+    expect(enviada.idExterno).toMatch(/^teste-/);
+    expect(enviada.motivoFalha).toBeNull();
+    expect(provedorDeTeste.enviados).toHaveLength(2);
+    expect(await linhaDaFila(criada.id)).toMatchObject({ status: "delivered" });
+  });
+
+  it("Tentar de novo duas vezes seguidas numa Mensagem que voltou a falhar não lança 23505 (a linha do outbox é reaberta, nunca duplicada)", async () => {
+    const recusa = { ok: false, transitorio: false, codigo: "HTTP_400", motivo: "recusada" } as const;
+    provedorDeTeste.programarEnvio(recusa, recusa, recusa);
+    const criada = await escrever("falha tripla");
+
+    for (let volta = 0; volta < 2; volta += 1) {
+      expect(await worker().processarUm()).toBe(true);
+      expect((await mensagem(criada.id)).statusEntrega).toBe("falhou");
+      expect((await reenviar(criada.id)).statusCode).toBe(200);
+      expect(await linhasDaFila(criada.id)).toBe(1);
+    }
+    expect(await worker().processarUm()).toBe(true);
+    expect((await mensagem(criada.id)).statusEntrega).toBe("falhou");
+    expect((await reenviar(criada.id)).statusCode).toBe(200);
+    expect(await linhasDaFila(criada.id)).toBe(1);
+    expect(await linhaDaFila(criada.id)).toMatchObject({ status: "pending", attempts: 0 });
+  });
 });
