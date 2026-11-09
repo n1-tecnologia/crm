@@ -28,6 +28,7 @@ import {
 import { rotasDeClassificacoes, type OpcoesDeClassificacoes } from "./rotas/classificacoes";
 import { rotasDeCrm, type OpcoesDeCrm } from "./rotas/crm";
 import { rotasDeEstado } from "./rotas/estado";
+import { rotasDeEventos, type OpcoesDeEventos } from "./rotas/eventos";
 import { rotasDeAnexosDaTarefa } from "./rotas/anexos-da-tarefa";
 import { rotasDeFinanceiro, type OpcoesDeFinanceiro } from "./rotas/financeiro";
 import { rotasDeFormulariosPublicos, type OpcoesDeFormulariosPublicos } from "./rotas/formularios-publicos";
@@ -105,6 +106,12 @@ export interface OpcoesDoApp {
   readonly financeiro?: OpcoesDeFinanceiro;
   /** Fase 7 (07-01) — SÓ PARA TESTE: troca o serviço (ou o pool) do CRM por um falso, sem banco. */
   readonly crm?: OpcoesDeCrm;
+  /**
+   * Fase 16 (16-07, D-16-01) — o tempo real: `GET /eventos` entrega por SSE o que o hub recebe do ouvinte `LISTEN`.
+   * `index.ts` cria o hub antes do `buildApp` e o encerra antes do `app.close()`; sem `hub` a rota responde 503
+   * `TEMPO_REAL_INDISPONIVEL` e a tela cai na releitura de 5 s. Testes injetam a batida e a duração máxima.
+   */
+  readonly eventos?: OpcoesDeEventos;
   /**
    * Fase 9 (09-13, D-13) — recebe o erro inesperado (o ramo 500 do tratador de
    * erro, e só ele). Padrão: `capturarErroNoSentry`, que não faz nada enquanto o
@@ -258,6 +265,8 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
   app.register(rotasDeFinanceiro, opcoes.financeiro ?? {});
   // Fase 7 (D-03) — o CRM em REST por recurso, na RAIZ para herdar o JWT de Membro.
   app.register(rotasDeCrm, opcoes.crm ?? {});
+  // Fase 16 (16-07) — o fluxo de eventos do CRM, na RAIZ para herdar o JWT de Membro (sem `publica`).
+  app.register(rotasDeEventos, opcoes.eventos ?? {});
   // D-02 — as únicas rotas SEM `Authorization: Bearer` desta instância: cada
   // uma se isenta explicitamente com `config: { publica: true }`, o mesmo
   // gancho de `/saude` acima (`plugins/autenticacao.ts`). CORS continua pela
