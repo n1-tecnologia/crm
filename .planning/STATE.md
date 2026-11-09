@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 16
 current_phase_name: "Base da mensageria: entrada, saída, tempo real e mídia"
 status: executing
-stopped_at: Completed 16-09-PLAN.md
-last_updated: "2026-11-09T19:33:02.547Z"
+stopped_at: Completed 16-10-PLAN.md
+last_updated: "2026-11-09T19:57:01.369Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 16 execution started
-state_head: e9754e2eba2c7afcb3bf3307c00863212ba8a84b
+state_head: 7c0074dcd0a3286abee51a1678984372facfff10
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 288
-  completed_plans: 278
+  completed_plans: 279
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 16 (Base da mensageria: entrada, saída, tempo real e mídia) — EXECUTING
-Plan: 10 of 16
+Plan: 11 of 16
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 16 execution started
 
@@ -499,6 +499,7 @@ Progress: [██████░░░░] 63%
 | Phase 16 P07 | 22 min | 3 tasks | 17 files |
 | Phase 16 P08 | 14 min | 2 tasks | 5 files |
 | Phase 16 P09 | 17min | 3 tasks | 16 files |
+| Phase 16 P10 | 20 min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -832,6 +833,9 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 16]: 16-08: o acompanhante do tempo real so conecta fora do Vitest (ativo, padrao NODE_ENV !== test); a conexao relê as chaves de base a cada abertura e a cada 5 s sem conexao
 - [Phase 16]: [16-09] Recusa.status ganhou 422: arquivo grande demais, de outra Conversa e de tipo que o Canal não envia respondem 422; a porta ArmazenamentoDeAnexos ganhou tetoDoTipo e o ticket ganhou tamanhoBytes
 - [Phase 16]: [16-09] O anexo da Mensagem é conferido pelo conteúdo inteiro contra o tipo reservado na sessão; zip e Office lidos só pelo diretório central (sem descomprimir, sem pacote); documento sai sempre com download
+- [Phase 16]: 16-10: o anexo recebido guardado não leva referenciaExterna (contrato do domínio); a assinatura é conferida no conteúdo inteiro, não nos 4096 primeiros bytes (o Office e o zip guardam o diretório central no fim)
+- [Phase 16]: 16-10: mídia que falha por rede, provedor ou bucket volta a linha a pendente (midia_pendente, até 3 passadas) e a passada seguinte completa a MESMA Mensagem; permanente (teto, tipo, assinatura, MIDIA_INDISPONIVEL) grava baixado: false e não repete
+- [Phase 16]: 16-10: a coleta de órfãos tem varredura de sessões própria pela porta do armazenamento (não usa coletarOrfaos) e só roda com COLETA_DE_ORFAOS_ATIVA=true, sob pg_try_advisory_lock
 
 ### Pending Todos
 
@@ -893,6 +897,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-09T19:33:02.281Z
-Stopped at: Completed 16-09-PLAN.md
+Last session: 2026-11-09T19:57:01.100Z
+Stopped at: Completed 16-10-PLAN.md
 Resume file: None
