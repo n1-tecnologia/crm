@@ -60,7 +60,13 @@ export async function enviarMensagem(entrada: NovaMensagem): Promise<Mensagem> {
   return resposta.dados;
 }
 
-/** "Tentar de novo" (16-11): a Mensagem que falhou volta a `pendente` e à fila de saída. */
-export async function reenviarMensagem(_id: string): Promise<Mensagem> {
-  throw new Error("não implementado");
+/**
+ * "Tentar de novo" (16-11, 3.7.3): a Mensagem `enviada` que `falhou` volta a `pendente` e à fila de saída.
+ * Sem corpo — a Mensagem vem do `:id` e o Membro da sessão. A recusa (409 `NAO_FALHOU`, `CONVERSA_NA_LIXEIRA`,
+ * `CANAL_ARQUIVADO`; 404; 403) sobe como `ErroDeApi` e nada é invalidado.
+ */
+export async function reenviarMensagem(id: string): Promise<Mensagem> {
+  const resposta = await chamarCrm<{ ok: true; dados: Mensagem }>(`/mensagens/${encodeURIComponent(id)}/reenviar`, { method: "POST" });
+  await Promise.all([invalidarCrm("/mensagens"), invalidarCrm("/conversas")]);
+  return resposta.dados;
 }

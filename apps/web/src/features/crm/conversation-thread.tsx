@@ -82,6 +82,7 @@ import { TIPO_DE_IDENTIFICADOR_DO_CANAL, type ConversaNaLista } from "@n1/domini
 import { LISTA_SEM_CANAIS } from "@n1/dominio/operations/canais";
 import { SeletorDeTipoDeTarefa } from "@/features/estrutura/seletor-de-tipo";
 import { AvatarDoContato } from "@/features/crm/avatar-do-contato";
+import { EstadoDaEntrega } from "@/features/crm/estado-da-entrega";
 import { SeletorDeCanalDeResposta } from "@/features/crm/seletor-de-canal";
 import { SeparadorDeCanal } from "@/features/crm/separador-de-canal";
 import { MarcaDeConexaoSimulada, SeloDoProvedor } from "@/features/crm/selo-do-provedor";
@@ -1156,9 +1157,12 @@ export function ConversationThread({
                           {quemFalou?.displayName ?? agente?.name ?? ""}
                           {quemFalou || agente ? " · " : ""}
                           {fmt.instant(mensagem.criadoEm)}
-                          {mensagem.statusEntrega
-                            ? ` · ${mensagem.statusEntrega}`
-                            : ""}
+                          {saiu && mensagem.statusEntrega ? (
+                            <>
+                              {" · "}
+                              <EstadoDaEntrega mensagem={mensagem} />
+                            </>
+                          ) : null}
                         </p>
                       </div>
                       {saiu ? avatar : null}
