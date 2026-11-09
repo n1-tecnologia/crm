@@ -94,11 +94,7 @@ describe("validarEnvio (RN-CXE-19 por tipo e provedor)", () => {
 });
 
 describe("statusInicialDeEnvio (B69)", () => {
-  it("Canal conectado: a Mensagem sai enviada", () => {
-    expect(statusInicialDeEnvio("conectada")).toBe("enviada");
-  });
-
-  it.each(["desconectada", "com_erro"] as const)("Canal %s: a Mensagem fica pendente", (conexao) => {
+  it.each(["conectada", "desconectada", "com_erro"] as const)("Canal %s: a Mensagem nasce pendente (só o provedor diz que saiu)", (conexao) => {
     expect(statusInicialDeEnvio(conexao)).toBe("pendente");
   });
 });

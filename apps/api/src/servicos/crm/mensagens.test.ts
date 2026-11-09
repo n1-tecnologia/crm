@@ -86,9 +86,21 @@ describeComBanco("ServicoDeMensagens — Postgres local", () => {
   });
 
   afterAll(async () => {
+    // `integration_outbox` não tem FK para o Espaço: as linhas de `mensagem.enviar.v1` saem por aqui.
+    await pool().query("delete from plataforma.integration_outbox where workspace_id = any($1::text[])", [espacos]);
     for (const ws of espacos) await limparEspaco(ws);
     await encerrar();
   });
+
+  /** As linhas de `mensagem.enviar.v1` do Espaço (a fila de saída da 16-04). */
+  const filaDeSaida = async (ws: string) =>
+    (
+      await pool().query<{ aggregate_type: string; aggregate_id: string; event_type: string; status: string; payload: Record<string, unknown> }>(
+        `select aggregate_type, aggregate_id, event_type, status, payload
+           from plataforma.integration_outbox where workspace_id = $1 and event_type like 'mensagem.%' order by created_at, id`,
+        [ws],
+      )
+    ).rows;
 
   it("WhatsApp oficial com recebida de 30 h: enviada dá 409 JANELA_EXPIRADA (campo modelo); interna passa sem status", async () => {
     const c = await espaco("janela");
@@ -106,10 +118,10 @@ describeComBanco("ServicoDeMensagens — Postgres local", () => {
     const c = await espaco("dentro");
     valor(await receber(c.ws, c.comercial.canalId, { criadoEm: horasAtras(2) }));
     const m = valor(await servico.enviar(c.membro, { conversaId: c.comercial.conversaId, direcao: "enviada", conteudo: "Bom dia" }));
-    expect(m).toMatchObject({ direcao: "enviada", statusEntrega: "enviada", conteudo: "Bom dia", canalId: c.comercial.canalId });
+    expect(m).toMatchObject({ direcao: "enviada", statusEntrega: "pendente", conteudo: "Bom dia", canalId: c.comercial.canalId });
   });
 
-  it("WhatsApp não oficial com recebida de 30 h envia: pendente se desconectado, enviada se conectado", async () => {
+  it("WhatsApp não oficial com recebida de 30 h envia: pendente se desconectado e também se conectado (só o provedor diz que saiu)", async () => {
     const c = await espaco("naooficial");
     valor(await receber(c.ws, c.suporte.canalId));
 
@@ -117,14 +129,65 @@ describeComBanco("ServicoDeMensagens — Postgres local", () => {
     expect(pendente.statusEntrega).toBe("pendente");
 
     await pool().query("update plataforma.canais set conexao = 'conectada' where workspace_id = $1 and id = $2", [c.ws, c.suporte.canalId]);
-    const enviada = valor(await servico.enviar(c.membro, { conversaId: c.suporte.conversaId, direcao: "enviada", conteudo: "Oi de novo" }));
-    expect(enviada.statusEntrega).toBe("enviada");
+    const conectada = valor(await servico.enviar(c.membro, { conversaId: c.suporte.conversaId, direcao: "enviada", conteudo: "Oi de novo" }));
+    expect(conectada.statusEntrega).toBe("pendente");
   });
 
   it("oficial sem nenhuma recebida ainda não tem janela: a primeira enviada passa", async () => {
     const c = await espaco("semrecebida");
     const m = valor(await servico.enviar(c.membro, { conversaId: c.comercial.conversaId, direcao: "enviada", conteudo: "Olá" }));
-    expect(m.statusEntrega).toBe("enviada");
+    expect(m.statusEntrega).toBe("pendente");
+  });
+
+  describe("fila de saída (16-04, 3.7.1): a Mensagem enviada e o evento mensagem.enviar.v1 nascem juntos", () => {
+    it("Canal conectado: a enviada nasce pendente com UMA linha mensagem.enviar.v1 só com ids", async () => {
+      const c = await espaco("fila");
+      const m = valor(await servico.enviar(c.membro, { conversaId: c.comercial.conversaId, direcao: "enviada", conteudo: "olá" }));
+      expect(m.statusEntrega).toBe("pendente");
+
+      const linhas = await filaDeSaida(c.ws);
+      expect(linhas).toHaveLength(1);
+      expect(linhas[0]).toMatchObject({
+        event_type: "mensagem.enviar.v1",
+        aggregate_type: "mensagem",
+        aggregate_id: m.id,
+        status: "pending",
+        payload: { mensagemId: m.id, conversaId: c.comercial.conversaId, canalId: c.comercial.canalId },
+      });
+      expect(Object.keys(linhas[0]!.payload).sort()).toEqual(["canalId", "conversaId", "mensagemId"]);
+      expect(JSON.stringify(linhas[0]!.payload)).not.toContain("olá");
+    });
+
+    it("Canal fora do ar (B69): a Mensagem fica pendente e nenhuma linha é gravada", async () => {
+      const c = await espaco("foradoar");
+      const m = valor(await servico.enviar(c.membro, { conversaId: c.suporte.conversaId, direcao: "enviada", conteudo: "guardada" }));
+      expect(m.statusEntrega).toBe("pendente");
+      expect(await filaDeSaida(c.ws)).toHaveLength(0);
+      expect(await contar(c.ws)).toBe(1);
+    });
+
+    it("a Mensagem interna não tem status de entrega e não enfileira nada", async () => {
+      const c = await espaco("interna_fila");
+      const m = valor(await servico.enviar(c.membro, { conversaId: c.comercial.conversaId, direcao: "interna", conteudo: "nota" }));
+      expect(m.statusEntrega).toBeNull();
+      expect(await filaDeSaida(c.ws)).toHaveLength(0);
+    });
+
+    it("se o insert do evento falha, a Mensagem também não fica (rollback)", async () => {
+      const c = await espaco("rollback");
+      const quebrado = criarServicoDeMensagens({
+        pool,
+        acesso: criarAcessoAoCrmPg(pool),
+        enfileirar: async () => {
+          throw new Error("fila fora do ar");
+        },
+      });
+      await expect(quebrado.enviar(c.membro, { conversaId: c.comercial.conversaId, direcao: "enviada", conteudo: "não pode ficar" })).rejects.toThrow(
+        "fila fora do ar",
+      );
+      expect(await contar(c.ws)).toBe(0);
+      expect(await filaDeSaida(c.ws)).toHaveLength(0);
+    });
   });
 
   it("emRespostaAId de outra Conversa dá 409 RESPOSTA_DE_OUTRA_CONVERSA; da mesma Conversa grava", async () => {
