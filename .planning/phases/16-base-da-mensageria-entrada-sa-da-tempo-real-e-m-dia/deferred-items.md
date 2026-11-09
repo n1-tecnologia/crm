@@ -24,3 +24,10 @@
   intercepta) e seleciona as sessões expiradas sem excluir as que já foram limpas (depois de `limite` sessões abandonadas o lote não
   anda mais). A coleta nova usa a porta e só pega sessão expirada que ainda tem objeto `reservado`/`enviado`. `coletarOrfaos` segue
   exportada e coberta pelo teste dela (`storage-uploads.test.ts`, que roda contra o Supabase real); nenhum código de produção a chama.
+
+## Achados do gate da onda 11 (orquestrador, 2026-11-09)
+
+- Duas rodadas seguidas da suíte inteira do `apps/api` (Postgres 16 de Docker novo, máquina com carga de fundo: load médio ~4,6) falharam em **um teste diferente cada uma**, depois de sete rodadas limpas (ondas 4 a 10):
+  1. `repositorios/crm/mensagens.test.ts` "lista por (criado_em, seq) — mesmo criadoEm sai na ordem de inserção": veio `[antes, b, a]` no lugar de `[antes, a, b]`.
+  2. `mensageria/processador-de-entrada.test.ts` "acordar() com o laço em 60 s processa em menos de 500 ms": teste de tempo.
+- Isolados em banco novo, o 1º passou 8 de 8 e o 2º 5 de 5; `src/repositorios` + `src/mensageria` juntos passam (14 arquivos, 192 testes). O 16-13 não tocou em nenhum dos dois. **Causa não provada:** o 2º é sensível a tempo e cabe na carga da máquina; o 1º não tem explicação por tempo (as inserções do teste são sequenciais e `seq` é `generated always as identity`), então vale repetir no `npm run check` do 16-14 e olhar de novo se voltar a falhar duas vezes seguidas sem carga.
