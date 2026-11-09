@@ -4,11 +4,11 @@ milestone: v1.0
 current_phase: 16
 current_phase_name: "Base da mensageria: entrada, saída, tempo real e mídia"
 status: executing
-stopped_at: Completed 16-14-PLAN.md
-last_updated: "2026-11-09T21:14:39.733Z"
+stopped_at: Paused at checkpoint 16-15 Task 3 (pre-flight do dono, human-action); Tasks 1-2 committed (2b24c97, e335091, 3b8ef4f)
+last_updated: "2026-11-09T21:28:16.263Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 16 execution started
-state_head: 92ecedbfb0b351a296b9d0e961a83bb3b5da14c0
+state_head: 3b8ef4fb1fe53d3d9bc9d198de8f30db9ca547d9
 progress:
   total_phases: 16
   completed_phases: 6
@@ -909,6 +909,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-09T21:14:39.465Z
-Stopped at: Completed 16-14-PLAN.md
-Resume file: None
+Last session: 2026-11-09T21:28:14.839Z
+Stopped at: Paused at checkpoint 16-15 Task 3 (pre-flight do dono, human-action); Tasks 1-2 committed (2b24c97, e335091, 3b8ef4f)
+Resume file: .planning/phases/16-base-da-mensageria-entrada-sa-da-tempo-real-e-m-dia/16-PROVA-AO-VIVO.md
