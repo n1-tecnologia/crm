@@ -84,7 +84,7 @@ describeComBanco("canal:segredo-de-teste — Postgres local", () => {
       conexaoSimulada: opcoes.simulado,
     });
     if (opcoes.arquivado) {
-      await pool().query("update plataforma.canais set estado = 'arquivado', arquivado_em = now() where workspace_id = $1 and id = $2", [ws, canalId]);
+      await pool().query("update plataforma.canais set estado = 'arquivado', arquivado_em = now(), conexao = 'desconectada', conexao_simulada = false where workspace_id = $1 and id = $2", [ws, canalId]);
     }
     return { ws, canalId };
   }
@@ -155,11 +155,11 @@ describeComBanco("canal:segredo-de-teste — Postgres local", () => {
     expect(await credenciais(ws, canalId)).toEqual({ ativas: 0, total: 0 });
   });
 
-  it("Canal arquivado: sai com 2 e não grava nada", async () => {
+  it("Canal arquivado (que a 008 obriga a ser desconectado e não simulado): sai com 2 e não grava nada", async () => {
     const { ws, canalId } = await espacoComCanal("segarq", { simulado: true, arquivado: true });
     const e = execucao();
     expect(await principal(["--canal", canalId], e.deps)).toBe(2);
-    expect(e.err.join("\n")).toMatch(/arquivado/i);
+    expect(e.err.join("\n")).toContain("só gera segredo para Canal simulado");
     expect(await credenciais(ws, canalId)).toEqual({ ativas: 0, total: 0 });
   });
 
