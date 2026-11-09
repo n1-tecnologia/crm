@@ -171,8 +171,11 @@ export function criarServicoDeCanais(deps: { readonly pool: () => Pool; readonly
     );
   }
 
-  /** `simular_conexao` e `desconectar`: o domínio decide a transição, o serviço a grava. */
-  function mudarConexao(membro: MembroDaSessao, id: string, acao: AcaoDeConexao): Promise<ResultadoCrm<Canal>> {
+  /**
+   * `simular_conexao` e `desconectar`: o domínio decide a transição, o serviço a grava. `conexao_confirmada` (16-13) não
+   * passa por aqui: quem a confirma é o comando `canal:ligar-evolution`, que fala com o provedor, não um Membro pela rota.
+   */
+  function mudarConexao(membro: MembroDaSessao, id: string, acao: Exclude<AcaoDeConexao, "conexao_confirmada">): Promise<ResultadoCrm<Canal>> {
     return escrita(membro, acao, id, async ({ cliente, repositorio, canal }) => {
       const proxima = proximaConexao(canal, acao);
       if (!proxima.ok) return transicaoInvalida(proxima.error);
