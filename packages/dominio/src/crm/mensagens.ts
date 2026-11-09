@@ -6,7 +6,7 @@
  * Convive com o `Message` inglês de `types/crm.ts` até a fase de unificação
  * (D-11). Decisões do modelo:
  *   - `carga_bruta` (o que o provedor entregou, cru) existe só no banco e no
- *     caminho interno de ingestão (`MensagemRecebidaDoProvedor`). O tipo público
+ *     caminho interno de ingestão (`RecebidaDoProvedor`, `crm/recebimento.ts`). O tipo público
  *     `Mensagem` não a carrega: ela é dado pessoal (A9) e a anonimização futura
  *     precisa zerá-la, então nada que sai pela api pode depender dela.
  *   - A Mensagem `recebida` não nasce por rota humana: `DIRECOES_DE_ENVIO` é o
@@ -105,19 +105,6 @@ export interface NovaMensagem {
   readonly direcao: "enviada" | "interna";
   readonly conteudo: string;
   readonly emRespostaAId?: string;
-}
-
-export interface MensagemRecebidaDoProvedor {
-  readonly conversaId: string;
-  readonly idExterno: string;
-  readonly criadoEm: string;
-  readonly conteudo?: string;
-  readonly anexos?: readonly AnexoDaMensagem[];
-  readonly assunto?: string;
-  readonly enderecosAdicionais?: readonly EnderecoAdicional[];
-  readonly remetenteExterno?: string;
-  readonly identificadorId?: string;
-  readonly cargaBruta: unknown;
 }
 
 /**

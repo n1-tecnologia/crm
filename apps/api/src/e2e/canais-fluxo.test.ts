@@ -41,8 +41,7 @@ import { colecaoPelaChave } from "@n1/dominio/testes/crm-de-teste";
 import { buildApp } from "../app";
 import { encerrar, pool } from "../persistencia/conexao";
 import { semear } from "../persistencia/repositorio";
-import { criarAcessoAoCrmPg } from "../servicos/crm/acesso";
-import { criarServicoDeMensagens } from "../servicos/crm/mensagens";
+import { criarServicoDeRecebimento } from "../servicos/crm/recebimento";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearMembro } from "../testes/banco-crm";
 
 /** Token → quem é a sessão. O `sub` é o Usuário; o `membroId` é a linha de `members` que `semearMembro` grava. */
@@ -270,20 +269,22 @@ describeComBanco("Fase 8 ponta a ponta: dois WhatsApps lado a lado, pelo HTTP, c
   });
 
   it("(g) fora da janela de 24 h o oficial recusa texto livre e o não oficial envia (D-02); a carga bruta nunca sai (A9)", async () => {
-    const servico = criarServicoDeMensagens({ pool, acesso: criarAcessoAoCrmPg(pool) });
+    const recebimento = criarServicoDeRecebimento({ pool });
     const haTrintaHoras = new Date(Date.now() - 30 * 60 * 60 * 1000).toISOString();
-    for (const [conversaId, idExterno] of [
-      [conversaComercialId, "wamid.comercial.1"],
-      [conversaSuporteId, "wamid.suporte.1"],
+    for (const [canalId, conversaId, idExterno] of [
+      [comercialId, conversaComercialId, "wamid.comercial.1"],
+      [suporteId, conversaSuporteId, "wamid.suporte.1"],
     ] as const) {
-      const recebida = await servico.registrarRecebida(espacoA, {
-        conversaId,
+      // 3.6.2: a recebida entra por `receberMensagem`, que acha o Contato pelo WhatsApp e cai na Conversa aberta do par.
+      const recebida = await recebimento.receberMensagem(espacoA, canalId, {
         idExterno,
         criadoEm: haTrintaHoras,
+        remetente: { tipo: "whatsapp", valor: WHATSAPP_DA_ANA },
         conteudo: "Oi, preciso de ajuda.",
         cargaBruta: { segredo: "payload cru do provedor", telefone: WHATSAPP_DA_ANA },
       });
       expect(recebida.ok).toBe(true);
+      if (recebida.ok) expect(recebida.valor.conversa.id).toBe(conversaId);
     }
 
     const oficial = await chamar("POST", "/mensagens", MEMBRO, {

@@ -1,6 +1,7 @@
 /**
- * Serviço de Mensagens (08-12): o fio de uma Conversa relacional, o envio
- * humano e a porta INTERNA de ingestão da `recebida`.
+ * Serviço de Mensagens (08-12): o fio de uma Conversa relacional e o envio
+ * humano. A `recebida` não entra por aqui: a única porta dela é
+ * `receberMensagem` (`recebimento.ts`, 3.6.2).
  *
  * O Espaço de Trabalho e o autor vêm SEMPRE de `membro` (a sessão) — nada que
  * chegue no corpo os substitui. O Papel é exigido ANTES de qualquer leitura ou
@@ -23,15 +24,8 @@
  *     `POST /mensagens` não manda modelo).
  *   - INV-CXE-10: "em resposta a" é da MESMA Conversa; a FK composta da 008 é a
  *     rede e `FRASES` a traduz, sem o nome do constraint.
- *   - INV-CXE-08 / RN-CXE-17: `registrarRecebida` é idempotente por (Canal, id
- *     externo); a repetição devolve a existente com `repetida: true`. O Canal
- *     gravado é sempre o DA CONVERSA, nunca o da entrada, e o Ator é o Canal
- *     como Integração.
- *
- * `registrarRecebida` não recebe Membro: é a porta da integração (testes agora,
- * webhook autenticado por credencial de serviço depois) e NÃO tem rota. A
- * reabertura automática de Conversa resolvida por Mensagem recebida depende da
- * Caixa relacional (Deferred), então ela não muda a situação da Conversa.
+ *   - INV-CXE-08 / RN-CXE-17: a idempotência por (Canal, id externo), a
+ *     reabertura e o Contato da `recebida` são de `receberMensagem`, não daqui.
  *
  * Nem o `conteudo` nem a `cargaBruta` são escritos em log (T-08-46).
  */
@@ -40,7 +34,7 @@ import type { Pool, PoolClient } from "pg";
 import type { Pagina } from "@n1/dominio/crm/comum";
 import type { Conversa } from "@n1/dominio/crm/conversas";
 import { recusaPorFaltaDeConsentimento } from "@n1/dominio/crm/consentimentos";
-import { statusInicialDeEnvio, validarEnvio, validarNovaMensagem, type Mensagem, type MensagemRecebidaDoProvedor, type NovaMensagem } from "@n1/dominio/crm/mensagens";
+import { statusInicialDeEnvio, validarEnvio, validarNovaMensagem, type Mensagem, type NovaMensagem } from "@n1/dominio/crm/mensagens";
 import { capacidadesDoCanal } from "@n1/dominio/crm/capacidades";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { criarRepositorioDeCanaisPg } from "../../repositorios/crm/canais";
@@ -55,10 +49,6 @@ import { comTransacao, type FrasesDeRestricao } from "./transacao";
 export interface ServicoDeMensagens {
   listar(membro: MembroDaSessao, filtro: FiltroDeMensagens): Promise<ResultadoCrm<Pagina<Mensagem>>>;
   enviar(membro: MembroDaSessao, entrada: NovaMensagem): Promise<ResultadoCrm<Mensagem>>;
-  registrarRecebida(
-    workspaceId: string,
-    entrada: MensagemRecebidaDoProvedor,
-  ): Promise<ResultadoCrm<{ readonly mensagem: Mensagem; readonly repetida: boolean }>>;
 }
 
 /** Rede de SQLSTATE: a FK composta de "em resposta a" (INV-CXE-10) vira esta frase, sem o nome dela. */
@@ -74,15 +64,6 @@ const conversaNaoEncontrada = () =>
 
 function valorInvalido(falha: { readonly error: string; readonly field?: string | undefined }) {
   return recusa<never>(400, falha.error, { codigo: "VALOR_INVALIDO", ...(falha.field !== undefined ? { campo: falha.field } : {}) });
-}
-
-/** A porta interna recebe dado do provedor: confere o que o banco recusaria com 500. */
-function validarRecebida(entrada: MensagemRecebidaDoProvedor): { readonly error: string; readonly field: string } | undefined {
-  if (entrada.idExterno.trim() === "") return { error: "A Mensagem recebida precisa do identificador do provedor.", field: "idExterno" };
-  if (Number.isNaN(Date.parse(entrada.criadoEm))) return { error: "O instante da Mensagem recebida é inválido.", field: "criadoEm" };
-  const semTexto = (entrada.conteudo ?? "").trim() === "";
-  if (semTexto && (entrada.anexos ?? []).length === 0) return { error: "A Mensagem recebida precisa de conteúdo ou anexo.", field: "conteudo" };
-  return undefined;
 }
 
 export function criarServicoDeMensagens(deps: {
@@ -167,36 +148,6 @@ export function criarServicoDeMensagens(deps: {
         },
         FRASES,
       );
-    },
-
-    async registrarRecebida(workspaceId, entrada) {
-      const invalida = validarRecebida(entrada);
-      if (invalida) return valorInvalido(invalida);
-
-      const pool = deps.pool();
-      const conversa = await criarRepositorioDeConversasPg(pool).obter(workspaceId, entrada.conversaId);
-      if (!conversa) return conversaNaoEncontrada();
-
-      const mensagens = criarRepositorioDeMensagensPg(pool);
-      const gravada = await mensagens.inserirRecebida(workspaceId, {
-        conversaId: conversa.id,
-        canalId: conversa.canalId,
-        idExterno: entrada.idExterno,
-        criadoEm: entrada.criadoEm,
-        conteudo: entrada.conteudo ?? null,
-        anexos: entrada.anexos ?? [],
-        assunto: entrada.assunto ?? null,
-        enderecosAdicionais: entrada.enderecosAdicionais ?? [],
-        remetenteExterno: entrada.remetenteExterno ?? null,
-        identificadorId: entrada.identificadorId ?? null,
-        cargaBruta: entrada.cargaBruta,
-      });
-      if (gravada) return sucesso({ mensagem: gravada, repetida: false });
-
-      // Já existia (INV-CXE-08): a 2ª entrega do mesmo id externo no mesmo Canal devolve a primeira.
-      const existente = await mensagens.obterPorIdExterno(workspaceId, conversa.canalId, entrada.idExterno);
-      if (!existente) return conversaNaoEncontrada();
-      return sucesso({ mensagem: existente, repetida: true });
     },
   };
 }

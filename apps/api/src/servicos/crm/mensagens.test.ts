@@ -5,7 +5,8 @@
  *
  * "Comercial" é o WhatsApp oficial (`whatsapp-cloud`, janela de 24 h) e
  * "Suporte" o não oficial (sem janela). A `recebida` de 30 h atrás entra por
- * `registrarRecebida`, o caminho interno que a integração usará.
+ * `receberMensagem` (3.6.2), a única porta da recebida; a idempotência, o Canal
+ * da Conversa e o 404 de outro Espaço ficam provados em `recebimento.test.ts`.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -17,9 +18,14 @@ import { criarRepositorioDeConversasPg } from "../../repositorios/crm/conversas"
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearCanal, semearMembro } from "../../testes/banco-crm";
 import { criarAcessoAoCrmPg } from "./acesso";
 import { criarServicoDeMensagens } from "./mensagens";
+import { criarServicoDeRecebimento } from "./recebimento";
 import type { ResultadoCrm } from "./resultado";
 
 const servico = criarServicoDeMensagens({ pool, acesso: criarAcessoAoCrmPg(pool) });
+const recebimento = criarServicoDeRecebimento({ pool });
+
+/** O WhatsApp da Ana: é por ele que o remetente da recebida acha o Contato. */
+const WHATSAPP_DA_ANA = "+5511987654321";
 
 const sessao = (workspaceId: string, id: string): MembroDaSessao => ({ id, workspaceId, state: "ativo" });
 const horasAtras = (horas: number) => new Date(Date.now() - horas * 3_600_000).toISOString();
@@ -43,6 +49,7 @@ describeComBanco("ServicoDeMensagens — Postgres local", () => {
     await semearMembro(ws, { id: "mem_ana", base: "membro", state: "ativo" });
     await semearMembro(ws, { id: "mem_convidado", base: "convidado", state: "ativo" });
     const contato = await criarRepositorioDeContatosPg(pool()).inserir(ws, { nome: "Ana", proprietarioId: "mem_ana", criadoPor: "mem_ana" });
+    await criarRepositorioDeContatosPg(pool()).inserirIdentificador(ws, contato.id, { tipo: "whatsapp", valor: WHATSAPP_DA_ANA, principal: true });
 
     const abrir = async (nome: string, provedor: string, identificadorExterno: string, conexao: "conectada" | "desconectada") => {
       const canalId = await semearCanal(ws, { nome, tipo: "whatsapp", provedor, identificadorExterno, conexao });
@@ -62,11 +69,11 @@ describeComBanco("ServicoDeMensagens — Postgres local", () => {
     return { ws, membro: sessao(ws, "mem_ana"), convidado: sessao(ws, "mem_convidado"), comercial, suporte };
   }
 
-  const receber = (ws: string, conversaId: string, extras: { idExterno?: string; criadoEm?: string } = {}) =>
-    servico.registrarRecebida(ws, {
-      conversaId,
+  const receber = (ws: string, canalId: string, extras: { idExterno?: string; criadoEm?: string } = {}) =>
+    recebimento.receberMensagem(ws, canalId, {
       idExterno: extras.idExterno ?? "wamid.9",
       criadoEm: extras.criadoEm ?? horasAtras(30),
+      remetente: { tipo: "whatsapp", valor: WHATSAPP_DA_ANA },
       conteudo: "oi",
       cargaBruta: { entry: [{ changes: [{ value: { text: "oi" } }] }] },
     });
@@ -83,54 +90,9 @@ describeComBanco("ServicoDeMensagens — Postgres local", () => {
     await encerrar();
   });
 
-  it("registrarRecebida grava uma vez e a 2ª igual devolve a mesma Mensagem com repetida", async () => {
-    const c = await espaco("recebida");
-    const primeira = valor(await receber(c.ws, c.comercial.conversaId));
-    expect(primeira.repetida).toBe(false);
-    expect(primeira.mensagem).toMatchObject({
-      direcao: "recebida",
-      canalId: c.comercial.canalId,
-      statusEntrega: null,
-      ator: { tipo: "integration", id: c.comercial.canalId },
-    });
-
-    const segunda = valor(await receber(c.ws, c.comercial.conversaId));
-    expect(segunda.repetida).toBe(true);
-    expect(segunda.mensagem.id).toBe(primeira.mensagem.id);
-    expect(await contar(c.ws)).toBe(1);
-  });
-
-  it("registrarRecebida usa o Canal da Conversa, mesmo que a entrada traga outro, e o mesmo id externo noutro Canal grava", async () => {
-    const c = await espaco("canaldaconversa");
-    const entrada = { conversaId: c.comercial.conversaId, idExterno: "wamid.9", criadoEm: horasAtras(1), conteudo: "oi", cargaBruta: {}, canalId: c.suporte.canalId };
-    const { mensagem } = valor(await servico.registrarRecebida(c.ws, entrada));
-    expect(mensagem.canalId).toBe(c.comercial.canalId);
-
-    const outra = valor(await receber(c.ws, c.suporte.conversaId, { idExterno: "wamid.9" }));
-    expect(outra.repetida).toBe(false);
-    expect(outra.mensagem.id).not.toBe(mensagem.id);
-  });
-
-  it("registrarRecebida numa Conversa de outro Espaço dá 404", async () => {
-    const c = await espaco("ws1");
-    const outro = await espaco("ws2");
-    const r = recusado(await receber(outro.ws, c.comercial.conversaId));
-    expect(r).toMatchObject({ status: 404, codigo: "CONVERSA_NAO_ENCONTRADA" });
-    expect(await contar(outro.ws)).toBe(0);
-  });
-
-  it("registrarRecebida recusa com 400 o que o banco recusaria: id externo vazio, instante inválido, sem conteúdo nem anexo", async () => {
-    const c = await espaco("guarda");
-    const base = { conversaId: c.comercial.conversaId, idExterno: "wamid.x", criadoEm: horasAtras(1), conteudo: "oi", cargaBruta: {} };
-    expect(recusado(await servico.registrarRecebida(c.ws, { ...base, idExterno: " " }))).toMatchObject({ status: 400, codigo: "VALOR_INVALIDO", campo: "idExterno" });
-    expect(recusado(await servico.registrarRecebida(c.ws, { ...base, criadoEm: "ontem" }))).toMatchObject({ status: 400, campo: "criadoEm" });
-    expect(recusado(await servico.registrarRecebida(c.ws, { ...base, conteudo: "  " }))).toMatchObject({ status: 400, campo: "conteudo" });
-    expect(await contar(c.ws)).toBe(0);
-  });
-
   it("WhatsApp oficial com recebida de 30 h: enviada dá 409 JANELA_EXPIRADA (campo modelo); interna passa sem status", async () => {
     const c = await espaco("janela");
-    valor(await receber(c.ws, c.comercial.conversaId));
+    valor(await receber(c.ws, c.comercial.canalId));
 
     const expirada = recusado(await servico.enviar(c.membro, { conversaId: c.comercial.conversaId, direcao: "enviada", conteudo: "Bom dia" }));
     expect(expirada).toMatchObject({ status: 409, codigo: "JANELA_EXPIRADA", campo: "modelo" });
@@ -142,14 +104,14 @@ describeComBanco("ServicoDeMensagens — Postgres local", () => {
 
   it("WhatsApp oficial com recebida de 2 h: enviada sai com status enviada", async () => {
     const c = await espaco("dentro");
-    valor(await receber(c.ws, c.comercial.conversaId, { criadoEm: horasAtras(2) }));
+    valor(await receber(c.ws, c.comercial.canalId, { criadoEm: horasAtras(2) }));
     const m = valor(await servico.enviar(c.membro, { conversaId: c.comercial.conversaId, direcao: "enviada", conteudo: "Bom dia" }));
     expect(m).toMatchObject({ direcao: "enviada", statusEntrega: "enviada", conteudo: "Bom dia", canalId: c.comercial.canalId });
   });
 
   it("WhatsApp não oficial com recebida de 30 h envia: pendente se desconectado, enviada se conectado", async () => {
     const c = await espaco("naooficial");
-    valor(await receber(c.ws, c.suporte.conversaId));
+    valor(await receber(c.ws, c.suporte.canalId));
 
     const pendente = valor(await servico.enviar(c.membro, { conversaId: c.suporte.conversaId, direcao: "enviada", conteudo: "Oi" }));
     expect(pendente.statusEntrega).toBe("pendente");
@@ -225,7 +187,7 @@ describeComBanco("ServicoDeMensagens — Postgres local", () => {
   it("listar devolve o fio da Conversa, sem cargaBruta, e 404 para Conversa de outro Espaço", async () => {
     const c = await espaco("lista");
     const outro = await espaco("lista_outro");
-    valor(await receber(c.ws, c.comercial.conversaId, { criadoEm: horasAtras(2) }));
+    valor(await receber(c.ws, c.comercial.canalId, { criadoEm: horasAtras(2) }));
     valor(await servico.enviar(c.membro, { conversaId: c.comercial.conversaId, direcao: "enviada", conteudo: "Resposta" }));
 
     const fio = valor(await servico.listar(c.membro, { conversaId: c.comercial.conversaId, limite: 50, deslocamento: 0 }));

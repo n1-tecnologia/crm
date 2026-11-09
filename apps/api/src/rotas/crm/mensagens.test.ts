@@ -20,8 +20,8 @@ import { buildApp } from "../../app";
 import { encerrar, pool } from "../../persistencia/conexao";
 import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
 import { criarRepositorioDeConversasPg } from "../../repositorios/crm/conversas";
-import { criarAcessoAoCrmPg } from "../../servicos/crm/acesso";
-import { criarServicoDeMensagens, type ServicoDeMensagens } from "../../servicos/crm/mensagens";
+import { criarServicoDeRecebimento } from "../../servicos/crm/recebimento";
+import type { ServicoDeMensagens } from "../../servicos/crm/mensagens";
 import { recusa, sucesso, type ResultadoCrm } from "../../servicos/crm/resultado";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearCanal, semearMembro } from "../../testes/banco-crm";
 
@@ -49,10 +49,6 @@ describe("rotas de Mensagens — serviço falso, sem banco", () => {
       enviar: (...a) => {
         chamadas.push(["enviar", ...a]);
         return Promise.resolve(enviar ?? sucesso({ id: "m1" } as Mensagem));
-      },
-      registrarRecebida: (...a) => {
-        chamadas.push(["registrarRecebida", ...a]);
-        return Promise.resolve(sucesso({ mensagem: { id: "m1" } as Mensagem, repetida: false }));
       },
     };
     return { servico, chamadas };
@@ -159,9 +155,10 @@ describe("rotas de Mensagens — serviço falso, sem banco", () => {
 
 describeComBanco("rotas de Mensagens — serviço real, Postgres local", () => {
   const ws = novoEspacoDeTeste("msgrotas");
-  const servicoReal = criarServicoDeMensagens({ pool, acesso: criarAcessoAoCrmPg(pool) });
+  const recebimento = criarServicoDeRecebimento({ pool });
   const app = () => buildApp({ ...opcoesDeAutenticacao(ws), crm: {} });
   const ids = { comercial: { canalId: "", conversaId: "" }, suporte: { canalId: "", conversaId: "" } };
+  const WHATSAPP_DA_ANA = "+5511987654321";
   const CARGA = { entry: [{ changes: [{ value: { text: "dado pessoal do provedor", from: "5511999990000" } }] }] };
 
   beforeAll(async () => {
@@ -169,6 +166,7 @@ describeComBanco("rotas de Mensagens — serviço real, Postgres local", () => {
     // A sessão do seed é o Membro `mem_maryane`; o Papel dele vem da linha semeada.
     await semearMembro(ws, { id: "mem_maryane", base: "membro", state: "ativo" });
     const contato = await criarRepositorioDeContatosPg(pool()).inserir(ws, { nome: "Ana", proprietarioId: "mem_maryane", criadoPor: "mem_maryane" });
+    await criarRepositorioDeContatosPg(pool()).inserirIdentificador(ws, contato.id, { tipo: "whatsapp", valor: WHATSAPP_DA_ANA, principal: true });
     for (const [chave, nome, provedor, externo] of [
       ["comercial", "Comercial", "whatsapp-cloud", "+5511977770001"],
       ["suporte", "Suporte", "whatsapp-nao-oficial", "+5511977770002"],
@@ -193,11 +191,11 @@ describeComBanco("rotas de Mensagens — serviço real, Postgres local", () => {
   });
 
   const horasAtras = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
-  const receber = (conversaId: string, idExterno: string, criadoEm: string) =>
-    servicoReal.registrarRecebida(ws, { conversaId, idExterno, criadoEm, conteudo: "oi", cargaBruta: CARGA });
+  const receber = (canalId: string, idExterno: string, criadoEm: string) =>
+    recebimento.receberMensagem(ws, canalId, { idExterno, criadoEm, remetente: { tipo: "whatsapp", valor: WHATSAPP_DA_ANA }, conteudo: "oi", cargaBruta: CARGA });
 
   it("(f) GET /mensagens devolve o fio e a resposta crua NÃO contém carga_bruta nem cargaBruta nem o payload", async () => {
-    await receber(ids.comercial.conversaId, "wamid.f1", horasAtras(3));
+    await receber(ids.comercial.canalId, "wamid.f1", horasAtras(3));
     const resposta = await app().inject({ method: "GET", url: `/mensagens?conversaId=${ids.comercial.conversaId}`, headers: AUTORIZACAO });
     expect(resposta.statusCode).toBe(200);
     const json = resposta.json() as { itens: Array<{ idExterno: string }>; total: number };
@@ -223,7 +221,7 @@ describeComBanco("rotas de Mensagens — serviço real, Postgres local", () => {
 
   it("POST /mensagens enviada no oficial com recebida de 30 h responde 409 JANELA_EXPIRADA; no não oficial responde 201", async () => {
     // Conversa nova por Canal, para a única recebida ser a de 30 h.
-    await receber(ids.suporte.conversaId, "wamid.s1", horasAtras(30));
+    await receber(ids.suporte.canalId, "wamid.s1", horasAtras(30));
     const naoOficial = await app().inject({
       method: "POST",
       url: "/mensagens",
@@ -234,7 +232,7 @@ describeComBanco("rotas de Mensagens — serviço real, Postgres local", () => {
 
     // No oficial, uma recebida MAIS RECENTE reabre a janela; então travamos a conta apagando-a do cenário.
     await pool().query("delete from plataforma.mensagens where workspace_id = $1 and conversa_id = $2 and direcao = 'recebida'", [ws, ids.comercial.conversaId]);
-    await receber(ids.comercial.conversaId, "wamid.f2", horasAtras(30));
+    await receber(ids.comercial.canalId, "wamid.f2", horasAtras(30));
     const oficial = await app().inject({
       method: "POST",
       url: "/mensagens",

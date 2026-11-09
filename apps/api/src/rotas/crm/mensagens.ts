@@ -4,7 +4,7 @@
  *   GET  /mensagens?conversaId=&limite=&deslocamento=   o fio da Conversa, por (criado_em, seq)
  *   POST /mensagens                                      envia (`enviada`) ou anota (`interna`) — 201
  *
- * A `recebida` entra SÓ por `registrarRecebida` do serviço (a porta da
+ * A `recebida` entra SÓ por `receberMensagem` (`servicos/crm/recebimento.ts`, a porta da
  * integração): não existe rota humana para ela. A do webhook vem com o
  * provedor, autenticada por credencial de serviço. Por isso o corpo é
  * `.strict()` com `direcao: z.enum(DIRECOES_DE_ENVIO)` — sem `recebida` — e
