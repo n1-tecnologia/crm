@@ -911,12 +911,56 @@ Plans:
 **Entra (18 subtarefas):** 3.6.1–3.6.5 porta de entrada (interface do provedor, recebimento completo, webhook por Canal, fila de entrada, status de entrega) · 3.7.1–3.7.3 porta de saída (fila na mesma transação, entrega pelo provedor, tentar de novo) · 3.8.1–3.8.4 tempo real · 3.9.1–3.9.6 mídia (anexo ligado a arquivo, áudio e vídeo, rotas de upload e download, baixar do provedor, tocar no fio, limpeza de órfãos).
 **Decisão do dono antes de planejar:** 3.8.1 (como mandar as novidades para a tela).
 **Pronto quando (da sessão):** uma chamada simulada ao webhook de um Canal cria (ou acha) o Contato em `plataforma.contatos`, abre ou reabre a Conversa em `plataforma.conversas` e aparece na Caixa de Entrada de outra aba em menos de 2 s, com o áudio tocando; a resposta escrita na tela passa pela fila e chega ao provedor de teste.
-**Requirements**: TBD (derivar em `16-CONTEXT.md`)
+**Ajuste (D-16-04):** a fase inclui um adaptador mínimo da Evolution (fronteira em `COVERAGE.md`) e uma prova ao vivo com a instância do dono; o "Pronto quando" da fase passa a ter as duas partes de `16-CONTEXT.md` (provedor de teste nos testes automáticos; WhatsApp real ao vivo).
+**Requirements**: MSG-01 a MSG-06 (IDs locais da fase, definidos em `16-CONTEXT.md` `<domain>`)
 **Depends on:** Phase 15 (a ordem do plano: unificar o CRM primeiro, mensageria depois)
-**Plans:** 0 plans
+**Plans:** 16 plans (14 ondas; 16-15 e 16-16 têm checkpoints do dono — pré-voo, publicação, prova ao vivo e a decisão do áudio; nenhum plano autônomo toca produção)
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 16 to break down)
+
+**Wave 1**
+- [ ] 16-01-PLAN.md — 3.6.2: recebimento completo (`destinoDaRecebida`, `receberMensagem`), `registrarRecebida` fora
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 16-02-PLAN.md — 3.6.1 + D-16-03: interface do provedor, provedor de teste só para Canal simulado, contrato, `canal:segredo-de-teste`
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 16-03-PLAN.md — 3.6.3 + 3.6.4: migração `013`, `POST /webhooks/mensageria/:canalId`, processador de entrada
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 16-04-PLAN.md — 3.7.1: `mensagem.enviar.v1` na mesma transação nos três pontos; worker antigo sem `mensagem.%`
+
+**Wave 5** *(blocked on Wave 4 completion)*
+- [ ] 16-05-PLAN.md — 3.7.2: worker de saída entrega pelo provedor; tentativas sem duplicar
+
+**Wave 6** *(blocked on Wave 5 completion)*
+- [ ] 16-06-PLAN.md — 3.6.5 + 3.7.1 item 5 + 3.7.3 api: status só avança, "reenviar", Canal que volta reenfileira
+
+**Wave 7** *(blocked on Wave 6 completion)*
+- [ ] 16-07-PLAN.md — 3.8.2 + 3.8.3 (D-16-01): `avisarCrm`, `LISTEN`, hub e `GET /eventos`
+
+**Wave 8** *(blocked on Wave 7 completion)*
+- [ ] 16-08-PLAN.md — 3.8.4 (D-16-02): tempo real na tela
+- [ ] 16-09-PLAN.md — 3.9.1 a 3.9.3 (D-16-08, D-16-09): tipos e tetos da Mensagem, ticket, envio com anexo e download
+
+**Wave 9** *(blocked on Wave 8 completion)*
+- [ ] 16-10-PLAN.md — 3.9.4 + 3.9.6: mídia recebida guardada, medição por etapa, URL assinada no envio, coleta de órfãos
+- [ ] 16-11-PLAN.md — 3.7.3 web + 3.9.5 (D-16-10): estado da entrega, "Tentar de novo", mídia no fio e anexar
+
+**Wave 10** *(blocked on Wave 9 completion)*
+- [ ] 16-12-PLAN.md — D-16-04 + D-16-06: adaptador da Evolution (cliente, tradutor, provedor)
+
+**Wave 11** *(blocked on Wave 10 completion)*
+- [ ] 16-13-PLAN.md — D-16-05: `canal:ligar-evolution`, `conexao_confirmada`, `conferirNumeroConectado`
+
+**Wave 12** *(blocked on Wave 11 completion)*
+- [ ] 16-14-PLAN.md — Cronograma (`andamento.mjs`), `CONTEXT.md`, `.env.example`, unidade systemd e o gate `npm run check`
+
+**Wave 13** *(blocked on Wave 12 completion)*
+- [ ] 16-15-PLAN.md — `tempo-real:provar`, SSE no `provar-nginx.sh`, roteiro e pré-voo do dono (checkpoint)
+
+**Wave 14** *(blocked on Wave 13 completion)*
+- [ ] 16-16-PLAN.md — Prova ao vivo em produção pelo dono, decisão do áudio e `16-PROVAS.md` (checkpoints)
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*
