@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 milestone: v1.0
 current_phase: 16
-current_phase_name: base-da-mensageria-entrada-sa-da-tempo-real-e-m-dia
-status: planning
-stopped_at: Phase 16 context gathered
-last_updated: "2026-11-09T17:03:37.325Z"
-last_activity: 2026-11-07
-last_activity_desc: Phase 15 complete, transitioned to Phase 16
-state_head: c9f9b28dfe70de89b19c93147c9046a6fe7e6073
+current_phase_name: "Base da mensageria: entrada, saída, tempo real e mídia"
+status: executing
+stopped_at: Completed 16-01-PLAN.md
+last_updated: "2026-11-09T17:15:03.834Z"
+last_activity: 2026-11-09
+last_activity_desc: Phase 16 execution started
+state_head: 9228a4e59b17c4b586c4fc86b7e9cd0cf0141536
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 288
-  completed_plans: 269
+  completed_plans: 270
 milestone_name: milestone
 ---
 
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 
 ## Current Position
 
-Phase: 16 (base-da-mensageria-entrada-sa-da-tempo-real-e-m-dia) — READY TO EXECUTE
-Plan: Not started
-Status: Ready to plan (decisão do dono 3.8.1 antes de planejar — ver ROADMAP)
-Last activity: 2026-11-07 — Phase 15 complete (UAT 7/7, SECURITY threats_open 0), transitioned to Phase 16
+Phase: 16 (Base da mensageria: entrada, saída, tempo real e mídia) — EXECUTING
+Plan: 2 of 16
+Status: Ready to execute
+Last activity: 2026-11-09 — Phase 16 execution started
 
 > Nota: `phase.complete` apontou a Fase 2 como "próxima" por ela estar sem `[x]` no ROADMAP; corrigido à mão para a Fase 16 (que declara `Depends on: Phase 15`). As Fases 2, 4 e 8 seguem abertas no ROADMAP e não foram tocadas.
 
@@ -490,6 +490,7 @@ Progress: [██████░░░░] 63%
 | Phase 15 P43 | 70 min | 2 tasks | 42 files |
 | Phase 15 P34 | 45 min | 3 tasks | 9 files |
 | Phase 15 P44 | 35min | 4 tasks | 25 files |
+| Phase 16 P01 | 8 min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -804,6 +805,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 15]: 15-34: WINDOWS #73 aberta: depois do corte o Enviar Flow a um Contato fica sem destinatario (as Conversas 1:1 saem de registros); decisao do dono
 - [Phase 15]: 15-44 H-02: a Conversa e do CRM antigo so se nao e de Grupo e o contactId e um id de contacts do mesmo Espaco; Grupo, 1:1 de Flow/Automacao/convite e a nao classificavel ficam em registros (rejeitado: decidir pelo Canal, que tambem existe na tabela nova para a Conversa antiga)
 - [Phase 15]: 15-44 M-01: a trava de banco local recusa qualquer URL com query e confere o host efetivo por new Client(url).host (persistencia/host-local.ts); [::1] aceito
+- [Phase 16]: 16-01: o tipo do evento recebido (RecebidaDoProvedor) mora em @n1/dominio/crm/recebimento; receberMensagem e a unica porta da recebida; a corrida do numero novo refaz a transacao uma vez e a segunda falha sobe como excecao
 
 ### Pending Todos
 
@@ -865,6 +867,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-09T15:15:55.241Z
-Stopped at: Phase 16 context gathered
-Resume file: .planning/phases/16-base-da-mensageria-entrada-sa-da-tempo-real-e-m-dia/16-CONTEXT.md
+Last session: 2026-11-09T17:15:03.586Z
+Stopped at: Completed 16-01-PLAN.md
+Resume file: None
