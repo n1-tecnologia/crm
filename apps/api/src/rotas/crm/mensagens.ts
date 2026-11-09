@@ -3,6 +3,7 @@
  *
  *   GET  /mensagens?conversaId=&limite=&deslocamento=   o fio da Conversa, por (criado_em, seq)
  *   POST /mensagens                                      envia (`enviada`) ou anota (`interna`) — 201
+ *   POST /mensagens/{id}/reenviar                        "Tentar de novo" na Mensagem que falhou — 200 (16-06)
  *
  * A `recebida` entra SÓ por `receberMensagem` (`servicos/crm/recebimento.ts`, a porta da
  * integração): não existe rota humana para ela. A do webhook vem com o
@@ -46,6 +47,8 @@ export const NOVA_MENSAGEM = z
   })
   .strict();
 
+export const PARAMS_DE_MENSAGEM = z.object({ id: ID }).strict();
+
 export async function rotasDeMensagens(app: FastifyInstance, opcoes: { readonly servico: ServicoDeMensagens }): Promise<void> {
   const rotas = app.withTypeProvider<ZodTypeProvider>();
   const { servico } = opcoes;
@@ -56,5 +59,10 @@ export async function rotasDeMensagens(app: FastifyInstance, opcoes: { readonly 
 
   rotas.post("/mensagens", { schema: { body: NOVA_MENSAGEM } }, async (request, reply) =>
     responder(reply, await servico.enviar(request.membro, request.body), 201),
+  );
+
+  // Sem corpo: o Membro, o Espaço e a Mensagem vêm da sessão e do `:id`. Herda o JWT e o 403 do Membro suspenso.
+  rotas.post("/mensagens/:id/reenviar", { schema: { params: PARAMS_DE_MENSAGEM } }, async (request, reply) =>
+    responder(reply, await servico.reenviar(request.membro, request.params.id), 200),
   );
 }

@@ -29,6 +29,9 @@
  *     rede e `FRASES` a traduz, sem o nome do constraint.
  *   - INV-CXE-08 / RN-CXE-17: a idempotência por (Canal, id externo), a
  *     reabertura e o Contato da `recebida` são de `receberMensagem`, não daqui.
+ *   - 16-06 / 3.7.3: "Tentar de novo" (`reenviar`) só aceita a `enviada` que `falhou`: a Mensagem volta a
+ *     `pendente` e a MESMA linha do outbox reabre (`reenfileirarEnvio`), tudo na transação. O Papel é
+ *     `enviar` `mensagem`, o mesmo de escrever, e o Espaço é sempre o da sessão.
  *
  * Nem o `conteudo` nem a `cargaBruta` são escritos em log (T-08-46).
  */
@@ -40,7 +43,7 @@ import { recusaPorFaltaDeConsentimento } from "@n1/dominio/crm/consentimentos";
 import { statusInicialDeEnvio, validarEnvio, validarNovaMensagem, type Mensagem, type NovaMensagem } from "@n1/dominio/crm/mensagens";
 import { capacidadesDoCanal } from "@n1/dominio/crm/capacidades";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
-import { enfileirarEnvio } from "../../mensageria/fila-de-saida";
+import { enfileirarEnvio, reenfileirarEnvio } from "../../mensageria/fila-de-saida";
 import { criarRepositorioDeCanaisPg } from "../../repositorios/crm/canais";
 import { criarRepositorioDeConsentimentosPg } from "../../repositorios/crm/consentimentos";
 import { criarRepositorioDeConversasPg } from "../../repositorios/crm/conversas";
@@ -53,6 +56,8 @@ import { comTransacao, type FrasesDeRestricao } from "./transacao";
 export interface ServicoDeMensagens {
   listar(membro: MembroDaSessao, filtro: FiltroDeMensagens): Promise<ResultadoCrm<Pagina<Mensagem>>>;
   enviar(membro: MembroDaSessao, entrada: NovaMensagem): Promise<ResultadoCrm<Mensagem>>;
+  /** "Tentar de novo" (16-06, 3.7.3): só a Mensagem `enviada` que `falhou`; volta a `pendente` e à fila. */
+  reenviar(membro: MembroDaSessao, id: string): Promise<ResultadoCrm<Mensagem>>;
 }
 
 /** Rede de SQLSTATE: a FK composta de "em resposta a" (INV-CXE-10) vira esta frase, sem o nome dela. */
@@ -65,6 +70,9 @@ const FRASES: FrasesDeRestricao = {
 
 const conversaNaoEncontrada = () =>
   recusa<never>(404, "Conversa não encontrada.", { codigo: "CONVERSA_NAO_ENCONTRADA", campo: "conversaId" });
+
+const naoFalhou = () =>
+  recusa<never>(409, "Só uma Mensagem que não foi enviada pode ser enviada de novo.", { codigo: "NAO_FALHOU" });
 
 function valorInvalido(falha: { readonly error: string; readonly field?: string | undefined }) {
   return recusa<never>(400, falha.error, { codigo: "VALOR_INVALIDO", ...(falha.field !== undefined ? { campo: falha.field } : {}) });
@@ -82,8 +90,11 @@ export function criarServicoDeMensagens(deps: {
   readonly categoriaDoModelo?: (cliente: PoolClient, workspaceId: string, conversa: Conversa, entrada: NovaMensagem) => Promise<string | undefined>;
   /** Quem enfileira o envio. Só o teste de rollback troca o padrão (`enfileirarEnvio`). */
   readonly enfileirar?: typeof enfileirarEnvio;
+  /** Quem reabre a linha do outbox na "Tentar de novo". Só o teste de rollback troca o padrão (`reenfileirarEnvio`). */
+  readonly reenfileirar?: typeof reenfileirarEnvio;
 }): ServicoDeMensagens {
   const enfileirar = deps.enfileirar ?? enfileirarEnvio;
+  const reenfileirar = deps.reenfileirar ?? reenfileirarEnvio;
   return {
     async listar(membro, filtro) {
       const negado = await exigir(deps.acesso, membro, "ler", "mensagem");
@@ -154,6 +165,42 @@ export function criarServicoDeMensagens(deps: {
           // 3.7.1: no mesmo cliente da transação, antes do commit. Só a `enviada` sai; a `interna` não.
           if (entrada.direcao === "enviada") await enfileirar(cliente, membro.workspaceId, mensagem, canal);
           return sucesso(mensagem);
+        },
+        FRASES,
+      );
+    },
+
+    async reenviar(membro, id) {
+      const negado = await exigir(deps.acesso, membro, "enviar", "mensagem");
+      if (negado) return { ok: false, ...negado };
+
+      return comTransacao(
+        deps.pool,
+        async (cliente: PoolClient) => {
+          const mensagens = criarRepositorioDeMensagensPg(cliente);
+          const atual = await mensagens.obter(membro.workspaceId, id);
+          if (!atual) return recusa<never>(404, "Mensagem não encontrada.", { codigo: "MENSAGEM_NAO_ENCONTRADA" });
+          if (atual.direcao !== "enviada" || atual.statusEntrega !== "falhou") return naoFalhou();
+
+          const conversa = await criarRepositorioDeConversasPg(cliente).obter(membro.workspaceId, atual.conversaId);
+          if (!conversa) return conversaNaoEncontrada();
+          if (conversa.estado === "na_lixeira") {
+            return recusa<never>(409, "Uma Conversa na lixeira não recebe Mensagem. Restaure-a antes.", { codigo: "CONVERSA_NA_LIXEIRA" });
+          }
+          const canal = await criarRepositorioDeCanaisPg(cliente).obter(membro.workspaceId, atual.canalId);
+          if (!canal) return conversaNaoEncontrada();
+          if (canal.estado === "arquivado") {
+            return recusa<never>(409, "Um Canal arquivado não envia Mensagem.", { codigo: "CANAL_ARQUIVADO" });
+          }
+
+          // Primeiro a Mensagem volta a `pendente`, depois a linha reabre: o entregador só envia o que está
+          // `pendente` e dá por resolvida a que não está. O `where status = 'falhou'` do repositório decide a corrida
+          // entre dois cliques: só um vence, o outro recebe o mesmo 409.
+          const pendente = await mensagens.voltarParaPendente(membro.workspaceId, id);
+          if (!pendente) return naoFalhou();
+          // Canal fora do ar: a Mensagem fica guardada `pendente`; a linha reabre quando ele voltar (B69).
+          if (canal.conexao === "conectada") await reenfileirar(cliente, membro.workspaceId, pendente);
+          return sucesso(pendente);
         },
         FRASES,
       );

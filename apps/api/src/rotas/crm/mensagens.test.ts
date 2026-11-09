@@ -50,6 +50,10 @@ describe("rotas de Mensagens — serviço falso, sem banco", () => {
         chamadas.push(["enviar", ...a]);
         return Promise.resolve(enviar ?? sucesso({ id: "m1" } as Mensagem));
       },
+      reenviar: (...a) => {
+        chamadas.push(["reenviar", ...a]);
+        return Promise.resolve(enviar ?? sucesso({ id: "m1" } as Mensagem));
+      },
     };
     return { servico, chamadas };
   }

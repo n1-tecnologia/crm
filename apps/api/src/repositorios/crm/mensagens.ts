@@ -13,8 +13,9 @@
  * a lista do fio, a última recebida (a janela de RN-CXE-19) e a ingestão da
  * `recebida`, que é idempotente por (Canal, id externo) — INV-CXE-08 — e é o
  * único lugar que escreve e lê `carga_bruta`. 16-05 acrescenta `obter`,
- * `gravarEnvio` e `marcarFalha`: o desfecho da entrega pelo provedor, a única
- * mudança de status que o repositório faz.
+ * `gravarEnvio` e `marcarFalha`: o desfecho da entrega pelo provedor. 16-06 acrescenta
+ * `voltarParaPendente` ("Tentar de novo") e `atualizarStatusDeEntrega` (o status que o provedor informa): as únicas
+ * mudanças de status que o repositório faz.
  */
 
 import type { Pool, PoolClient } from "pg";
@@ -87,6 +88,12 @@ export interface RepositorioDeMensagens {
    * `enviada`; `undefined` quando já estava em outro estado (`entregue`, `lida`, `falhou`).
    */
   marcarFalha(workspaceId: string, id: string, motivo: string): Promise<Mensagem | undefined>;
+  /**
+   * "Tentar de novo" (16-06): a Mensagem `falhou` volta a `pendente`, sem o motivo. SÓ de `falhou` (a corrida entre
+   * dois cliques ou com o retorno do provedor tem um vencedor só); `undefined` quando já estava em outro estado.
+   * O `id_externo` não muda: uma `falhou` por resposta ambígua pode ter saído, e quem a reenvia assume isso.
+   */
+  voltarParaPendente(workspaceId: string, id: string): Promise<Mensagem | undefined>;
   /**
    * O payload cru do provedor. SÓ ingestão e teste — nunca rota (A9): é dado
    * pessoal e a anonimização futura precisa zerá-lo.
@@ -283,6 +290,17 @@ export function criarRepositorioDeMensagensPg(cliente: Pool | PoolClient): Repos
           where workspace_id = $1 and id = $2 and direcao = 'enviada' and status_entrega in ('pendente', 'enviada')
           returning ${COLUNAS_DE_MENSAGEM}`,
         [workspaceId, id, motivo],
+      );
+      return rows[0] ? linhaParaMensagem(rows[0]) : undefined;
+    },
+
+    async voltarParaPendente(workspaceId, id) {
+      const { rows } = await cliente.query<LinhaDoBancoDeMensagem>(
+        `update plataforma.mensagens
+            set status_entrega = 'pendente', status_entrega_em = now(), motivo_falha = null
+          where workspace_id = $1 and id = $2 and direcao = 'enviada' and status_entrega = 'falhou'
+          returning ${COLUNAS_DE_MENSAGEM}`,
+        [workspaceId, id],
       );
       return rows[0] ? linhaParaMensagem(rows[0]) : undefined;
     },
