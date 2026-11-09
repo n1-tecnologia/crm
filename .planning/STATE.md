@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 16
 current_phase_name: "Base da mensageria: entrada, saída, tempo real e mídia"
 status: executing
-stopped_at: Completed 16-04-PLAN.md
-last_updated: "2026-11-09T17:44:49.297Z"
+stopped_at: Completed 16-05-PLAN.md
+last_updated: "2026-11-09T18:09:07.556Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 16 execution started
-state_head: 103c69cdcb4aa53f8252d45826036b8fa0a26711
+state_head: 76bbbe2ff8ceaa3272c1134af897f6aaa63b3cbb
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 288
-  completed_plans: 273
+  completed_plans: 274
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 16 (Base da mensageria: entrada, saída, tempo real e mídia) — EXECUTING
-Plan: 5 of 16
+Plan: 6 of 16
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 16 execution started
 
@@ -494,6 +494,7 @@ Progress: [██████░░░░] 63%
 | Phase 16 P02 | 7 min | 3 tasks | 11 files |
 | Phase 16 P03 | 9 min | 3 tasks | 12 files |
 | Phase 16 P04 | 9 min | 3 tasks | 13 files |
+| Phase 16 P05 | 16 min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -817,6 +818,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 16]: Falha do banco no webhook apos a verificacao sobe como 500 (o provedor reenvia), nunca como 401
 - [Phase 16]: 16-04: o worker do outbox do automation exclui mensagem.% por padrao; o entregador da mensageria (16-05) deve pedir tiposDeEvento: [mensagem.enviar.v1]
 - [Phase 16]: 16-04: statusInicialDeEnvio sempre pendente; so o provedor passa a Mensagem a enviada (aggregate_type mensagem, aggregate_id = mensagemId)
+- [Phase 16]: 16-05: resposta ambigua do provedor (ou excecao dentro de enviar) vira falhou com a frase de sem confirmacao e nunca reenvia sozinha; excecao depois do aceite desiste (ENVIADO_SEM_REGISTRO) em vez de voltar a fila
+- [Phase 16]: 16-05: criarWorkerDeSaida aceita workspaceId opcional (so testes); recuperacao de trava manda a linha que gastou as tentativas para failed/TRAVA_VENCIDA
 
 ### Pending Todos
 
@@ -878,6 +881,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-09T17:44:49.007Z
-Stopped at: Completed 16-04-PLAN.md
+Last session: 2026-11-09T18:09:07.304Z
+Stopped at: Completed 16-05-PLAN.md
 Resume file: None
