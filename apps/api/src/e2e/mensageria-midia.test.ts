@@ -16,10 +16,13 @@ import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
 import { buildSeed } from "@n1/dominio/seed";
 import type { Mensagem } from "@n1/dominio/crm/mensagens";
 import { buildApp } from "../app";
+import { criarWorkerDeSaida, FRASES_DA_SAIDA } from "../mensageria/entregar-mensagem";
 import { criarProcessadorDeEntrada } from "../mensageria/processador-de-entrada";
 import { CABECALHO_DO_SEGREDO, TIPO_DO_SEGREDO_DO_WEBHOOK } from "../mensageria/provedor";
 import { provedorDeTeste } from "../mensageria/provedores/teste";
 import { encerrar, pool } from "../persistencia/conexao";
+import { criarRepositorioDeContatosPg } from "../repositorios/crm/contatos";
+import { criarRepositorioDeConversasPg } from "../repositorios/crm/conversas";
 import { criarRepositorioDeMensagensPg } from "../repositorios/crm/mensagens";
 import { guardarCredencial, type ChavesDoCofre } from "../servicos/cofre";
 import { criarAcessoAoCrmPg } from "../servicos/crm/acesso";
@@ -47,6 +50,7 @@ describeComBanco("Fase 16 ponta a ponta: a mídia que chega é guardada e a que 
   const ws = novoEspacoDeTeste("msgmidia");
   const armazenamento = criarArmazenamentoFalso();
   let canalId: string;
+  let conversaDaSaida: string;
 
   const app = () =>
     buildApp({
@@ -93,6 +97,19 @@ describeComBanco("Fase 16 ponta a ponta: a mídia que chega é guardada e a que 
       configuradoPor: "mem_ana",
     });
     await guardarCredencial(pool(), chaves, { workspaceId: ws, donoTipo: "canal", donoId: canalId, tipo: TIPO_DO_SEGREDO_DO_WEBHOOK, segredo: SEGREDO });
+    // Uma Conversa à parte para a saída (o Contato dela é outro número).
+    const contato = await criarRepositorioDeContatosPg(pool()).inserir(ws, { nome: "Beto", proprietarioId: "mem_ana", criadoPor: "mem_ana" });
+    await criarRepositorioDeContatosPg(pool()).inserirIdentificador(ws, contato.id, { tipo: "whatsapp", valor: "+5511955550002", principal: true });
+    const conversa = await criarRepositorioDeConversasPg(pool()).inserir(ws, {
+      canalId,
+      contatoId: contato.id,
+      titulo: "Beto — Comercial",
+      filaId: null,
+      atribuido: { tipo: "membro", id: "mem_ana" },
+      participantes: [],
+      criadoPor: { tipo: "member", id: "mem_ana" },
+    });
+    conversaDaSaida = conversa.id;
   });
 
   beforeEach(() => {
@@ -133,5 +150,99 @@ describeComBanco("Fase 16 ponta a ponta: a mídia que chega é guardada e a que 
     const corpo = aberto.json() as { ok: true; dados: { url: string } };
     expect(corpo.dados.url.startsWith("https://armazenamento-falso.test/objeto/")).toBe(true);
     expect(armazenamento.urlsEmitidas.at(-1)).toEqual({ objectKey: anexo.objectKey });
+  });
+
+  // --- Saída (3.9.5): o arquivo anexado na Caixa chega ao provedor com a URL assinada ---
+
+  const worker = () => criarWorkerDeSaida({ workerId: "teste-saida-midia", workspaceId: ws, chaves, armazenamento });
+
+  /** Pede o ticket, põe os bytes no falso (o navegador no `uploadUrl`) e escreve a Mensagem só com o anexo. */
+  async function anexarNaCaixa(bytes: Uint8Array, anexo: { nome: string; tipoDeMidia: string }): Promise<Mensagem> {
+    const ticket = await app().inject({
+      method: "POST",
+      url: "/mensagens/anexos",
+      headers: MEMBRO,
+      payload: { conversaId: conversaDaSaida, ...anexo, tamanhoBytes: bytes.byteLength },
+    });
+    expect(ticket.statusCode).toBe(200);
+    const { submissionId, objectId } = (ticket.json() as { dados: { submissionId: string; objectId: string } }).dados;
+    armazenamento.colocarBytes(objectId, bytes);
+    const criada = await app().inject({
+      method: "POST",
+      url: "/mensagens",
+      headers: MEMBRO,
+      payload: { conversaId: conversaDaSaida, direcao: "enviada", conteudo: "", anexos: [{ submissionId, objectId }] },
+    });
+    expect(criada.statusCode).toBe(201);
+    return (criada.json() as { dados: Mensagem }).dados;
+  }
+
+  const estadoDaMensagem = async (id: string) =>
+    (await pool().query<{ status_entrega: string; motivo_falha: string | null }>("select status_entrega, motivo_falha from plataforma.mensagens where workspace_id = $1 and id = $2", [ws, id])).rows[0]!;
+
+  it("3.9: uma imagem anexada na Caixa chega ao provedor de teste com a URL assinada, o tipo e o nome", async () => {
+    const criada = await anexarNaCaixa(PNG, { nome: "foto.png", tipoDeMidia: "image/png" });
+    const antes = armazenamento.urlsEmitidas.length;
+
+    expect(await worker().processarUm()).toBe(true);
+
+    expect(provedorDeTeste.enviados).toHaveLength(1);
+    expect(provedorDeTeste.enviados[0]).toMatchObject({ mensagemId: criada.id, destino: { tipo: "whatsapp", valor: "+5511955550002" } });
+    const anexo = provedorDeTeste.enviados[0]!.anexos;
+    expect(anexo).toHaveLength(1);
+    expect(anexo![0]).toEqual({
+      urlAssinada: `https://armazenamento-falso.test/objeto/${encodeURIComponent(criada.anexos[0]!.objectKey!)}`,
+      tipoDeMidia: "image/png",
+      nome: "foto.png",
+    });
+    // A imagem abre no <img>: sem `download`.
+    expect(armazenamento.urlsEmitidas.slice(antes)).toEqual([{ objectKey: criada.anexos[0]!.objectKey }]);
+    expect(await estadoDaMensagem(criada.id)).toMatchObject({ status_entrega: "enviada" });
+  });
+
+  it("um documento sai com a URL assinada de download (Content-Disposition: attachment) com o nome do arquivo", async () => {
+    const pdf = Buffer.from("%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n", "ascii");
+    const criada = await anexarNaCaixa(pdf, { nome: "proposta.pdf", tipoDeMidia: "application/pdf" });
+    const antes = armazenamento.urlsEmitidas.length;
+
+    expect(await worker().processarUm()).toBe(true);
+
+    expect(provedorDeTeste.enviados[0]!.anexos).toEqual([
+      {
+        urlAssinada: `https://armazenamento-falso.test/objeto/${encodeURIComponent(criada.anexos[0]!.objectKey!)}?download=proposta.pdf`,
+        tipoDeMidia: "application/pdf",
+        nome: "proposta.pdf",
+      },
+    ]);
+    expect(armazenamento.urlsEmitidas.slice(antes)).toEqual([{ objectKey: criada.anexos[0]!.objectKey, download: "proposta.pdf" }]);
+  });
+
+  it("um anexo baixado: false numa Mensagem enviada não sai: falhou com a frase do produto e o provedor não é chamado", async () => {
+    const criada = await anexarNaCaixa(PNG, { nome: "foto.png", tipoDeMidia: "image/png" });
+    await pool().query("update plataforma.mensagens set anexos = $3::jsonb where workspace_id = $1 and id = $2", [
+      ws,
+      criada.id,
+      JSON.stringify([{ tipoDeMidia: "image/png", nome: "foto.png", referenciaExterna: "ref", baixado: false }]),
+    ]);
+
+    expect(await worker().processarUm()).toBe(true);
+
+    expect(provedorDeTeste.enviados).toHaveLength(0);
+    expect(await estadoDaMensagem(criada.id)).toEqual({ status_entrega: "falhou", motivo_falha: "O arquivo desta Mensagem não está disponível." });
+    expect(FRASES_DA_SAIDA.arquivoIndisponivel).toBe("O arquivo desta Mensagem não está disponível.");
+  });
+
+  it("o bucket fora do ar na hora de assinar não perde a Mensagem: nada sai e ela volta à fila (transitório)", async () => {
+    const criada = await anexarNaCaixa(PNG, { nome: "foto.png", tipoDeMidia: "image/png" });
+    armazenamento.falharNaProxima(new Error("storage fora do ar"));
+
+    expect(await worker().processarUm()).toBe(true);
+    expect(provedorDeTeste.enviados).toHaveLength(0);
+    expect(await estadoDaMensagem(criada.id)).toMatchObject({ status_entrega: "pendente" });
+
+    await pool().query("update plataforma.integration_outbox set available_at = now() where workspace_id = $1 and aggregate_id = $2", [ws, criada.id]);
+    expect(await worker().processarUm()).toBe(true);
+    expect(provedorDeTeste.enviados).toHaveLength(1);
+    expect(await estadoDaMensagem(criada.id)).toMatchObject({ status_entrega: "enviada" });
   });
 });
