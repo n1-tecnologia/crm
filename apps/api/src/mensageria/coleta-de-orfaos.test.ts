@@ -101,7 +101,7 @@ describeComBanco("coleta de órfãos — Postgres local, armazenamento falso", (
     expect(resultado.objetosDeEntradaRemovidos).toBe(1);
     expect(resultado.sessoesExpiradas).toBeGreaterThanOrEqual(1);
     expect(resultado.objetosRemovidos).toBeGreaterThanOrEqual(1);
-    expect(armazenamento.chavesGuardadas().sort()).toEqual([citado, recente].sort());
+    expect([...armazenamento.chavesGuardadas()].sort()).toEqual([citado, recente].sort());
     expect(armazenamento.removidos).toEqual(expect.arrayContaining([orfao, chaveDaSessao]));
     expect(armazenamento.removidos).not.toContain(citado);
     expect(armazenamento.removidos).not.toContain(recente);

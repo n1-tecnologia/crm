@@ -30,6 +30,9 @@
  * (Fase 16, 16-05, `criarWorkerDeSaida`) sobe junto, pela mesma variável: um segundo worker do outbox só com
  * `mensagem.enviar.v1`.
  *
+ * A coleta de órfãos do bucket (Fase 16, 16-10, 3.9.6) é do mesmo molde: só sobe por `COLETA_DE_ORFAOS_ATIVA === "true"`
+ * (desligada por padrão, e nos testes), roda uma vez por dia e só uma instância por vez (`pg_try_advisory_lock`).
+ *
  * O tempo real (Fase 16, 16-07, D-16-01) sobe aqui sempre, salvo `TEMPO_REAL_ATIVO=false`: o hub de eventos nasce antes
  * do `buildApp` (a rota `GET /eventos` o recebe) e o ouvinte `LISTEN crm_eventos` o alimenta. Na desmontagem os
  * fluxos SSE abertos fecham ANTES do `app.close()`, que senão pendura esperando as abas (e o systemd mata aos 20 s).
@@ -71,6 +74,7 @@ import { opcoesDoLogger } from "./observabilidade/log";
 import { fecharSentry, iniciarSentry } from "./observabilidade/sentry";
 import { carregarEnv, encerrar, pool } from "./persistencia/conexao";
 import { criarOutboxWorker } from "./persistencia/outbox-worker";
+import { criarColetaDeOrfaos } from "./mensageria/coleta-de-orfaos";
 import { criarWorkerDeSaida } from "./mensageria/entregar-mensagem";
 import { criarHubDeEventos } from "./mensageria/hub-de-eventos";
 import { criarOuvinteDoCrm } from "./mensageria/ouvinte-pg";
@@ -313,6 +317,20 @@ if (process.env.MENSAGERIA_WORKER_ATIVO === "true") {
   acordadores.saida = () => saida.acordar();
   aoEncerrar(() => saida.parar());
   app.log.info("worker de saída da mensageria ativo");
+}
+
+// Fase 16 (16-10): a coleta diária de órfãos do bucket (sessões de upload expiradas e mídia de `entrada/` sem Mensagem).
+// Desligada por padrão: só com `COLETA_DE_ORFAOS_ATIVA=true` e com o Storage configurado. A trava consultiva garante que duas
+// instâncias nunca coletem juntas; o registro leva só contagens.
+if (process.env.COLETA_DE_ORFAOS_ATIVA === "true") {
+  const coleta = criarColetaDeOrfaos({
+    registrar: (nivel, mensagem, dados) => {
+      app.log[nivel](dados ?? {}, mensagem);
+    },
+  });
+  coleta.iniciar();
+  aoEncerrar(() => coleta.parar());
+  app.log.info("coleta de órfãos ativa");
 }
 
 // Registrada ANTES do `listen`: se ele falhar (porta ocupada), a próxima

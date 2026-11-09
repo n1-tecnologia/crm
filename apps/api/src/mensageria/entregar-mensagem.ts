@@ -17,12 +17,18 @@
  *     outbox vira `failed/CANAL_DESCONECTADO` até o Canal voltar (o 16-06 reenfileira);
  *   - Mensagem que já não está `pendente` (uma corrida com "Tentar de novo"): não reenvia, a linha é `entregue`.
  *
+ * O anexo (16-10, 3.9.5): cada anexo `baixado` da Mensagem vai ao provedor por uma URL assinada NOVA do arquivo guardado
+ * (`EnvioAoProvedor.anexos`; documento com `download`, para nunca abrir no navegador). Um anexo `baixado: false` numa Mensagem
+ * enviada não deveria existir (o envio exige anexo confirmado): se aparecer, a Mensagem `falhou` sem chamar o provedor. Assinar
+ * acontece ANTES de a chamada sair, então a falha do bucket é transitória e nada foi enviado.
+ *
  * `motivo_falha` é sempre uma frase de produto ou o motivo do provedor passado por `sanitizarErro` (sem `apikey`,
  * sem Bearer, sem documento). Nada aqui loga conteúdo, telefone nem segredo.
  */
 
 import type { Pool, PoolClient } from "pg";
 import type { Canal } from "@n1/dominio/crm/canais";
+import { ehDocumento } from "@n1/dominio/crm/midia";
 import { pool as poolPadrao } from "../persistencia/conexao";
 import { EVENTOS } from "../persistencia/outbox";
 import {
@@ -37,11 +43,12 @@ import { criarRepositorioDeCanaisPg } from "../repositorios/crm/canais";
 import { criarRepositorioDeContatosPg } from "../repositorios/crm/contatos";
 import { criarRepositorioDeConversasPg } from "../repositorios/crm/conversas";
 import { criarRepositorioDeMensagensPg } from "../repositorios/crm/mensagens";
+import { armazenamentoDeAnexosPadrao, type ArmazenamentoDeAnexos } from "../servicos/armazenamento-de-anexos";
 import type { ChavesDoCofre } from "../servicos/cofre";
 import { identificadorDoCanal } from "../servicos/crm/conversas";
 import { relogioDoSistema, type Relogio } from "../testes/relogio";
 import { avisarCrm } from "./avisar";
-import { ErroDeProvedor, type EnvioAoProvedor } from "./provedor";
+import { ErroDeProvedor, type AnexoDoEnvio, type EnvioAoProvedor } from "./provedor";
 import { canalParaProvedor, provedorDoCanal, registroPadrao, type RegistroDeProvedores } from "./registro";
 
 export type { DesfechoDaEntrega };
@@ -53,6 +60,7 @@ export const FRASES_DA_SAIDA = {
   semResposta: "O provedor não respondeu depois de várias tentativas.",
   recusou: "O provedor recusou a Mensagem.",
   provedorNaoLigado: "O provedor deste Canal ainda não está ligado.",
+  arquivoIndisponivel: "O arquivo desta Mensagem não está disponível.",
 } as const;
 
 /** "O Contato não tem um WhatsApp para esta Conversa." — o rótulo segue o tipo do Canal. */
@@ -66,6 +74,8 @@ export interface DependenciasDoEntregador {
   readonly chaves?: ChavesDoCofre;
   readonly registro?: RegistroDeProvedores;
   readonly relogio?: Relogio;
+  /** O bucket dos anexos. Padrão: o do Supabase (só é tocado quando a Mensagem leva anexo); os testes injetam o falso. */
+  readonly armazenamento?: ArmazenamentoDeAnexos;
 }
 
 const permanente = (code: string, summary: string): DesfechoDaEntrega => ({ desfecho: "desistir", erro: { code, summary } });
@@ -77,6 +87,7 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
   const pool = deps.pool ?? poolPadrao;
   const registro = deps.registro ?? registroPadrao();
   const relogio = deps.relogio ?? relogioDoSistema;
+  const armazenamento = deps.armazenamento ?? armazenamentoDeAnexosPadrao();
 
   /**
    * Uma transação no cliente do pool: o desfecho da entrega e o aviso ao tempo real (16-07) saem juntos, e a aba só é
@@ -151,6 +162,11 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
     const destino = identificadorDoCanal(await contatos.listarIdentificadores(workspaceId, conversa.contatoId), canal);
     if (!destino.ok) return recusarEnvio(workspaceId, mensagem.id, semIdentificador(canal), "CONTATO_SEM_IDENTIFICADOR_DO_CANAL");
 
+    // 16-10: o envio exige anexo confirmado e guardado; um `baixado: false` aqui é dado inconsistente, e nada sai.
+    if (mensagem.anexos.some((anexo) => !anexo.baixado || !anexo.objectKey)) {
+      return recusarEnvio(workspaceId, mensagem.id, FRASES_DA_SAIDA.arquivoIndisponivel, "ANEXO_INDISPONIVEL");
+    }
+
     const respondida = mensagem.emRespostaAId ? await mensagens.obter(workspaceId, mensagem.emRespostaAId) : undefined;
     const envio: EnvioAoProvedor = {
       mensagemId: mensagem.id,
@@ -174,11 +190,28 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
         : { desfecho: "tentar_de_novo", erro: sanitizarErro(erro, "ERRO_DA_ENTREGA") };
     }
 
+    // 16-10 / 3.9.5: a URL assinada de cada anexo, NOVA a cada tentativa (vale poucos minutos). Antes do `enviar`: uma falha do
+    // bucket aqui é transitória e nada foi enviado. A mensagem do erro do bucket pode citar a chave do objeto: não sobe.
+    let anexosDoEnvio: AnexoDoEnvio[] = [];
+    try {
+      anexosDoEnvio = await Promise.all(
+        mensagem.anexos.map(async (anexo): Promise<AnexoDoEnvio> => {
+          const url = await armazenamento.urlAssinada(anexo.objectKey!, ehDocumento(anexo.tipoDeMidia) ? { download: anexo.nome } : undefined);
+          return { urlAssinada: url.downloadUrl, tipoDeMidia: anexo.tipoDeMidia, nome: anexo.nome };
+        }),
+      );
+    } catch {
+      return ultimaTentativa
+        ? recusarEnvio(workspaceId, mensagem.id, FRASES_DA_SAIDA.semResposta, "ARMAZENAMENTO_INDISPONIVEL")
+        : { desfecho: "tentar_de_novo", erro: { code: "ARMAZENAMENTO_INDISPONIVEL", summary: "O arquivo não pôde ser preparado para o envio." } };
+    }
+    const envioComAnexos: EnvioAoProvedor = anexosDoEnvio.length > 0 ? { ...envio, anexos: anexosDoEnvio } : envio;
+
     // Dentro do `enviar`: os provedores devolvem `ambiguo` quando podem ter enviado. Uma exceção que escapou de lá
     // não diz se saiu, então vale como ambígua: nunca reenvia sozinha (T-16-16).
     let resultado;
     try {
-      resultado = await provedor.enviar(paraOProvedor, envio);
+      resultado = await provedor.enviar(paraOProvedor, envioComAnexos);
     } catch {
       return recusarEnvio(workspaceId, mensagem.id, FRASES_DA_SAIDA.semConfirmacao, "ERRO_NO_ENVIO");
     }
