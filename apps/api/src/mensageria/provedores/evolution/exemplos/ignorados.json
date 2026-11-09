@@ -1,0 +1,256 @@
+[
+  {
+    "caso": "fromMe",
+    "motivo": "fromMe",
+    "corpo": {
+      "event": "messages.upsert",
+      "instance": "inst-teste",
+      "data": {
+        "key": {
+          "remoteJid": "5511987654321@s.whatsapp.net",
+          "fromMe": true,
+          "id": "3EB0A1B2C3D4E5F60010"
+        },
+        "pushName": "Ana Teste",
+        "status": "DELIVERY_ACK",
+        "message": {
+          "conversation": "enviada pelo celular"
+        },
+        "messageType": "conversation",
+        "messageTimestamp": 1731150000,
+        "instanceId": "00000000-0000-4000-8000-000000000001",
+        "source": "android"
+      },
+      "destination": "https://api.exemplo.test/webhooks/mensageria/canal_exemplo",
+      "date_time": "2024-11-09T08:00:00.000Z",
+      "sender": "5511977770001@s.whatsapp.net",
+      "server_url": "https://evolution.exemplo.test",
+      "apikey": null
+    }
+  },
+  {
+    "caso": "grupo",
+    "motivo": "grupo",
+    "corpo": {
+      "event": "messages.upsert",
+      "instance": "inst-teste",
+      "data": {
+        "key": {
+          "remoteJid": "120363000000000001@g.us",
+          "fromMe": false,
+          "id": "3EB0A1B2C3D4E5F60011",
+          "participant": "5511987654322@s.whatsapp.net"
+        },
+        "pushName": "Ana Teste",
+        "status": "DELIVERY_ACK",
+        "message": {
+          "conversation": "oi, grupo"
+        },
+        "messageType": "conversation",
+        "messageTimestamp": 1731150000,
+        "instanceId": "00000000-0000-4000-8000-000000000001",
+        "source": "android"
+      },
+      "destination": "https://api.exemplo.test/webhooks/mensageria/canal_exemplo",
+      "date_time": "2024-11-09T08:00:00.000Z",
+      "sender": "5511977770001@s.whatsapp.net",
+      "server_url": "https://evolution.exemplo.test",
+      "apikey": null
+    }
+  },
+  {
+    "caso": "status",
+    "motivo": "status",
+    "corpo": {
+      "event": "messages.upsert",
+      "instance": "inst-teste",
+      "data": {
+        "key": {
+          "remoteJid": "status@broadcast",
+          "fromMe": false,
+          "id": "3EB0A1B2C3D4E5F60012"
+        },
+        "pushName": "Ana Teste",
+        "status": "DELIVERY_ACK",
+        "message": {
+          "imageMessage": {
+            "mimetype": "image/jpeg"
+          }
+        },
+        "messageType": "imageMessage",
+        "messageTimestamp": 1731150000,
+        "instanceId": "00000000-0000-4000-8000-000000000001",
+        "source": "android"
+      },
+      "destination": "https://api.exemplo.test/webhooks/mensageria/canal_exemplo",
+      "date_time": "2024-11-09T08:00:00.000Z",
+      "sender": "5511977770001@s.whatsapp.net",
+      "server_url": "https://evolution.exemplo.test",
+      "apikey": null
+    }
+  },
+  {
+    "caso": "@lid sem remoteJidAlt",
+    "motivo": "sem_numero",
+    "corpo": {
+      "event": "messages.upsert",
+      "instance": "inst-teste",
+      "data": {
+        "key": {
+          "remoteJid": "271828182845904@lid",
+          "fromMe": false,
+          "id": "3EB0A1B2C3D4E5F60013"
+        },
+        "pushName": "Ana Teste",
+        "status": "DELIVERY_ACK",
+        "message": {
+          "conversation": "oi"
+        },
+        "messageType": "conversation",
+        "messageTimestamp": 1731150000,
+        "instanceId": "00000000-0000-4000-8000-000000000001",
+        "source": "android"
+      },
+      "destination": "https://api.exemplo.test/webhooks/mensageria/canal_exemplo",
+      "date_time": "2024-11-09T08:00:00.000Z",
+      "sender": "5511977770001@s.whatsapp.net",
+      "server_url": "https://evolution.exemplo.test",
+      "apikey": null
+    }
+  },
+  {
+    "caso": "@lid com remoteJidAlt numérico (não é ignorado: vira mensagem do número do Alt)",
+    "motivo": null,
+    "numero": "+5511987654322",
+    "corpo": {
+      "event": "messages.upsert",
+      "instance": "inst-teste",
+      "data": {
+        "key": {
+          "remoteJid": "271828182845904@lid",
+          "fromMe": false,
+          "id": "3EB0A1B2C3D4E5F60017",
+          "remoteJidAlt": "5511987654322@s.whatsapp.net"
+        },
+        "pushName": "Ana Teste",
+        "status": "DELIVERY_ACK",
+        "message": {
+          "conversation": "oi pelo lid"
+        },
+        "messageType": "conversation",
+        "messageTimestamp": 1731150000,
+        "instanceId": "00000000-0000-4000-8000-000000000001",
+        "source": "android"
+      },
+      "destination": "https://api.exemplo.test/webhooks/mensageria/canal_exemplo",
+      "date_time": "2024-11-09T08:00:00.000Z",
+      "sender": "5511977770001@s.whatsapp.net",
+      "server_url": "https://evolution.exemplo.test",
+      "apikey": null
+    }
+  },
+  {
+    "caso": "reacao",
+    "motivo": "reacao",
+    "corpo": {
+      "event": "messages.upsert",
+      "instance": "inst-teste",
+      "data": {
+        "key": {
+          "remoteJid": "5511987654321@s.whatsapp.net",
+          "fromMe": false,
+          "id": "3EB0A1B2C3D4E5F60014"
+        },
+        "pushName": "Ana Teste",
+        "status": "DELIVERY_ACK",
+        "message": {
+          "reactionMessage": {
+            "key": {
+              "remoteJid": "5511987654321@s.whatsapp.net",
+              "fromMe": true,
+              "id": "3EB0AA"
+            },
+            "text": "👍"
+          }
+        },
+        "messageType": "reactionMessage",
+        "messageTimestamp": 1731150000,
+        "instanceId": "00000000-0000-4000-8000-000000000001",
+        "source": "android"
+      },
+      "destination": "https://api.exemplo.test/webhooks/mensageria/canal_exemplo",
+      "date_time": "2024-11-09T08:00:00.000Z",
+      "sender": "5511977770001@s.whatsapp.net",
+      "server_url": "https://evolution.exemplo.test",
+      "apikey": null
+    }
+  },
+  {
+    "caso": "edicao ou revogacao",
+    "motivo": "edicao",
+    "corpo": {
+      "event": "messages.upsert",
+      "instance": "inst-teste",
+      "data": {
+        "key": {
+          "remoteJid": "5511987654321@s.whatsapp.net",
+          "fromMe": false,
+          "id": "3EB0A1B2C3D4E5F60015"
+        },
+        "pushName": "Ana Teste",
+        "status": "DELIVERY_ACK",
+        "message": {
+          "protocolMessage": {
+            "key": {
+              "remoteJid": "5511987654321@s.whatsapp.net",
+              "fromMe": false,
+              "id": "3EB0A1B2C3D4E5F60001"
+            },
+            "type": "REVOKE"
+          }
+        },
+        "messageType": "protocolMessage",
+        "messageTimestamp": 1731150000,
+        "instanceId": "00000000-0000-4000-8000-000000000001",
+        "source": "android"
+      },
+      "destination": "https://api.exemplo.test/webhooks/mensageria/canal_exemplo",
+      "date_time": "2024-11-09T08:00:00.000Z",
+      "sender": "5511977770001@s.whatsapp.net",
+      "server_url": "https://evolution.exemplo.test",
+      "apikey": null
+    }
+  },
+  {
+    "caso": "localizacao (tipo sem suporte)",
+    "motivo": "tipo:locationMessage",
+    "corpo": {
+      "event": "messages.upsert",
+      "instance": "inst-teste",
+      "data": {
+        "key": {
+          "remoteJid": "5511987654321@s.whatsapp.net",
+          "fromMe": false,
+          "id": "3EB0A1B2C3D4E5F60016"
+        },
+        "pushName": "Ana Teste",
+        "status": "DELIVERY_ACK",
+        "message": {
+          "locationMessage": {
+            "degreesLatitude": -23.55,
+            "degreesLongitude": -46.63
+          }
+        },
+        "messageType": "locationMessage",
+        "messageTimestamp": 1731150000,
+        "instanceId": "00000000-0000-4000-8000-000000000001",
+        "source": "android"
+      },
+      "destination": "https://api.exemplo.test/webhooks/mensageria/canal_exemplo",
+      "date_time": "2024-11-09T08:00:00.000Z",
+      "sender": "5511977770001@s.whatsapp.net",
+      "server_url": "https://evolution.exemplo.test",
+      "apikey": null
+    }
+  }
+]
