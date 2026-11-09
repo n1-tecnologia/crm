@@ -914,7 +914,7 @@ Plans:
 **Ajuste (D-16-04):** a fase inclui um adaptador mínimo da Evolution (fronteira em `COVERAGE.md`) e uma prova ao vivo com a instância do dono; o "Pronto quando" da fase passa a ter as duas partes de `16-CONTEXT.md` (provedor de teste nos testes automáticos; WhatsApp real ao vivo).
 **Requirements**: MSG-01 a MSG-06 (IDs locais da fase, definidos em `16-CONTEXT.md` `<domain>`)
 **Depends on:** Phase 15 (a ordem do plano: unificar o CRM primeiro, mensageria depois)
-**Plans:** 3/16 plans executed (14 ondas; 16-15 e 16-16 têm checkpoints do dono — pré-voo, publicação, prova ao vivo e a decisão do áudio; nenhum plano autônomo toca produção)
+**Plans:** 4/16 plans executed (14 ondas; 16-15 e 16-16 têm checkpoints do dono — pré-voo, publicação, prova ao vivo e a decisão do áudio; nenhum plano autônomo toca produção)
 
 Plans:
 
@@ -928,7 +928,7 @@ Plans:
 - [x] 16-03-PLAN.md — 3.6.3 + 3.6.4: migração `013`, `POST /webhooks/mensageria/:canalId`, processador de entrada
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 16-04-PLAN.md — 3.7.1: `mensagem.enviar.v1` na mesma transação nos três pontos; worker antigo sem `mensagem.%`
+- [x] 16-04-PLAN.md — 3.7.1: `mensagem.enviar.v1` na mesma transação nos três pontos; worker antigo sem `mensagem.%`
 
 **Wave 5** *(blocked on Wave 4 completion)*
 - [ ] 16-05-PLAN.md — 3.7.2: worker de saída entrega pelo provedor; tentativas sem duplicar

@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 16
 current_phase_name: "Base da mensageria: entrada, saída, tempo real e mídia"
 status: executing
-stopped_at: Completed 16-03-PLAN.md
-last_updated: "2026-11-09T17:36:22.016Z"
+stopped_at: Completed 16-04-PLAN.md
+last_updated: "2026-11-09T17:44:49.297Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 16 execution started
-state_head: 28f2608ad443b4298aa245d213c37c2de4450fb2
+state_head: 103c69cdcb4aa53f8252d45826036b8fa0a26711
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 288
-  completed_plans: 272
+  completed_plans: 273
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 16 (Base da mensageria: entrada, saída, tempo real e mídia) — EXECUTING
-Plan: 4 of 16
+Plan: 5 of 16
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 16 execution started
 
@@ -493,6 +493,7 @@ Progress: [██████░░░░] 63%
 | Phase 16 P01 | 8 min | 3 tasks | 11 files |
 | Phase 16 P02 | 7 min | 3 tasks | 11 files |
 | Phase 16 P03 | 9 min | 3 tasks | 12 files |
+| Phase 16 P04 | 9 min | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -814,6 +815,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 16]: Recusa 4xx do recebimento e permanente (falhou com o codigo); excecao e transitoria com backoff ate 8 tentativas
 - [Phase 16]: Canal arquivado depois da chamada e recusado pelo processador sem passar pelo registro de provedores
 - [Phase 16]: Falha do banco no webhook apos a verificacao sobe como 500 (o provedor reenvia), nunca como 401
+- [Phase 16]: 16-04: o worker do outbox do automation exclui mensagem.% por padrao; o entregador da mensageria (16-05) deve pedir tiposDeEvento: [mensagem.enviar.v1]
+- [Phase 16]: 16-04: statusInicialDeEnvio sempre pendente; so o provedor passa a Mensagem a enviada (aggregate_type mensagem, aggregate_id = mensagemId)
 
 ### Pending Todos
 
@@ -875,6 +878,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-09T17:36:21.769Z
-Stopped at: Completed 16-03-PLAN.md
+Last session: 2026-11-09T17:44:49.007Z
+Stopped at: Completed 16-04-PLAN.md
 Resume file: None
