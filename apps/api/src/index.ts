@@ -26,7 +26,9 @@
  * `plataforma.automacao_agenda`), não deste arquivo.
  *
  * O processador da fila de entrada da mensageria (Fase 16, 16-03) é do mesmo molde: só sobe aqui por
- * `MENSAGERIA_WORKER_ATIVO === "true"`, e a rota `POST /webhooks/mensageria/:canalId` o acorda depois do 200.
+ * `MENSAGERIA_WORKER_ATIVO === "true"`, e a rota `POST /webhooks/mensageria/:canalId` o acorda depois do 200. A saída
+ * (Fase 16, 16-05, `criarWorkerDeSaida`) sobe junto, pela mesma variável: um segundo worker do outbox só com
+ * `mensagem.enviar.v1`.
  *
  * A ponte do Agente (Plan 03-11, `automacoes/invocar-agente.ts`) segue a
  * MESMA separação e é a terceira peça do mesmo molde: não conhece
@@ -65,6 +67,7 @@ import { opcoesDoLogger } from "./observabilidade/log";
 import { fecharSentry, iniciarSentry } from "./observabilidade/sentry";
 import { carregarEnv, encerrar } from "./persistencia/conexao";
 import { criarOutboxWorker } from "./persistencia/outbox-worker";
+import { criarWorkerDeSaida } from "./mensageria/entregar-mensagem";
 import { criarProcessadorDeEntrada } from "./mensageria/processador-de-entrada";
 import { criarSchedulerWorker, escopoDoAgendador } from "./automacoes/scheduler-worker";
 import {
@@ -104,10 +107,11 @@ const sentryAtivo = iniciarSentry();
 const porta = Number(process.env.PORT ?? 3002);
 const host = process.env.HOST ?? "127.0.0.1";
 
-// O acordador do processador de entrada da mensageria, por referência: a rota do webhook nasce em `buildApp`,
-// antes de o processador existir (e ele só existe com `MENSAGERIA_WORKER_ATIVO=true`). Sem o processador, a rota
-// só grava na fila e o acordador é um no-op.
-const acordadores = { entrada: () => {} };
+// Os acordadores da mensageria, por referência: a rota do webhook nasce em `buildApp`, antes de o processador de
+// entrada existir (e ele só existe com `MENSAGERIA_WORKER_ATIVO=true`). Sem o processador, a rota só grava na fila
+// e o acordador é um no-op. `saida` acorda o worker de saída logo depois do commit de uma Mensagem (o ouvinte do
+// tempo real, 16-07, o chama); até lá vale o intervalo de reserva de 5 s.
+const acordadores = { entrada: () => {}, saida: () => {} };
 
 const app = buildApp({
   logger: opcoesDoLogger(),
@@ -257,6 +261,19 @@ if (process.env.MENSAGERIA_WORKER_ATIVO === "true") {
   acordadores.entrada = () => processador.acordar();
   aoEncerrar(() => processador.parar());
   app.log.info("processador de entrada da mensageria ativo");
+
+  // 16-05: a saída. O worker do outbox só com `mensagem.enviar.v1`, entregando pelo provedor do Canal (nunca pelo
+  // `automation/`), ao lado do processador de entrada e ligado pela MESMA variável.
+  const saida = criarWorkerDeSaida({
+    workerId: process.env.MENSAGERIA_WORKER_ID ? `${process.env.MENSAGERIA_WORKER_ID}-saida` : `apps-api-saida-${process.pid}`,
+    registrar: (nivel, mensagem, dados) => {
+      app.log[nivel](dados ?? {}, mensagem);
+    },
+  });
+  saida.iniciar();
+  acordadores.saida = () => saida.acordar();
+  aoEncerrar(() => saida.parar());
+  app.log.info("worker de saída da mensageria ativo");
 }
 
 // Registrada ANTES do `listen`: se ele falhar (porta ocupada), a próxima
