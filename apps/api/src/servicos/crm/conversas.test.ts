@@ -98,12 +98,23 @@ describeComBanco("ServicoDeConversas — Postgres local", () => {
   });
 
   afterAll(async () => {
+    // `integration_outbox` não tem FK para o Espaço: as linhas de `mensagem.enviar.v1` saem por aqui.
+    await pool().query("delete from plataforma.integration_outbox where workspace_id = any($1::text[])", [espacos]);
     for (const ws of espacos) await limparEspaco(ws);
     await encerrar();
   });
 
+  /** As linhas de `mensagem.enviar.v1` do Espaço (a fila de saída da 16-04). */
+  const filaDeSaida = async (ws: string) =>
+    (
+      await pool().query<{ aggregate_id: string; event_type: string; status: string }>(
+        "select aggregate_id, event_type, status from plataforma.integration_outbox where workspace_id = $1 and event_type = 'mensagem.enviar.v1' order by created_at, id",
+        [ws],
+      )
+    ).rows;
+
   describe("criar", () => {
-    it("a mesma Ana abre Conversa nos dois WhatsApps: enviada no conectado, pendente no desconectado", async () => {
+    it("a mesma Ana abre Conversa nos dois WhatsApps: pendente nos dois, com linha na fila só no conectado (B69, 3.7.1)", async () => {
       const c = await espaco("doisws");
       const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966660001" }]);
       const canalA = await comercial(c.ws);
@@ -121,7 +132,7 @@ describeComBanco("ServicoDeConversas — Postgres local", () => {
         conversaId: a.conversa.id,
         canalId: canalA,
         direcao: "enviada",
-        statusEntrega: "enviada",
+        statusEntrega: "pendente",
         conteudo: "Oi, Ana",
         ator: { tipo: "member", id: "mem_ana" },
       });
@@ -131,6 +142,9 @@ describeComBanco("ServicoDeConversas — Postgres local", () => {
       expect(b.primeiraMensagem.statusEntrega).toBe("pendente");
       expect(b.primeiraMensagem.statusEntregaEm).not.toBeNull();
       expect(b.conversa.id).not.toBe(a.conversa.id);
+
+      // Só o Canal conectado enfileira; o desconectado guarda a Mensagem sem linha (B69).
+      expect(await filaDeSaida(c.ws)).toEqual([{ aggregate_id: a.primeiraMensagem.id, event_type: "mensagem.enviar.v1", status: "pending" }]);
     });
 
     it("a 2ª Conversa aberta do par → 409 CONVERSA_JA_ABERTA apontando a existente, sem gravar Mensagem", async () => {

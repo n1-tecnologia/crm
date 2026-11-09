@@ -206,7 +206,7 @@ describeComBanco("rotas de Mensagens — serviço real, Postgres local", () => {
     expect(resposta.body).not.toContain("dado pessoal do provedor");
   });
 
-  it("POST /mensagens enviada no oficial dentro da janela responde 201 sem carga bruta", async () => {
+  it("POST /mensagens enviada no oficial dentro da janela responde 201 pendente (só o provedor diz que saiu), sem carga bruta", async () => {
     const resposta = await app().inject({
       method: "POST",
       url: "/mensagens",
@@ -214,7 +214,7 @@ describeComBanco("rotas de Mensagens — serviço real, Postgres local", () => {
       payload: { conversaId: ids.comercial.conversaId, direcao: "enviada", conteudo: "Bom dia" },
     });
     expect(resposta.statusCode).toBe(201);
-    expect(resposta.json()).toMatchObject({ ok: true, dados: { direcao: "enviada", statusEntrega: "enviada", ator: { tipo: "member", id: "mem_maryane" } } });
+    expect(resposta.json()).toMatchObject({ ok: true, dados: { direcao: "enviada", statusEntrega: "pendente", ator: { tipo: "member", id: "mem_maryane" } } });
     expect(resposta.body).not.toContain("argaBruta");
     expect(resposta.body).not.toContain("arga_bruta");
   });

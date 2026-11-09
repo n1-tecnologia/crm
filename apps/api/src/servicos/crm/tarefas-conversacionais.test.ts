@@ -144,9 +144,20 @@ describeComBanco("ServicoDeTarefasConversacionais — Postgres local", () => {
   });
 
   afterAll(async () => {
+    // `integration_outbox` não tem FK para o Espaço: as linhas de `mensagem.enviar.v1` saem por aqui.
+    await pool().query("delete from plataforma.integration_outbox where workspace_id = any($1::text[])", [espacos]);
     for (const ws of espacos) await limparEspaco(ws);
     await encerrar();
   });
+
+  /** As linhas de `mensagem.enviar.v1` do Espaço (a fila de saída da 16-04): `aggregate_id` é o id da Mensagem. */
+  const filaDeSaida = async (ws: string) =>
+    (
+      await pool().query<{ aggregate_id: string }>(
+        "select aggregate_id from plataforma.integration_outbox where workspace_id = $1 and event_type = 'mensagem.enviar.v1' order by created_at, id",
+        [ws],
+      )
+    ).rows.map((l) => l.aggregate_id);
 
   describe("criar", () => {
     it("sem Conversa aberta: +1 Conversa e +1 Mensagem nas tabelas, 0 Conversas em registros, e os Vínculos da Tarefa apontam para os ids das tabelas", async () => {
@@ -171,6 +182,10 @@ describeComBanco("ServicoDeTarefasConversacionais — Postgres local", () => {
       expect(vinculos).toEqual(expect.arrayContaining([{ toType: "contact", toId: marina }, { toType: "conversation", toId: criada.conversa.id }]));
       const { rows } = await pool().query<{ conteudo: string; direcao: string }>("select conteudo, direcao from plataforma.mensagens where workspace_id = $1", [e.ws]);
       expect(rows).toEqual([{ conteudo: "Olá, tudo bem?", direcao: "enviada" }]);
+      // 3.7.1: a primeira Mensagem da Conversa que a Tarefa abriu nasce pendente com a sua linha na fila de saída.
+      const primeira = await pool().query<{ id: string; status_entrega: string }>("select id, status_entrega from plataforma.mensagens where workspace_id = $1", [e.ws]);
+      expect(primeira.rows[0]?.status_entrega).toBe("pendente");
+      expect(await filaDeSaida(e.ws)).toEqual([primeira.rows[0]!.id]);
       // A resposta sai pelo recorte de POST /operacoes: traz a diferença e a sequência de ids.
       expect(typeof criada.sequencia).toBe("number");
       expect(criada.diferenca).toBeDefined();
@@ -325,6 +340,8 @@ describeComBanco("ServicoDeTarefasConversacionais — Postgres local", () => {
       expect(await criarRepositorioDeConversasPg(pool()).obter(e.ws, doWhatsapp)).toMatchObject({ situacao: "aberta", estado: "ativo", canalId: e.canal });
       const { rows } = await pool().query<{ conteudo: string }>("select conteudo from plataforma.mensagens where workspace_id = $1 and conversa_id = $2", [e.ws, r.conversa.id]);
       expect(rows).toEqual([{ conteudo: "Escrevo por e-mail também." }]);
+      // A Mensagem que abre a Conversa do Canal novo também entra na fila (o mesmo `abrirConversaNoCliente`).
+      expect(await filaDeSaida(e.ws)).toHaveLength(2);
     });
 
     it("o Contato já tem Conversa aberta no Canal novo: reaproveita, sem Conversa nem Mensagem nova (a Mensagem do corpo é ignorada)", async () => {

@@ -99,7 +99,7 @@ interface CanalHttp {
 
 interface ConversaCriada {
   conversa: { id: string };
-  primeiraMensagem: { statusEntrega: string | null };
+  primeiraMensagem: { id: string; statusEntrega: string | null };
 }
 
 interface MensagemHttp {
@@ -132,6 +132,15 @@ describeComBanco("Fase 8 ponta a ponta: dois WhatsApps lado a lado, pelo HTTP, c
     return Number(r.rows[0]?.n ?? 0);
   }
 
+  /** Os ids das Mensagens com linha `mensagem.enviar.v1` na fila de saída do Espaço (16-04), na ordem de criação. */
+  async function filaDeSaida(workspaceId: string): Promise<string[]> {
+    const r = await pool().query<{ aggregate_id: string }>(
+      "select aggregate_id from plataforma.integration_outbox where workspace_id = $1 and event_type = 'mensagem.enviar.v1' order by created_at, id",
+      [workspaceId],
+    );
+    return r.rows.map((l) => l.aggregate_id);
+  }
+
   let canaisDoSeed: number;
   let comercialId: string;
   let suporteId: string;
@@ -155,6 +164,8 @@ describeComBanco("Fase 8 ponta a ponta: dois WhatsApps lado a lado, pelo HTTP, c
   });
 
   afterAll(async () => {
+    // `integration_outbox` não tem FK para o Espaço: as linhas de `mensagem.enviar.v1` saem por aqui.
+    await pool().query("delete from plataforma.integration_outbox where workspace_id = any($1::text[])", [[espacoA, espacoB]]);
     await limparEspaco(espacoA);
     await limparEspaco(espacoB);
     await encerrar();
@@ -245,7 +256,8 @@ describeComBanco("Fase 8 ponta a ponta: dois WhatsApps lado a lado, pelo HTTP, c
     });
     expect(noComercial.status).toBe(201);
     const cc = dados<ConversaCriada>(noComercial.corpo);
-    expect(cc.primeiraMensagem.statusEntrega).toBe("enviada");
+    expect(cc.primeiraMensagem.statusEntrega).toBe("pendente");
+    expect(await filaDeSaida(espacoA)).toEqual([cc.primeiraMensagem.id]);
     conversaComercialId = cc.conversa.id;
 
     const noSuporte = await chamar("POST", "/conversas", MEMBRO, {
@@ -255,7 +267,8 @@ describeComBanco("Fase 8 ponta a ponta: dois WhatsApps lado a lado, pelo HTTP, c
     });
     expect(noSuporte.status).toBe(201);
     const cs = dados<ConversaCriada>(noSuporte.corpo);
-    expect(cs.primeiraMensagem.statusEntrega).toBe("enviada");
+    expect(cs.primeiraMensagem.statusEntrega).toBe("pendente");
+    expect(await filaDeSaida(espacoA)).toHaveLength(2);
     conversaSuporteId = cs.conversa.id;
     expect(conversaSuporteId).not.toBe(conversaComercialId);
 
@@ -301,7 +314,9 @@ describeComBanco("Fase 8 ponta a ponta: dois WhatsApps lado a lado, pelo HTTP, c
       conteudo: "Texto livre, sem janela.",
     });
     expect(naoOficial.status).toBe(201);
-    expect(dados<MensagemHttp>(naoOficial.corpo).statusEntrega).toBe("enviada");
+    // 3.7.1: nasce pendente e entra na fila; só o provedor a passa a `enviada`.
+    expect(dados<MensagemHttp>(naoOficial.corpo).statusEntrega).toBe("pendente");
+    expect(await filaDeSaida(espacoA)).toHaveLength(3);
 
     const fio = await chamar("GET", `/mensagens?conversaId=${conversaSuporteId}`, MEMBRO);
     expect(fio.status).toBe(200);
@@ -324,6 +339,8 @@ describeComBanco("Fase 8 ponta a ponta: dois WhatsApps lado a lado, pelo HTTP, c
     });
     expect(enviada.status).toBe(201);
     expect(dados<MensagemHttp>(enviada.corpo).statusEntrega).toBe("pendente");
+    // Canal fora do ar: a Mensagem é guardada e nenhuma linha nova entra na fila (nada é descartado nem enfileirado).
+    expect(await filaDeSaida(espacoA)).toHaveLength(3);
   });
 
   it("(i) um Membro de OUTRO Espaço recebe 404 no Canal, na Conversa e na Mensagem, e lista vazia (T-08-50)", async () => {
