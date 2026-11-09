@@ -56,12 +56,38 @@ export interface EntradaDoDestino {
   readonly agora: number;
 }
 
-export function destinoDaRecebida(_entrada: EntradaDoDestino): DestinoDaRecebida {
+/**
+ * RN-CXE-09: a Conversa aberta ou pendente do par recebe a Mensagem (a pendente volta a aberta); sem
+ * ela, a última resolvida reabre se ainda cabe na janela do Espaço, senão abre-se outra. Uma Conversa
+ * na lixeira nunca reabre (`conversas_lixeira_ck`: a lixeira só guarda resolvidas). A conta é a de
+ * `receiveMessage` do modelo antigo: `agora - resolvidaEm <= horas * 3_600_000`.
+ */
+export function destinoDaRecebida(entrada: EntradaDoDestino): DestinoDaRecebida {
+  const { aberta, ultimaResolvida, janelaDeReaberturaHoras, agora } = entrada;
+  if (aberta) return { acao: "usar", conversaId: aberta.id, voltaParaAberta: aberta.situacao === "pendente" };
+  if (ultimaResolvida && !ultimaResolvida.naLixeira) {
+    const resolvidaEm = Date.parse(ultimaResolvida.resolvidaEm);
+    if (!Number.isNaN(resolvidaEm) && agora - resolvidaEm <= janelaDeReaberturaHoras * 3_600_000) {
+      return { acao: "reabrir", conversaId: ultimaResolvida.id };
+    }
+  }
   return { acao: "abrir" };
 }
 
 export type AcaoSobreOContato = { readonly acao: "manter" } | { readonly acao: "reativar" } | { readonly acao: "recusar" };
 
-export function contatoDaRecebida(_estado: EstadoDoContato): AcaoSobreOContato {
-  return { acao: "manter" };
+/**
+ * RN-CON-13: quem escreve volta à ativa. Arquivado e na lixeira reativam; o mesclado é recusado: o
+ * Identificador dele vive no sobrevivente, então a Mensagem nunca deveria chegar a ele.
+ */
+export function contatoDaRecebida(estado: EstadoDoContato): AcaoSobreOContato {
+  switch (estado) {
+    case "ativo":
+      return { acao: "manter" };
+    case "arquivado":
+    case "na_lixeira":
+      return { acao: "reativar" };
+    case "mesclado":
+      return { acao: "recusar" };
+  }
 }

@@ -35,9 +35,11 @@ export interface LinhaNovaDeConversa {
   readonly contatoId: string;
   readonly titulo: string;
   readonly filaId: string | null;
-  readonly atribuido: { readonly tipo: "membro"; readonly id: string };
+  /** `null` quando ninguém atende ainda: a Conversa que o provedor abre (3.6.2) nasce sem atribuído. */
+  readonly atribuido: { readonly tipo: "membro"; readonly id: string } | null;
   readonly participantes: readonly ParticipanteDaConversa[];
-  readonly criadoPor: { readonly tipo: "member"; readonly id: string };
+  /** `integration` é a Conversa aberta pelo recebimento (o Canal como Integração). */
+  readonly criadoPor: { readonly tipo: "member" | "integration"; readonly id: string };
 }
 
 export interface RepositorioDeConversas {
@@ -158,8 +160,8 @@ export function criarRepositorioDeConversasPg(cliente: Pool | PoolClient): Repos
           linha.contatoId,
           linha.titulo,
           linha.filaId,
-          linha.atribuido.tipo,
-          linha.atribuido.id,
+          linha.atribuido?.tipo ?? null,
+          linha.atribuido?.id ?? null,
           JSON.stringify(linha.participantes),
           linha.criadoPor.tipo,
           linha.criadoPor.id,
