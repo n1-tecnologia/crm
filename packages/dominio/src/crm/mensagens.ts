@@ -185,3 +185,18 @@ export function validarEnvio(entrada: EntradaDeEnvio): OperationResult<void> {
 export function statusInicialDeEnvio(_conexao: ConexaoDoCanal): StatusDeEntrega {
   return "pendente";
 }
+
+/**
+ * 3.6.5, MSG-02: o status de entrega que o provedor informa SÓ avança. A ordem é
+ * `pendente` < `enviada` < `entregue` < `lida`; um `entregue` que chega depois de um `lida` (a rede não garante a
+ * ordem) deixa a Mensagem `lida`: ela nunca parece menos entregue do que já foi. `falhou` só vale a partir de
+ * `pendente` ou `enviada` (uma Mensagem que o destinatário já recebeu não "falha"), e nada sai de `falhou` por
+ * um status do provedor: quem tira uma Mensagem de `falhou` é a pessoa, por "Tentar de novo".
+ *
+ * `atual = null` é a Mensagem que não tem status de entrega (`recebida`, `interna`): o status do provedor não se
+ * aplica e a resposta é `null`. Devolve o próprio `atual` quando o novo não avança, para quem chama comparar.
+ */
+export function proximoStatusDeEntrega(atual: StatusDeEntrega | null, novo: StatusDeEntrega): StatusDeEntrega | null {
+  void novo;
+  return atual;
+}

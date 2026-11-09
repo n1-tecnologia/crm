@@ -13,6 +13,9 @@
 import { randomBytes } from "node:crypto";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { encerrar, pool } from "../persistencia/conexao";
+import { criarRepositorioDeContatosPg } from "../repositorios/crm/contatos";
+import { criarRepositorioDeConversasPg } from "../repositorios/crm/conversas";
+import { criarRepositorioDeMensagensPg } from "../repositorios/crm/mensagens";
 import { guardarCredencial, type ChavesDoCofre } from "../servicos/cofre";
 import { criarServicoDeRecebimento, type ServicoDeRecebimento } from "../servicos/crm/recebimento";
 import { recusa } from "../servicos/crm/resultado";
@@ -58,6 +61,40 @@ describeComBanco("processador da fila de entrada — Postgres local", () => {
     await guardarCredencial(pool(), chaves, { workspaceId: ws, donoTipo: "canal", donoId: canalId, tipo: TIPO_DO_SEGREDO_DO_WEBHOOK, segredo: "s1" });
     return { ws, canalId };
   }
+
+  /** Uma Mensagem `enviada` que o provedor já aceitou (`enviada`, com `id_externo`), numa Conversa nova do Canal. */
+  async function mensagemEnviada(c: { ws: string; canalId: string }, idExterno: string): Promise<string> {
+    const contato = await criarRepositorioDeContatosPg(pool()).inserir(c.ws, { nome: "Ana", proprietarioId: "mem_dona", criadoPor: "mem_dona" });
+    await criarRepositorioDeContatosPg(pool()).inserirIdentificador(c.ws, contato.id, { tipo: "whatsapp", valor: WHATSAPP_DA_ANA, principal: true });
+    const conversa = await criarRepositorioDeConversasPg(pool()).inserir(c.ws, {
+      canalId: c.canalId,
+      contatoId: contato.id,
+      titulo: "Ana",
+      filaId: null,
+      atribuido: { tipo: "membro", id: "mem_dona" },
+      participantes: [],
+      criadoPor: { tipo: "member", id: "mem_dona" },
+    });
+    const mensagens = criarRepositorioDeMensagensPg(pool());
+    const criada = await mensagens.inserir(c.ws, {
+      conversaId: conversa.id,
+      canalId: c.canalId,
+      direcao: "enviada",
+      ator: { tipo: "member", id: "mem_dona" },
+      conteudo: "olá",
+      statusEntrega: "pendente",
+    });
+    await mensagens.gravarEnvio(c.ws, criada.id, { idExterno, em: "2026-11-09T09:00:00.000Z" });
+    return criada.id;
+  }
+
+  const estadoDaMensagem = async (ws: string, id: string) =>
+    (
+      await pool().query<{ status_entrega: string | null; status_entrega_em: Date | null; motivo_falha: string | null }>(
+        "select status_entrega, status_entrega_em, motivo_falha from plataforma.mensagens where workspace_id = $1 and id = $2",
+        [ws, id],
+      )
+    ).rows[0]!;
 
   /** Grava uma linha na fila como a rota gravaria (ou como um worker que caiu a deixou). */
   async function semearLinha(
@@ -195,7 +232,7 @@ describeComBanco("processador da fila de entrada — Postgres local", () => {
     expect(await contarMensagens(c.ws)).toBe(0);
   });
 
-  it("eventos de status e conexão ficam processados como sem tratamento (o 16-05 os trata)", async () => {
+  it("evento de conexão ainda fica sem tratamento (a Task 3 do 16-06 o trata); status de Mensagem desconhecida é ignorado", async () => {
     const c = await cenario("semtrat");
     const id = await semearLinha(c, {
       eventos: [
@@ -206,7 +243,61 @@ describeComBanco("processador da fila de entrada — Postgres local", () => {
     const processador = criarProcessadorDeEntrada({ workerId: "w1", chaves });
 
     expect(await processador.processarUm()).toBe(true);
-    expect(await lerLinha(id)).toMatchObject({ estado: "processado", resultado: "sem_tratamento:status,sem_tratamento:conexao" });
+    expect(await lerLinha(id)).toMatchObject({ estado: "processado", resultado: "ignorado:status_sem_mensagem,sem_tratamento:conexao" });
+  });
+
+  it("evento status (3.6.5): a Mensagem enviada vira lida com o `em` do evento; um entregue atrasado não a faz voltar", async () => {
+    const c = await cenario("status");
+    const id = await mensagemEnviada(c, "teste-1");
+    const lida = await semearLinha(c, { eventos: [{ tipo: "status", idExterno: "teste-1", status: "lida", em: "2026-11-09T10:00:00.000Z" }] });
+    const atrasado = await semearLinha(c, { eventos: [{ tipo: "status", idExterno: "teste-1", status: "entregue", em: "2026-11-09T10:05:00.000Z" }] });
+    const processador = criarProcessadorDeEntrada({ workerId: "w1", chaves });
+
+    expect(await processador.processarUm()).toBe(true);
+    expect(await lerLinha(lida)).toMatchObject({ estado: "processado", resultado: null });
+    const depoisDaLida = await estadoDaMensagem(c.ws, id);
+    expect(depoisDaLida.status_entrega).toBe("lida");
+    expect(depoisDaLida.status_entrega_em?.toISOString()).toBe("2026-11-09T10:00:00.000Z");
+
+    expect(await processador.processarUm()).toBe(true);
+    expect(await lerLinha(atrasado)).toMatchObject({ estado: "processado", resultado: "ignorado:status_atrasado" });
+    const depoisDoAtrasado = await estadoDaMensagem(c.ws, id);
+    expect(depoisDoAtrasado.status_entrega).toBe("lida");
+    expect(depoisDoAtrasado.status_entrega_em?.toISOString()).toBe("2026-11-09T10:00:00.000Z");
+  });
+
+  it("evento status de um idExterno que nenhuma Mensagem do Canal tem: linha processada com ignorado:status_sem_mensagem", async () => {
+    const c = await cenario("statussem");
+    const outro = await cenario("statusoutro");
+    // A mesma id externa existe, mas num Canal de OUTRO Espaço: nunca é a deste.
+    const deFora = await mensagemEnviada(outro, "teste-9");
+    const id = await semearLinha(c, { eventos: [{ tipo: "status", idExterno: "teste-9", status: "lida", em: "2026-11-09T10:00:00.000Z" }] });
+    const processador = criarProcessadorDeEntrada({ workerId: "w1", chaves });
+
+    expect(await processador.processarUm()).toBe(true);
+    expect(await lerLinha(id)).toMatchObject({ estado: "processado", resultado: "ignorado:status_sem_mensagem" });
+    expect((await estadoDaMensagem(outro.ws, deFora)).status_entrega).toBe("enviada");
+  });
+
+  it("evento status falhou: a Mensagem enviada vira falhou com o motivo saneado; uma já entregue continua entregue", async () => {
+    const c = await cenario("statusfalha");
+    const enviada = await mensagemEnviada(c, "teste-a");
+    const entregue = await mensagemEnviada(c, "teste-b");
+    await pool().query("update plataforma.mensagens set status_entrega = 'entregue' where workspace_id = $1 and id = $2", [c.ws, entregue]);
+    await semearLinha(c, {
+      eventos: [
+        { tipo: "status", idExterno: "teste-a", status: "falhou", em: "2026-11-09T10:00:00.000Z", motivo: "recusou com Bearer abc123segredo" },
+        { tipo: "status", idExterno: "teste-b", status: "falhou", em: "2026-11-09T10:00:00.000Z", motivo: "tarde demais" },
+      ],
+    });
+    const processador = criarProcessadorDeEntrada({ workerId: "w1", chaves });
+
+    expect(await processador.processarUm()).toBe(true);
+    const falhou = await estadoDaMensagem(c.ws, enviada);
+    expect(falhou.status_entrega).toBe("falhou");
+    expect(falhou.motivo_falha).toContain("[removido]");
+    expect(falhou.motivo_falha).not.toContain("abc123segredo");
+    expect(await estadoDaMensagem(c.ws, entregue)).toMatchObject({ status_entrega: "entregue", motivo_falha: null });
   });
 
   it("acordar() com o laço em 60 s processa em menos de 500 ms, e duas chamadas seguidas não rodam dois ciclos juntos", async () => {

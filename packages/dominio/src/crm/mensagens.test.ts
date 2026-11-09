@@ -10,6 +10,7 @@ import {
   DIRECOES_DE_ENVIO,
   STATUS_DE_ENTREGA,
   TIPOS_DE_ATOR_DA_MENSAGEM,
+  proximoStatusDeEntrega,
   statusInicialDeEnvio,
   validarEnvio,
   validarNovaMensagem,
@@ -130,6 +131,45 @@ describe("validarNovaMensagem", () => {
     const interna = { conversaId: "x", direcao: "interna", conteudo: "Nota", emRespostaAId: "m1" } as const;
     expect(validarNovaMensagem(enviada)).toEqual({ ok: true, value: enviada });
     expect(validarNovaMensagem(interna)).toEqual({ ok: true, value: interna });
+  });
+});
+
+describe("proximoStatusDeEntrega (3.6.5: o status do provedor só avança)", () => {
+  it.each([
+    ["pendente", "enviada", "enviada"],
+    ["enviada", "entregue", "entregue"],
+    ["entregue", "lida", "lida"],
+    ["enviada", "lida", "lida"],
+    ["pendente", "entregue", "entregue"],
+    ["pendente", "falhou", "falhou"],
+    ["enviada", "falhou", "falhou"],
+  ] as const)("(%s, %s) avança para %s", (atual, novo, esperado) => {
+    expect(proximoStatusDeEntrega(atual, novo)).toBe(esperado);
+  });
+
+  it.each([
+    ["lida", "entregue"],
+    ["lida", "enviada"],
+    ["entregue", "enviada"],
+    ["enviada", "pendente"],
+    ["entregue", "pendente"],
+    ["lida", "lida"],
+    ["enviada", "enviada"],
+  ] as const)("(%s, %s) não anda para trás nem repete: continua %s", (atual, novo) => {
+    expect(proximoStatusDeEntrega(atual, novo)).toBe(atual);
+  });
+
+  it("falhou só nasce de pendente ou de enviada: entregue e lida continuam como estão", () => {
+    expect(proximoStatusDeEntrega("entregue", "falhou")).toBe("entregue");
+    expect(proximoStatusDeEntrega("lida", "falhou")).toBe("lida");
+  });
+
+  it("nada sai de falhou por status do provedor (só 'Tentar de novo' tira)", () => {
+    for (const novo of STATUS_DE_ENTREGA) expect(proximoStatusDeEntrega("falhou", novo)).toBe("falhou");
+  });
+
+  it("Mensagem sem status de entrega (recebida, interna) continua sem: null", () => {
+    for (const novo of STATUS_DE_ENTREGA) expect(proximoStatusDeEntrega(null, novo)).toBeNull();
   });
 });
 
