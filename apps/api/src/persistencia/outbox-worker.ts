@@ -137,6 +137,14 @@ export interface OpcoesOutboxWorker {
   readonly intervaloMs?: number;
   /** Tempo máximo de espera por uma entrega antes de tratar como falha de rede. Padrão 10 s. */
   readonly timeoutMs?: number;
+  /**
+   * Os tipos de evento que este worker reivindica (filtro inclusivo). Ausente, o worker pega tudo MENOS os
+   * eventos da mensageria (`mensagem.%`): a fila de saída da mensageria tem entregador próprio, e com
+   * `OUTBOX_WORKER_ATIVO=true` este worker marcaria a Mensagem do cliente como `failed` por um 404 do
+   * `automation/` (16-04, Pitfall 1). O padrão é "exclui `mensagem.%`" e não uma lista dos quatro eventos de
+   * hoje: um evento novo do `automation/` continua saindo sem editar este filtro.
+   */
+  readonly tiposDeEvento?: readonly NomeDeEvento[];
 }
 
 export interface OutboxWorker {
@@ -157,19 +165,30 @@ export interface OutboxWorker {
   processarUm(): Promise<boolean>;
 }
 
-async function reivindicar(cliente: PoolClient, workerId: string, workspaceId?: string): Promise<LinhaOutbox | undefined> {
+async function reivindicar(
+  cliente: PoolClient,
+  workerId: string,
+  workspaceId?: string,
+  tipos?: readonly NomeDeEvento[],
+): Promise<LinhaOutbox | undefined> {
   const parametros: unknown[] = [workerId];
   let filtroWorkspace = "";
   if (workspaceId !== undefined) {
     parametros.push(workspaceId);
     filtroWorkspace = `and workspace_id = $${parametros.length}`;
   }
+  // Com `tipos`, só eles; sem, tudo menos `mensagem.%` (ver `OpcoesOutboxWorker.tiposDeEvento`).
+  let filtroDeTipo = "and event_type not like 'mensagem.%'";
+  if (tipos !== undefined) {
+    parametros.push([...tipos]);
+    filtroDeTipo = `and event_type = any($${parametros.length}::text[])`;
+  }
   const r = await cliente.query<LinhaOutbox>(
     `update plataforma.integration_outbox
         set status = 'delivering', locked_at = now(), locked_by = $1, attempts = attempts + 1
       where id = (
         select id from plataforma.integration_outbox
-         where status = 'pending' and available_at <= now() ${filtroWorkspace}
+         where status = 'pending' and available_at <= now() ${filtroWorkspace} ${filtroDeTipo}
          order by available_at, id
          limit 1
            for update skip locked
@@ -273,7 +292,7 @@ export function criarOutboxWorker(opcoes: OpcoesOutboxWorker): OutboxWorker {
     const cliente = await pool().connect();
     let linha: LinhaOutbox | undefined;
     try {
-      linha = await reivindicar(cliente, opcoes.workerId, opcoes.workspaceId);
+      linha = await reivindicar(cliente, opcoes.workerId, opcoes.workspaceId, opcoes.tiposDeEvento);
     } finally {
       cliente.release();
     }
