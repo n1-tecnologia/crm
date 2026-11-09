@@ -107,6 +107,13 @@ export interface TicketDeAnexo {
   readonly uploadUrl: string;
 }
 
-export async function pedirTicketDeAnexo(_entrada: PedidoDeTicketDeAnexo): Promise<TicketDeAnexo> {
-  throw new Error("não implementado");
+/**
+ * O ticket para anexar um arquivo (`POST /mensagens/anexos`, 16-09): a api confere o tipo, o tamanho e o Canal ANTES
+ * de reservar o objeto, e devolve a URL assinada em que o navegador sobe os bytes. Nada muda no fio ainda, então
+ * nada é invalidado; a recusa (422 `ARQUIVO_GRANDE_DEMAIS`, `TIPO_NAO_ACEITO`, `TIPO_NAO_ENVIADO_PELO_CANAL`; 409
+ * `CANAL_ARQUIVADO`) sobe como `ErroDeApi`.
+ */
+export async function pedirTicketDeAnexo(entrada: PedidoDeTicketDeAnexo): Promise<TicketDeAnexo> {
+  const resposta = await chamarCrm<{ ok: true; dados: TicketDeAnexo }>("/mensagens/anexos", { method: "POST", corpo: entrada });
+  return resposta.dados;
 }

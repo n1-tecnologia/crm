@@ -30,23 +30,17 @@ import Link from "next/link";
 import { useRef, useState, type ReactNode } from "react";
 import {
   AudioLines,
-  Eye,
   FileText,
   Globe,
   Image,
   Mail,
-  MapPin,
   ListTodo,
   MessageCircle,
-  Mic,
   Paperclip,
   Plus,
   Send,
-  Smile,
   StickyNote,
-  Table,
   Video,
-  Workflow,
   type LucideIcon,
 } from "lucide-react";
 import { useData, useRehidratar, useRun } from "@/dados/store";
@@ -54,7 +48,8 @@ import { ErroDeApi } from "@/dados/crm/cliente-crm";
 import { useCanais } from "@/dados/crm/canais";
 import { useContato } from "@/dados/crm/contatos";
 import { abrirConversa, useConversa, useConversas } from "@/dados/crm/conversas";
-import { enviarMensagem, useMensagens } from "@/dados/crm/mensagens";
+import { enviarMensagem, pedirTicketDeAnexo, useMensagens } from "@/dados/crm/mensagens";
+import { enviarBytesAoBucket, recusaDoAnexoDaMensagem } from "@/dados/envio-ao-bucket";
 import { useNegocios } from "@/dados/crm/negocios";
 import { useConsentimentosDoContato } from "@/dados/crm/consentimentos";
 import { adicionarNotaAoContato } from "@/dados/crm/notas";
@@ -75,6 +70,8 @@ import {
   rotuloDoCanalNasTabelas,
 } from "@n1/dominio/crm/canais-de-resposta";
 import { LIMITES_CRM } from "@n1/dominio/crm/comum";
+import { categoriaDaMidia, normalizarTipoDeMidia, tiposAceitosParaOCanal, type CategoriaDeMidia } from "@n1/dominio/crm/midia";
+import type { ReferenciaDeAnexoEnviado } from "@n1/dominio/crm/mensagens";
 import { nomeDeExibicaoDoContato, ROTULO_DO_TIPO_DE_IDENTIFICADOR } from "@n1/dominio/crm/contatos";
 import { consentimentoVigente } from "@n1/dominio/crm/consentimentos";
 import { recusaDeNotaNoContato, validarNovaNota } from "@n1/dominio/crm/notas";
@@ -100,7 +97,7 @@ import {
   Select,
   cn,
 } from "@/features/shell/ui";
-import type { Attachment, ChannelType, Id, Task } from "@n1/dominio/types";
+import type { ChannelType, Id, Task } from "@n1/dominio/types";
 
 export const CHANNEL_ICON: Record<
   ChannelType,
@@ -113,30 +110,17 @@ export const CHANNEL_ICON: Record<
   chatDoSite: Globe,
 };
 
-/** O que cada tipo de mídia é, em palavras de quem atende. */
-const MEDIA_TYPE_LABEL: Record<Attachment["mediaType"], string> = {
-  image: "Imagem",
-  video: "Vídeo",
-  audio: "Áudio",
-  document: "Arquivo",
-  spreadsheet: "Planilha",
-  location: "Local",
-  sticker: "Figurinha",
-  flow: "Flow",
-  other: "Outro",
-};
-
-const ICONE_DA_MIDIA: Record<Attachment["mediaType"], LucideIcon> = {
-  image: Image,
-  video: Video,
-  audio: AudioLines,
-  document: FileText,
-  spreadsheet: Table,
-  location: MapPin,
-  sticker: Smile,
-  flow: Workflow,
-  other: Paperclip,
-};
+/**
+ * As categorias de arquivo que o compositor oferece (D-16-10): as que a Mensagem
+ * leva de verdade (`@n1/dominio/crm/midia`). Localização, figurinha e Flow não são
+ * arquivo e saíram da barra; enviar áudio é anexar um arquivo de áudio.
+ */
+const CATEGORIAS_DE_ARQUIVO = [
+  { categoria: "image", rotulo: "Imagem", icone: Image },
+  { categoria: "audio", rotulo: "Áudio", icone: AudioLines },
+  { categoria: "video", rotulo: "Vídeo", icone: Video },
+  { categoria: "document", rotulo: "Documento", icone: FileText },
+] as const satisfies readonly { readonly categoria: CategoriaDeMidia; readonly rotulo: string; readonly icone: LucideIcon }[];
 
 /** O alternador de anexo: aceso em acento lavado, apagado em cinza. */
 function classeDoAlternador(ligado: boolean): string {
@@ -215,9 +199,10 @@ export function ConversationThread({
   const [assunto, setAssunto] = useState("");
   const [copia, setCopia] = useState("");
   const [copiaOculta, setCopiaOculta] = useState("");
-  const [anexo, setAnexo] = useState<Attachment["mediaType"] | null>(null);
+  // O arquivo escolhido para a próxima Mensagem; o progresso é o do envio ao bucket (0 a 100).
+  const [anexo, setAnexo] = useState<{ readonly arquivo: File; readonly progresso: number } | null>(null);
   const [anexando, setAnexando] = useState(false);
-  const [visualizacaoUnica, setVisualizacaoUnica] = useState(false);
+  const seletoresDeArquivo = useRef<Partial<Record<CategoriaDeMidia, HTMLInputElement | null>>>({});
   const [registro, setRegistro] = useState<"nota" | "tarefa" | "meet" | null>(
     null,
   );
@@ -273,6 +258,7 @@ export function ConversationThread({
   if (canalSelecionado !== canalVisto) {
     setCanalVisto(canalSelecionado);
     setRegistro(null);
+    setAnexo(null);
   }
 
   const principal = identificadores?.find((i) => i.principal) ?? identificadores?.[0];
@@ -417,6 +403,12 @@ export function ConversationThread({
 
   // A Capacidade é do Canal da aba (D-02): o provedor muda a janela.
   const capacidades = canal ? capacidadesDoCanal({ channelType: canal.tipo, provider: canal.provedor }) : undefined;
+  // D-16-10: só as categorias de arquivo e os tipos que o Canal da aba envia (`sendableMediaTypes`).
+  const tiposDoCanal = capacidades ? tiposAceitosParaOCanal(capacidades.sendableMediaTypes) : [];
+  const categoriasDoCanal = CATEGORIAS_DE_ARQUIVO.map((c) => ({
+    ...c,
+    tipos: tiposDoCanal.filter((tipo) => categoriaDaMidia(tipo) === c.categoria),
+  })).filter((c) => c.tipos.length > 0);
   const horasDaJanela = capacidades?.responseWindowHours;
   const abertaAte =
     horasDaJanela !== undefined && conversa?.ultimaRecebidaEm
@@ -436,7 +428,9 @@ export function ConversationThread({
     ? "Enviando a Mensagem…"
     : !canal
       ? "Este Contato não tem Canal."
-      : draft.trim() === ""
+      : anexo && !conversa
+        ? "Abra a Conversa com uma Mensagem antes de anexar um arquivo."
+      : draft.trim() === "" && !anexo
         ? conversa
           ? "Escreva a mensagem antes de enviar."
           : "Escreva a primeira Mensagem antes de enviar."
@@ -458,8 +452,23 @@ export function ConversationThread({
     setCanalAtivo(canalId);
     onCanalChange?.(canalId);
     setDraft("");
+    setAnexo(null);
     setErro(null);
     setAviso(`Respondendo por ${escolhido ? rotuloDoCanalNasTabelas(escolhido) : "outro Canal"}.`);
+  };
+
+  /** O arquivo escolhido é pré-conferido (tipo do Canal e teto); a api confere de novo ao pedir o ticket. */
+  const escolherArquivo = (arquivo: File | undefined) => {
+    if (!arquivo) return;
+    setAviso(null);
+    const recusa = recusaDoAnexoDaMensagem(arquivo, tiposDoCanal);
+    if (recusa) {
+      setErro(recusa);
+      return;
+    }
+    setErro(null);
+    setAnexo({ arquivo, progresso: 0 });
+    setAnexando(false);
   };
 
   /** A falha vira a frase da api (janela fechada, sem consentimento, Canal arquivado…) e o texto fica no campo. */
@@ -480,8 +489,38 @@ export function ConversationThread({
     setEnviando(true);
     try {
       if (conversa) {
-        const enviada = await enviarMensagem({ conversaId: conversa.id, direcao: "enviada", conteudo: draft });
+        /*
+          Com arquivo (D-16-10): o ticket reserva o objeto (a api já confere tipo, tamanho e Canal), os
+          bytes sobem direto ao bucket pela URL assinada e só então a Mensagem sai com a referência do
+          arquivo. Se o arquivo não chega ao bucket nada é gravado e ele continua escolhido.
+        */
+        let anexos: ReferenciaDeAnexoEnviado[] | undefined;
+        if (anexo) {
+          const ticket = await pedirTicketDeAnexo({
+            conversaId: conversa.id,
+            nome: anexo.arquivo.name,
+            tipoDeMidia: normalizarTipoDeMidia(anexo.arquivo.type),
+            tamanhoBytes: anexo.arquivo.size,
+          });
+          const subiu = await enviarBytesAoBucket(ticket.uploadUrl, anexo.arquivo, (progresso) =>
+            setAnexo((atual) => (atual ? { ...atual, progresso } : atual)),
+          );
+          if (!subiu) {
+            setAnexo((atual) => (atual ? { ...atual, progresso: 0 } : atual));
+            setAviso(null);
+            setErro("O arquivo não chegou ao armazenamento. Tente de novo.");
+            return;
+          }
+          anexos = [{ submissionId: ticket.submissionId, objectId: ticket.objectId }];
+        }
+        const enviada = await enviarMensagem({
+          conversaId: conversa.id,
+          direcao: "enviada",
+          conteudo: anexo && draft.trim() === "" ? "" : draft,
+          ...(anexos ? { anexos } : {}),
+        });
         setRecemEnviada(enviada.id);
+        setAnexo(null);
         setAviso("Mensagem enviada.");
       } else {
         const nova = await abrirConversa({ canalId: canal.id, contatoId, mensagem: { conteudo: draft } });
@@ -581,8 +620,13 @@ export function ConversationThread({
           className="app-base rounded-[var(--r-controle)] px-3 py-2"
           style={{ background: "var(--superficie-2)", color: "var(--texto)" }}
         >
-          {draft}
+          {draft.trim() !== "" ? draft : anexo ? `Arquivo: ${anexo.arquivo.name}` : ""}
         </p>
+        {draft.trim() !== "" && anexo ? (
+          <p className="app-sm mt-2" style={{ color: "var(--texto-3)" }}>
+            Com o arquivo {anexo.arquivo.name}
+          </p>
+        ) : null}
       </ConfirmDialog>
 
       {/* ── abas de Canal ── */}
@@ -1256,43 +1300,42 @@ export function ConversationThread({
               ) : null}
 
               {/*
-          A barra de anexos é a do CANAL: cada um aceita uma coisa, e a lista
-          sai de `sendableMediaTypes`, não de um menu fixo. Figurinha no e-mail
-          e planilha no Instagram não existem.
+          A barra de anexos é a do CANAL: cada categoria aceita os tipos que ele
+          envia (`tiposAceitosParaOCanal`), não um menu fixo, e cada uma abre o
+          seletor de arquivo com o `accept` desses tipos. Só arquivo de verdade:
+          nada de tipo sem conteúdo, nem "ver uma vez", que a api não envia.
         */}
-              {capacidades && anexando ? (
+              {categoriasDoCanal.map(({ categoria, rotulo, tipos }) => (
+                <input
+                  key={categoria}
+                  ref={(elemento) => {
+                    seletoresDeArquivo.current[categoria] = elemento;
+                  }}
+                  type="file"
+                  hidden
+                  aria-label={`Escolher ${rotulo.toLowerCase()}`}
+                  accept={tipos.join(",")}
+                  onChange={(evento) => {
+                    const arquivo = evento.target.files?.[0];
+                    evento.target.value = "";
+                    escolherArquivo(arquivo);
+                  }}
+                />
+              ))}
+              {anexando ? (
                 <div className="mb-2 flex flex-wrap items-center gap-1">
-                  {capacidades.sendableMediaTypes.map((tipo) => {
-                    const IconeDaMidia = ICONE_DA_MIDIA[tipo];
-                    return (
-                      <button
-                        key={tipo}
-                        type="button"
-                        title={`Anexar ${MEDIA_TYPE_LABEL[tipo]}`}
-                        onClick={() => {
-                          setAnexo(tipo);
-                          setAnexando(false);
-                        }}
-                        aria-pressed={anexo === tipo}
-                        className={classeDoAlternador(anexo === tipo)}
-                      >
-                        <Icone de={IconeDaMidia} />
-                        {MEDIA_TYPE_LABEL[tipo]}
-                      </button>
-                    );
-                  })}
-                  {capacidades.viewOnce && anexo !== null ? (
+                  {categoriasDoCanal.map(({ categoria, rotulo, icone }) => (
                     <button
+                      key={categoria}
                       type="button"
-                      onClick={() => setVisualizacaoUnica((atual) => !atual)}
-                      aria-pressed={visualizacaoUnica}
-                      title="A mídia some depois de vista uma vez"
-                      className={classeDoAlternador(visualizacaoUnica)}
+                      title={`Anexar ${rotulo.toLowerCase()}`}
+                      onClick={() => seletoresDeArquivo.current[categoria]?.click()}
+                      className={classeDoAlternador(false)}
                     >
-                      <Icone de={Eye} />
-                      Visualização única
+                      <Icone de={icone} />
+                      {rotulo}
                     </button>
-                  ) : null}
+                  ))}
                 </div>
               ) : null}
 
@@ -1303,17 +1346,13 @@ export function ConversationThread({
                   style={{ color: "var(--texto-3)" }}
                 >
                   <Icone de={Paperclip} tamanho="xs" />
-                  <span className="min-w-0 flex-1 truncate">
-                    {MEDIA_TYPE_LABEL[anexo]} anexado
-                    {visualizacaoUnica ? " · visualização única" : ""}
-                  </span>
+                  <span className="min-w-0 flex-1 truncate">{anexo.arquivo.name}</span>
+                  {enviando && anexo.progresso > 0 ? <span className="shrink-0">{anexo.progresso}%</span> : null}
                   <button
                     type="button"
-                    onClick={() => {
-                      setAnexo(null);
-                      setVisualizacaoUnica(false);
-                    }}
-                    className="shrink-0 hover:text-[var(--texto)] hover:underline"
+                    disabled={enviando}
+                    onClick={() => setAnexo(null)}
+                    className="shrink-0 hover:text-[var(--texto)] hover:underline disabled:opacity-60"
                   >
                     Remover
                   </button>
@@ -1325,15 +1364,15 @@ export function ConversationThread({
             {/*
               Modelo do WhatsApp: uma linha só. O "+" abre os anexos do Canal
               acima da barra; o campo é uma pílula que cresce até seis linhas;
-              à direita fica o enviar — ou o microfone, enquanto não há texto,
-              nos Canais que aceitam áudio. Enter envia, Shift+Enter quebra.
+              à direita fica o enviar. Não há botão de gravar: o áudio sai como
+              arquivo de áudio anexado (D-16-10). Enter envia, Shift+Enter quebra.
             */}
             {/* A doca do robô flutuante: o fundo fica no invólucro, que vai
                 até o canto; a linha encolhe dentro dele quando o robô está
                 ali (features/shell/robo-flutuante.tsx). */}
             <div className="doca-do-robo" style={{ background: "var(--superficie-2)" }}>
               <div className="flex items-end gap-2 px-3 py-2">
-                {capacidades && capacidades.sendableMediaTypes.length > 0 ? (
+                {categoriasDoCanal.length > 0 ? (
                   <button
                     type="button"
                     onClick={() => setAnexando((aberto) => !aberto)}
@@ -1373,28 +1412,15 @@ export function ConversationThread({
                   style={{ borderRadius: "calc(var(--controle-h) / 2)" }}
                 />
 
-                {draft.trim() === "" && capacidades?.voiceNote && !anexo ? (
-                  <button
-                    type="button"
-                    title="Gravar áudio"
-                    aria-label="Gravar áudio"
-                    disabled={!conversa}
-                    className="btn-icone btn-icone-nu shrink-0 rounded-full"
-                    style={MEDIDA_DO_BOTAO_DO_COMPOSITOR}
-                  >
-                    <Icone de={Mic} tamanho="md" />
-                  </button>
-                ) : (
-                  <Button
-                    variant="primary"
-                    onClick={() => setConfirmandoEnvio(true)}
-                    disabled={bloqueio !== undefined}
-                    disabledReason={bloqueio ?? ""}
-                    icon={<Icone de={Send} />}
-                  >
-                    <span className="sr-only">Enviar</span>
-                  </Button>
-                )}
+                <Button
+                  variant="primary"
+                  onClick={() => setConfirmandoEnvio(true)}
+                  disabled={bloqueio !== undefined}
+                  disabledReason={bloqueio ?? ""}
+                  icon={<Icone de={Send} />}
+                >
+                  <span className="sr-only">Enviar</span>
+                </Button>
               </div>
             </div>
           </div>

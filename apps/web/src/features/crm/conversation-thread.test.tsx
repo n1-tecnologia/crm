@@ -933,8 +933,8 @@ describe("ConversationThread — o compositor anexa um arquivo de verdade (16-11
   });
 
   it("(34) WhatsApp: a barra oferece Imagem, Áudio, Vídeo e Documento, cada um com o accept dos tipos da categoria; Localização, Figurinha, Formulário e visualização única não aparecem", async () => {
-    montar({ conversaId: "cnv_wpp" });
-    await fioPronto("cnv_wpp mensagem");
+    montar({ conversaId: "cnv_suporte" });
+    await fioPronto("cnv_suporte mensagem");
     abrirAnexos();
     for (const nome of ["Imagem", "Áudio", "Vídeo", "Documento"]) expect(screen.getByRole("button", { name: new RegExp(`^${nome}`) })).toBeTruthy();
     for (const nome of [/Local/, /Figurinha/, /Formulário/, /Flow/, /Visualização única/]) expect(screen.queryByRole("button", { name: nome })).toBeNull();
@@ -950,8 +950,8 @@ describe("ConversationThread — o compositor anexa um arquivo de verdade (16-11
       vistoAntesDosBytes = gravacoes().map((g) => g.caminho);
       return true;
     });
-    montar({ conversaId: "cnv_wpp" });
-    await fioPronto("cnv_wpp mensagem");
+    montar({ conversaId: "cnv_suporte" });
+    await fioPronto("cnv_suporte mensagem");
     abrirAnexos();
     escolher("imagem", arquivo("foto.png", "image/png", 2048));
     expect(screen.getByText("foto.png")).toBeTruthy();
@@ -960,15 +960,15 @@ describe("ConversationThread — o compositor anexa um arquivo de verdade (16-11
     await waitFor(() => expect(gravacoes().map((g) => g.caminho)).toEqual(["/mensagens/anexos", "/mensagens"]));
     expect(vistoAntesDosBytes).toEqual(["/mensagens/anexos"]);
     expect(enviarBytes.mock.calls[0]?.[0]).toBe("https://armazem.test/upload/obj_1");
-    expect(gravacoes()[0]?.corpo).toEqual({ conversaId: "cnv_wpp", nome: "foto.png", tipoDeMidia: "image/png", tamanhoBytes: 2048 });
-    expect(gravacoes()[1]?.corpo).toEqual({ conversaId: "cnv_wpp", direcao: "enviada", conteudo: "", anexos: [{ submissionId: "sub_1", objectId: "obj_1" }] });
+    expect(gravacoes()[0]?.corpo).toEqual({ conversaId: "cnv_suporte", nome: "foto.png", tipoDeMidia: "image/png", tamanhoBytes: 2048 });
+    expect(gravacoes()[1]?.corpo).toEqual({ conversaId: "cnv_suporte", direcao: "enviada", conteudo: "", anexos: [{ submissionId: "sub_1", objectId: "obj_1" }] });
     await waitFor(() => expect(screen.queryByText("foto.png")).toBeNull());
     expect((compositor() as HTMLTextAreaElement).value).toBe("");
   });
 
   it("(36) o texto digitado vira a legenda do arquivo", async () => {
-    montar({ conversaId: "cnv_wpp" });
-    await fioPronto("cnv_wpp mensagem");
+    montar({ conversaId: "cnv_suporte" });
+    await fioPronto("cnv_suporte mensagem");
     fireEvent.change(compositor(), { target: { value: "o contrato" } });
     abrirAnexos();
     escolher("documento", arquivo("contrato.pdf", "application/pdf", 4096));
@@ -978,8 +978,8 @@ describe("ConversationThread — o compositor anexa um arquivo de verdade (16-11
   });
 
   it("(37) áudio de 17 MB: “O arquivo passa de 16 MB.” e nenhum pedido à api", async () => {
-    montar({ conversaId: "cnv_wpp" });
-    await fioPronto("cnv_wpp mensagem");
+    montar({ conversaId: "cnv_suporte" });
+    await fioPronto("cnv_suporte mensagem");
     abrirAnexos();
     escolher("áudio", arquivo("longo.ogg", "audio/ogg", 17 * 1024 * 1024));
     expect(screen.getByRole("alert").textContent).toContain("O arquivo passa de 16 MB.");
@@ -988,8 +988,8 @@ describe("ConversationThread — o compositor anexa um arquivo de verdade (16-11
   });
 
   it("(38) documento de 26 MB passa de 25 MB, e um tipo que o Canal não envia é recusado antes de qualquer pedido", async () => {
-    montar({ conversaId: "cnv_wpp" });
-    await fioPronto("cnv_wpp mensagem");
+    montar({ conversaId: "cnv_suporte" });
+    await fioPronto("cnv_suporte mensagem");
     abrirAnexos();
     escolher("documento", arquivo("grande.pdf", "application/pdf", 26 * 1024 * 1024));
     expect(screen.getByRole("alert").textContent).toContain("O arquivo passa de 25 MB.");
@@ -1000,8 +1000,8 @@ describe("ConversationThread — o compositor anexa um arquivo de verdade (16-11
 
   it("(39) falha no envio ao bucket: mensagem de erro, nenhuma Mensagem gravada e o arquivo continua escolhido para tentar de novo", async () => {
     enviarBytes.mockImplementation(async () => false);
-    montar({ conversaId: "cnv_wpp" });
-    await fioPronto("cnv_wpp mensagem");
+    montar({ conversaId: "cnv_suporte" });
+    await fioPronto("cnv_suporte mensagem");
     abrirAnexos();
     escolher("imagem", arquivo("foto.png", "image/png", 2048));
     await confirmarEnvio();
@@ -1009,7 +1009,7 @@ describe("ConversationThread — o compositor anexa um arquivo de verdade (16-11
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("O arquivo não chegou ao armazenamento."));
     expect(gravacoes().map((g) => g.caminho)).toEqual(["/mensagens/anexos"]);
     expect(screen.getByText("foto.png")).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Enviar" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByRole("button", { name: "Enviar" }).getAttribute("aria-disabled")).not.toBe("true");
   });
 
   it("(40) a recusa da api ao pedir o ticket (422) aparece com a frase dela e o arquivo continua escolhido", async () => {
@@ -1020,8 +1020,8 @@ describe("ConversationThread — o compositor anexa um arquivo de verdade (16-11
       }
       return padrao(url, init);
     };
-    montar({ conversaId: "cnv_wpp" });
-    await fioPronto("cnv_wpp mensagem");
+    montar({ conversaId: "cnv_suporte" });
+    await fioPronto("cnv_suporte mensagem");
     abrirAnexos();
     escolher("imagem", arquivo("foto.png", "image/png", 2048));
     await confirmarEnvio();
@@ -1031,20 +1031,20 @@ describe("ConversationThread — o compositor anexa um arquivo de verdade (16-11
   });
 
   it("(41) Remover tira o arquivo escolhido e o botão de enviar volta a pedir texto", async () => {
-    montar({ conversaId: "cnv_wpp" });
-    await fioPronto("cnv_wpp mensagem");
+    montar({ conversaId: "cnv_suporte" });
+    await fioPronto("cnv_suporte mensagem");
     abrirAnexos();
     escolher("imagem", arquivo("foto.png", "image/png", 2048));
     fireEvent.click(screen.getByRole("button", { name: "Remover" }));
     expect(screen.queryByText("foto.png")).toBeNull();
-    expect((screen.getByRole("button", { name: "Enviar" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: "Enviar" }).getAttribute("aria-disabled")).toBe("true");
   });
 
   it("(42) nada no compositor pede o microfone: sem botão de gravar e getUserMedia nunca é chamado", async () => {
     const getUserMedia = vi.fn();
     vi.stubGlobal("navigator", { ...navigator, mediaDevices: { getUserMedia } });
-    montar({ conversaId: "cnv_wpp" });
-    await fioPronto("cnv_wpp mensagem");
+    montar({ conversaId: "cnv_suporte" });
+    await fioPronto("cnv_suporte mensagem");
     expect(screen.queryByRole("button", { name: /Gravar/ })).toBeNull();
     for (const botao of screen.getAllByRole("button")) {
       if (!(botao as HTMLButtonElement).disabled) expect(botao.getAttribute("title") ?? "").not.toMatch(/microfone|Gravar/i);
