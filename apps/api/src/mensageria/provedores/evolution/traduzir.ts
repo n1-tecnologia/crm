@@ -61,6 +61,55 @@ function numeroDoJid(jid: unknown): string | undefined {
   return /^\d{8,15}$/.test(digitos) ? digitos : undefined;
 }
 
+/** O embrulho de legenda do documento (`documentWithCaptionMessage`): o que vale está em `message.message`. */
+function desembrulhar(mensagem: Record<string, unknown>): Record<string, unknown> {
+  const embrulho = mensagem.documentWithCaptionMessage;
+  return ehObjeto(embrulho) && ehObjeto(embrulho.message) ? embrulho.message : mensagem;
+}
+
+/** Os tipos de mídia que entram, na ordem em que se procura. A figurinha é sempre `image/webp` (Pitfall 7). */
+const MIDIAS_ACEITAS: ReadonlyArray<{ campo: string; tipo?: string; tipoPadrao: string; rotulo: string }> = [
+  { campo: "imageMessage", tipoPadrao: "image/jpeg", rotulo: "imagem" },
+  { campo: "videoMessage", tipoPadrao: "video/mp4", rotulo: "video" },
+  { campo: "audioMessage", tipoPadrao: "audio/ogg", rotulo: "audio" },
+  { campo: "documentMessage", tipoPadrao: "application/octet-stream", rotulo: "documento" },
+  { campo: "stickerMessage", tipo: "image/webp", tipoPadrao: "image/webp", rotulo: "figurinha" },
+];
+
+const EXTENSOES: Readonly<Record<string, string>> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "audio/ogg": "ogg",
+  "audio/mpeg": "mp3",
+  "audio/mp4": "m4a",
+  "audio/aac": "aac",
+  "video/mp4": "mp4",
+  "video/3gpp": "3gp",
+  "application/pdf": "pdf",
+  "text/plain": "txt",
+  "text/csv": "csv",
+  "application/zip": "zip",
+};
+
+/** Só o nome, sem separador de caminho nem caractere de controle: é o que a tela mostra e o que vira o nome do download. */
+function nomeSeguro(bruto: string): string {
+  const semLixo = bruto.replace(/[\u0000-\u001f\u007f]/g, "").split(/[\\/]/).pop() ?? "";
+  return semLixo.replace(/^\.+/, "").trim().slice(0, 120);
+}
+
+/** O `fileName` do documento, ou `<tipo>-<id>.<extensão>` derivado do mimetype. */
+function nomeDoAnexo(campo: string, midia: Record<string, unknown>, idExterno: string, tipoDeMidia: string): string {
+  if (campo === "documentMessage" && typeof midia.fileName === "string") {
+    const nome = nomeSeguro(midia.fileName);
+    if (nome !== "") return nome;
+  }
+  const rotulo = MIDIAS_ACEITAS.find((m) => m.campo === campo)?.rotulo ?? "arquivo";
+  const normalizado = (tipoDeMidia.split(";")[0] ?? "").trim().toLowerCase();
+  const extensao = EXTENSOES[normalizado] ?? ((normalizado.split("/")[1] ?? "").replace(/[^a-z0-9]/g, "").slice(0, 8) || "bin");
+  return `${rotulo}-${nomeSeguro(idExterno).replace(/[^A-Za-z0-9_-]/g, "") || "anexo"}.${extensao}`;
+}
+
 /**
  * `instancia` é a instância guardada na credencial do Canal: um corpo de outra instância não é deste Canal e não vira
  * evento nenhum (`[]`), assim como um `event` que não é `messages.upsert`.
@@ -82,23 +131,45 @@ export function traduzirChamadaDaEvolution(corpo: unknown, instancia: string): r
   const digitos = numeroDoJid(jid) ?? (jid.endsWith("@lid") ? numeroDoJid(chave.remoteJidAlt) : undefined);
   if (digitos === undefined) return ignorado("sem_numero", idExterno);
 
-  const mensagem = ehObjeto(dados.message) ? dados.message : {};
-  const estendida = ehObjeto(mensagem.extendedTextMessage) ? mensagem.extendedTextMessage : undefined;
-  const conteudo =
-    typeof mensagem.conversation === "string" ? mensagem.conversation : typeof estendida?.text === "string" ? estendida.text : undefined;
-  if (conteudo === undefined) {
-    return ignorado(`tipo:${typeof dados.messageType === "string" ? dados.messageType : "desconhecido"}`, idExterno);
-  }
+  const mensagem = desembrulhar(ehObjeto(dados.message) ? dados.message : {});
+  const tipoDoCorpo = typeof dados.messageType === "string" ? dados.messageType : undefined;
+  if (ehObjeto(mensagem.reactionMessage)) return ignorado("reacao", idExterno);
+  if (ehObjeto(mensagem.protocolMessage) || ehObjeto(mensagem.editedMessage)) return ignorado("edicao", idExterno);
 
   const nome = typeof dados.pushName === "string" ? dados.pushName.trim() : "";
-  return [
-    {
-      tipo: "mensagem",
-      idExterno,
-      criadoEm: instanteDoProvedor(dados.messageTimestamp) ?? new Date().toISOString(),
-      remetente: { tipo: "whatsapp", valor: `+${digitos}`, ...(nome === "" ? {} : { nomeExibido: nome }) },
-      conteudo,
-      cargaBruta: semApikey(corpo),
-    },
-  ];
+  const base = {
+    tipo: "mensagem" as const,
+    idExterno,
+    criadoEm: instanteDoProvedor(dados.messageTimestamp) ?? new Date().toISOString(),
+    remetente: { tipo: "whatsapp" as const, valor: `+${digitos}`, ...(nome === "" ? {} : { nomeExibido: nome }) },
+    cargaBruta: semApikey(corpo),
+  };
+
+  const estendida = ehObjeto(mensagem.extendedTextMessage) ? mensagem.extendedTextMessage : undefined;
+  const texto = typeof mensagem.conversation === "string" ? mensagem.conversation : typeof estendida?.text === "string" ? estendida.text : undefined;
+  if (texto !== undefined) return [{ ...base, conteudo: texto }];
+
+  for (const { campo, tipo, tipoPadrao } of MIDIAS_ACEITAS) {
+    const midia = mensagem[campo];
+    if (!ehObjeto(midia)) continue;
+    const tipoDeMidia = tipo ?? (typeof midia.mimetype === "string" && midia.mimetype.trim() !== "" ? midia.mimetype.trim() : tipoPadrao);
+    const legenda = typeof midia.caption === "string" && midia.caption.trim() !== "" ? midia.caption : undefined;
+    return [
+      {
+        ...base,
+        ...(legenda === undefined ? {} : { conteudo: legenda }),
+        anexos: [
+          {
+            // O `{ key, message }` do webhook é o que `getBase64FromMediaMessage` precisa para achar a mídia; a `url` de dentro dela
+            // é o CDN cifrado do WhatsApp e nunca é seguida.
+            referenciaNoProvedor: JSON.stringify({ key: chave, message: dados.message }),
+            tipoDeMidia,
+            nome: nomeDoAnexo(campo, midia, idExterno, tipoDeMidia),
+          },
+        ],
+      },
+    ];
+  }
+
+  return ignorado(`tipo:${tipoDoCorpo ?? Object.keys(mensagem).find((campo) => campo !== "messageContextInfo") ?? "desconhecido"}`, idExterno);
 }
