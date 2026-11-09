@@ -52,7 +52,7 @@ curl -sS --max-time 8 -o /dev/null -w '%{http_code}\n' http://<ip da VPS da Evol
 Esperado: o 1 e o 2 respondem como descrito; o 3 **não conecta**. Se o 3 conectar, a Evolution está publicada em `0.0.0.0:8080` e o `docker-compose.yml` do repositório não foi o que subiu: é infra sua, corrija antes de seguir (`deploy/evolution/docker-compose.yml` publica só em `127.0.0.1:8080`).
 
 Cole na conversa apenas: "SEG-11 ok" ou o que falhou (o código HTTP de cada um dos três).
-Hora: ______  Resultado: ______
+Hora: 2026-11-09  Resultado: **SEG-11 ok** (rodado pelo assistente, a pedido do dono, só com `curl` sem chave): HTTPS `200`; http `301` para `https://`; porta 8080 por fora `000` (conexão recusada). Aviso: o campo `manager` da raiz aponta para `http://…/manager`, ou seja, o `SERVER_URL` da Evolution está em http (trocar para https).
 
 ### Passo 3 — A versão da Evolution
 
@@ -63,7 +63,8 @@ curl -s https://<dominio da Evolution>/
 A resposta é um JSON curto (`status`, `message`, `version`, …). Anote **só o campo `version`**. A pesquisa leu a fonte da `2.3.7`, a mesma tag fixada no `docker-compose.yml`: se a instalação real for outra, o comportamento de `headers` no webhook e do `fetchInstances` pode ser outro (A1, A10).
 
 Cole: a versão (esperado `2.3.7`).
-Hora: ______  Resultado: ______
+Hora: 2026-11-09  Resultado: **`version` = `2.4.0`, não `2.3.7`.** `GET /license/status` devolve `active` (a 2.4.0 exige ativação de licença) e `fetchInstances` responde `200` com **0 instâncias** (o passo 1 ainda não foi feito; esta Evolution não tem a `numeropvmarcos`). As notas públicas da 2.4.0 (rc1 de 2026-05-06 e rc2 de 2026-05-17, marcadas "não para produção") não citam mudança em `/webhook/set`, `fetchInstances`, `getBase64FromMediaMessage` nem no payload de `MESSAGES_UPSERT`, e a rc2 diz que não há mudança de contrato HTTP (ausência de menção, não prova).
+**Decisão do dono (2026-11-09): seguir na 2.4.0** e provar A1 e A10 no passo 8 (`--seco`, que confere o token da instância, o estado `open` e o número) e no webhook ao vivo (passos 17 a 22). Se o `--seco` ou a prova falharem por diferença de versão: `/gsd-plan-phase 16 --gaps` (ou fixar a 2.3.7 apagando o volume do Postgres da Evolution, que está vazio de instâncias).
 
 ### Passo 4 — O `evolution.env` real (Open Question 2)
 

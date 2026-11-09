@@ -126,7 +126,9 @@ ouvinte do tempo real o chama a cada `mensagem.nova`/`mensagem.status`, e o proc
   releitura de 5 s da revisão): mesclar Contato, sucessão do Membro, marcação (estrela e leitura), troca de Canal e
   vínculo de Negócio da Tarefa conversacional e "Simular conexão".
 - **Pressuposto A9 ainda sem prova:** que o pooler de sessão (5432) com o `n1_api` entrega `LISTEN/NOTIFY`, e que o
-  nginx não segura o SSE (`X-Accel-Buffering: no`). Só o dono prova, ao vivo (16-16).
+  nginx não segura o SSE (`X-Accel-Buffering: no`). Só o dono prova, ao vivo: `npm run tempo-real:provar -w @n1/api`
+  mede uma volta de `LISTEN/NOTIFY` pelo pooler (não grava nada e não imprime URL, host nem senha; 16-15) e o SSE
+  pelo nginx da VM fecha em 16-16.
 
 ## A mídia (`midia.ts`, `coleta-de-orfaos.ts`)
 
@@ -197,3 +199,4 @@ código e o id interno, nunca o conteúdo. As únicas linhas de dado são as con
 | `midia.ts`, `coleta-de-orfaos.ts` | 16-10 | baixar e guardar a mídia recebida; a coleta diária de órfãos |
 | `provedores/evolution/` (`cliente.ts`, `traduzir.ts`, `provedor.ts`, `exemplos/`) | 16-12 | a Evolution |
 | `../bootstrap/canal-ligar-evolution.ts`, `canal-segredo-de-teste.ts` | 16-13, 16-02 | os dois comandos de linha da mensageria |
+| `provar-tempo-real.ts`, `provar-tempo-real.cli.ts` | 16-15 | `npm run tempo-real:provar`: uma volta de `LISTEN/NOTIFY` pelo pooler, para o dono provar a A9 |

@@ -131,8 +131,13 @@ com os arquivos do repositório, roda as provas e remove tudo):
 bash apps/api/deploy/provar-nginx.sh      # PORTA_DE_PROVA=18609 por padrão
 ```
 
-Saem três linhas `ok`: 50 `POST` seguidos (39 `429`, o primeiro na 12ª
-chamada), 50 `GET` sem nenhum `429`, e nenhum log com o segredo.
+Saem quatro linhas `ok`: 50 `POST` seguidos (39 `429`, o primeiro na 12ª
+chamada), 50 `GET` sem nenhum `429`, nenhum log com o segredo, e o fluxo SSE do
+tempo real atravessando o `location /` com o primeiro quadro em menos de 1 s. A
+quarta prova mostra que o **caminho** funciona, não que o `X-Accel-Buffering: no`
+é o que o faz funcionar: o mesmo fluxo sem o cabeçalho também passou no nginx 1.30
+do contêiner (medido só como informação). A verificação de verdade é a repetição
+na VM, no passo 15 de `16-PROVA-AO-VIVO.md`.
 
 **Roteiro à mão na VPS de produção** (como root; cada passo que muda o nginx
 só segue se o `nginx -t` passar — um `reload` com configuração inválida não
@@ -393,7 +398,8 @@ fluxo SSE longo e depende de dois detalhes da borda:
 
 **Ainda não provado em produção (suposição A9):** que o pooler do Supabase em modo sessão (porta 5432) com o papel
 `n1_api` entrega `LISTEN/NOTIFY`. Se não entregar, o ouvinte conecta mas nada chega: a tela continua correta pela
-releitura de 5 s da revisão do Espaço. A prova é do dono, em `16-16`.
+releitura de 5 s da revisão do Espaço. A prova é do dono: `npm run tempo-real:provar -w @n1/api`, com o
+`DATABASE_URL` do papel `n1_api` (pré-voo do 16-15, passo 6 de `16-PROVA-AO-VIVO.md`), e depois o SSE ao vivo em `16-16`.
 
 **O webhook por Canal.** `POST /webhooks/mensageria/:canalId` passa pelo `location /` e não tem máscara no log do
 nginx: o `canalId` na URL não é segredo, e o segredo do Canal vai no cabeçalho `x-n1-webhook-segredo`, que o
