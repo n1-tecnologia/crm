@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 16
 current_phase_name: "Base da mensageria: entrada, saída, tempo real e mídia"
 status: executing
-stopped_at: Completed 16-07-PLAN.md
-last_updated: "2026-11-09T18:53:27.443Z"
+stopped_at: Completed 16-08-PLAN.md
+last_updated: "2026-11-09T19:10:08.818Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 16 execution started
-state_head: 255923c39fadc5298cd2663f61277c126e828213
+state_head: f4b8496cddf8a45c2dd79ea054331b92e4c7f4bf
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 288
-  completed_plans: 276
+  completed_plans: 277
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 16 (Base da mensageria: entrada, saída, tempo real e mídia) — EXECUTING
-Plan: 8 of 16
+Plan: 9 of 16
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 16 execution started
 
@@ -497,6 +497,7 @@ Progress: [██████░░░░] 63%
 | Phase 16 P05 | 16 min | 3 tasks | 7 files |
 | Phase 16 P06 | 11 min | 3 tasks | 12 files |
 | Phase 16 P07 | 22 min | 3 tasks | 17 files |
+| Phase 16 P08 | 14 min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -827,6 +828,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 16]: 16-06: status do provedor so avanca (proximoStatusDeEntrega no dominio); nao avancar grava ignorado:status_atrasado e id externo sem Mensagem grava ignorado:status_sem_mensagem
 - [Phase 16]: 16-07: o aviso ao tempo real vai no MESMO cliente da transacao do gesto (avisarCrm/pg_notify so entrega no commit); GET /eventos entrega por SSE com reply.send(PassThrough), nunca o socket cru (perderia o CORS); hub.encerrarTodos() antes do app.close(). — Pitfalls 5 e 6 da RESEARCH; D-16-01. O hub filtra por workspaceId (que nao sai para a aba), reconfere o Papel a cada 60 s e limita 5 fluxos por Membro.
 - [Phase 16]: 16-07: o ouvinte do tempo real acorda o worker de saida a cada mensagem.nova e mensagem.status (cobre o Tentar de novo); o processador acorda a saida ao reenfileirar pendentes de Canal real (acordarSaida). simularConexao, mesclagem, sucessao, marcacao e troca de Canal da Tarefa conversacional NAO avisam (a tela cobre pela releitura de 5 s). — canais.ts e os outros servicos nao estavam nos files_modified do plano; o acordar e idempotente.
+- [Phase 16]: 16-08: o acompanhante do tempo real so conecta fora do Vitest (ativo, padrao NODE_ENV !== test); a conexao relê as chaves de base a cada abertura e a cada 5 s sem conexao
 
 ### Pending Todos
 
@@ -888,6 +890,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-09T18:53:27.188Z
-Stopped at: Completed 16-07-PLAN.md
+Last session: 2026-11-09T19:10:08.541Z
+Stopped at: Completed 16-08-PLAN.md
 Resume file: None
