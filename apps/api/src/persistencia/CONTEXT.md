@@ -239,6 +239,24 @@ now())`, `MOMENTO_DO_GESTO`), igual ao `at` do `ActivityRecord`, para o cursor c
 atribuir, lixeira, restaurar, estrela, leitura, transferir Identificador, consentimento e a
 sucessão (`passarAoSucessor`, um `insert ... select` por tabela antes do `update`).
 
+**A `013` (Fase 16, `013-mensageria.sql`).** Cria `plataforma.webhooks_recebidos`, a fila de
+entrada da mensageria (estados `pendente`, `processando`, `processado`, `falhou`), e o índice
+único parcial `integration_outbox_mensagem_enviar_uniq` do `mensagem.enviar.v1` (3.7.1, um por
+Mensagem, no molde da 006). A rota pública `POST /webhooks/mensageria/:canalId` grava UMA linha
+`pendente` por chamada verificada (a `chave` deduplica o reenvio do provedor, índice
+`webhooks_recebidos_chave_uq`) e o processador de entrada (`mensageria/processador-de-entrada.ts`)
+a reivindica por `for update skip locked`, devolve a `pendente` a trava vencida (2 min) e manda
+cada Mensagem a `receberMensagem`; `disponivel_em` é o backoff, `resultado` diz por que uma chamada
+processada não virou Mensagem e `ultimo_erro` guarda o código da recusa ou o erro saneado. FK
+`(workspace_id, canal_id)` para `canais`: quem limpa um Canal limpa a fila dele antes. **O `corpo`
+tem dado pessoal de terceiro** (telefone, nome, texto): nunca vai a log, a chave `apikey` do topo é
+retirada antes do `insert`, e só a retenção da Sessão 19 apaga as linhas `processado` (até lá elas
+ficam). Não toca `plataforma.registros` (D-03). Vai a produção só pela publicação manual do dono,
+com backup manual do schema `plataforma` antes, `npm run migrar -w @n1/api -- --seco` primeiro e
+`npm run banco:conceder -w @n1/api` depois; o plano 16-03 a aplicou só em Postgres de Docker.
+`migracao-013.test.ts` prova as restrições, a idempotência, a falha no fim, a RLS e a ausência de
+`grant`. O processador sobe com `MENSAGERIA_WORKER_ATIVO=true` (e `MENSAGERIA_WORKER_ID`).
+
 ## Colunas geradas e índices de `002`
 
 `002-registros-colunas-geradas.sql` estende `plataforma.registros` com três
