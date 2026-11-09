@@ -10,3 +10,17 @@
   que revisitar a rota (ou ajustar o teste para aceitar a rota publica de mensageria, que le o segredo do webhook e nao o devolve).
 - `outbox-worker.test.ts` casos (h) a (k) falham quando o arquivo roda junto de `outbox.test.ts` no mesmo `vitest run`
   (baseline conhecido: a fila e a tabela inteira); isolado, os 17 passam.
+
+## Achados no plano 16-10 (fora do escopo dele)
+
+- **A coleta de `entrada/` só enxerga os primeiros 500 objetos de cada pasta de Canal.** A porta `listar(prefixo, { limite })` (16-09,
+  `servicos/armazenamento-de-anexos.ts` e `storage-uploads.ts`) não tem deslocamento, e a pasta `entrada/<canalId>/` guarda para sempre
+  a mídia que uma Mensagem cita. Depois de 500 mídias recebidas num Canal, o lote do dia passa a ser sempre o mesmo e o órfão fora dele
+  nunca sai. Quem fecha: acrescentar `deslocamento` (o `list` do SDK aceita `offset`) à porta, ao falso e à coleta. Não bloqueia nada
+  agora: o volume real só passa de 500 por Canal bem depois da prova ao vivo.
+- A primeira coleta só roda `intervaloMs` (24 h) depois de o processo subir: um processo que reinicia a cada deploy diário nunca coletaria.
+  Hoje o deploy é manual e raro, então não pesa; se o deploy virar frequente, a coleta ganha uma primeira rodada logo depois do boot.
+- `coletarOrfaos` de `storage-uploads.ts` não foi usada: ela chama o bucket real direto (não passa pela porta, então o falso não a
+  intercepta) e seleciona as sessões expiradas sem excluir as que já foram limpas (depois de `limite` sessões abandonadas o lote não
+  anda mais). A coleta nova usa a porta e só pega sessão expirada que ainda tem objeto `reservado`/`enviado`. `coletarOrfaos` segue
+  exportada e coberta pelo teste dela (`storage-uploads.test.ts`, que roda contra o Supabase real); nenhum código de produção a chama.
