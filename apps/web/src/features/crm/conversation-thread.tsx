@@ -82,6 +82,7 @@ import { TIPO_DE_IDENTIFICADOR_DO_CANAL, type ConversaNaLista } from "@n1/domini
 import { LISTA_SEM_CANAIS } from "@n1/dominio/operations/canais";
 import { SeletorDeTipoDeTarefa } from "@/features/estrutura/seletor-de-tipo";
 import { AvatarDoContato } from "@/features/crm/avatar-do-contato";
+import { AnexoDaMensagemNoFio } from "@/features/crm/anexo-da-mensagem";
 import { EstadoDaEntrega } from "@/features/crm/estado-da-entrega";
 import { SeletorDeCanalDeResposta } from "@/features/crm/seletor-de-canal";
 import { SeparadorDeCanal } from "@/features/crm/separador-de-canal";
@@ -1145,9 +1146,19 @@ export function ConversationThread({
                           </p>
                         ) : null}
                         {/* T-15-50: o texto vem de terceiros e entra como texto do React, nunca como HTML. */}
-                        <p className="whitespace-pre-wrap">
-                          {mensagem.conteudo ?? ""}
-                        </p>
+                        {mensagem.conteudo || mensagem.anexos.length === 0 ? (
+                          <p className="whitespace-pre-wrap">
+                            {mensagem.conteudo ?? ""}
+                          </p>
+                        ) : null}
+                        {/* 3.9.5: o anexo vem da URL assinada de `GET /mensagens/:id/anexos/:indice`; a legenda é o `conteudo`. */}
+                        {mensagem.anexos.length > 0 ? (
+                          <div className={cn("flex flex-col gap-2", mensagem.conteudo ? "mt-2" : "")}>
+                            {mensagem.anexos.map((anexo, indice) => (
+                              <AnexoDaMensagemNoFio key={`${mensagem.id}:${indice}`} mensagemId={mensagem.id} indice={indice} anexo={anexo} />
+                            ))}
+                          </div>
+                        ) : null}
                         <p
                           className={cn(
                             "app-sm mt-1",

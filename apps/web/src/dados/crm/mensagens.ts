@@ -77,11 +77,19 @@ export interface RespostaDaUrlDoAnexo {
 }
 
 /** `/mensagens/<id>/anexos/<indice>` — a chave de SWR da URL assinada do anexo. */
-export function chaveDoAnexo(_mensagemId: string, _indice: number): string {
-  return "";
+export function chaveDoAnexo(mensagemId: string, indice: number): string {
+  return `/mensagens/${encodeURIComponent(mensagemId)}/anexos/${indice}`;
 }
 
-/** A URL assinada de um anexo guardado. */
-export function useUrlDoAnexo(_mensagemId: string, _indice: number, _baixado: boolean) {
-  return useSWR<RespostaDaUrlDoAnexo, Error>(null, (chave: string) => chamarCrm<RespostaDaUrlDoAnexo>(chave));
+/**
+ * A URL assinada de um anexo guardado (`GET /mensagens/:id/anexos/:indice`, 3.9.3): vale 5 minutos, então o SWR a
+ * pede de novo a cada 4 (`refreshInterval`) e a cada abertura. O anexo `baixado: false` não tem o que pedir: sem
+ * chave, nenhuma chamada. O foco da janela não revalida (cada revalidação assina uma URL nova).
+ */
+export function useUrlDoAnexo(mensagemId: string, indice: number, baixado: boolean) {
+  return useSWR<RespostaDaUrlDoAnexo, Error>(
+    baixado ? chaveDoAnexo(mensagemId, indice) : null,
+    (chave: string) => chamarCrm<RespostaDaUrlDoAnexo>(chave),
+    { refreshInterval: 240_000, revalidateOnFocus: false, shouldRetryOnError: valeRepetir },
+  );
 }
