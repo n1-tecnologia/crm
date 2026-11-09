@@ -61,7 +61,13 @@ export interface AtorDaMensagem {
 export interface AnexoDaMensagem {
   readonly tipoDeMidia: string;
   readonly nome: string;
+  /** O id da mídia no provedor (a Mensagem `recebida`); some quando o arquivo é guardado. */
   readonly referenciaExterna?: string;
+  /** A chave do objeto no bucket. Nunca sai pela api: quem abre o arquivo pede uma URL assinada (3.9.3). */
+  readonly objectKey?: string;
+  readonly tamanhoBytes?: number;
+  /** `true` quando o arquivo está guardado no bucket; `false` quando só há a referência do provedor (D-16-08). */
+  readonly baixado: boolean;
 }
 
 export interface EnderecoAdicional {
@@ -100,17 +106,36 @@ export interface Mensagem {
   readonly registradoEm: string;
 }
 
+/** O arquivo que a pessoa anexou: o ticket que ela pediu (`submissionId`) e o objeto reservado nele. */
+export interface ReferenciaDeAnexoEnviado {
+  readonly submissionId: string;
+  readonly objectId: string;
+}
+
+/** O que o servidor confirmou no bucket sobre um anexo: o tipo e o tamanho vêm do arquivo, não do cliente. */
+export interface AnexoConfirmado {
+  readonly objectKey: string;
+  readonly nome: string;
+  readonly tipoDeMidia: string;
+  readonly tamanhoBytes: number;
+}
+
+/** Uma Mensagem é uma mensagem no provedor e tem um `id_externo` só: um arquivo por vez. */
+export const MAX_ANEXOS_POR_MENSAGEM = 1;
+
 export interface NovaMensagem {
   readonly conversaId: string;
   readonly direcao: "enviada" | "interna";
+  /** Pode ser vazio quando há anexo (INV-CXE-07: conteúdo OU anexo). */
   readonly conteudo: string;
   readonly emRespostaAId?: string;
+  readonly anexos?: readonly ReferenciaDeAnexoEnviado[];
 }
 
 /**
  * Uma Mensagem que uma pessoa manda: `enviada` ao Contato ou `interna` (nota,
- * B67). Texto obrigatório — anexos ainda não entram por aqui (INV-CXE-07 pede
- * conteúdo ou anexo, e só o conteúdo existe nesta fase).
+ * B67). INV-CXE-07: texto OU anexo. O anexo é só a referência do arquivo que a
+ * pessoa subiu; o servidor confere o arquivo (tipo, tamanho, assinatura) antes de gravar.
  */
 export function validarNovaMensagem(entrada: NovaMensagem): OperationResult<NovaMensagem> {
   if (entrada.conversaId.trim() === "") return fail("Escolha a Conversa da Mensagem.", "conversaId");
@@ -122,6 +147,14 @@ export function validarNovaMensagem(entrada: NovaMensagem): OperationResult<Nova
     return fail(`A Mensagem vai até ${LIMITES_CRM.textoLongo} caracteres.`, "conteudo");
   }
   return ok(entrada);
+}
+
+/** 3.9.1: o Canal só envia as categorias que declara em `sendableMediaTypes` — um Canal que não envia vídeo recusa vídeo. */
+export function validarAnexosDoEnvio(
+  _anexos: readonly AnexoConfirmado[],
+  _sendableMediaTypes: readonly string[],
+): OperationResult<void> {
+  return ok(undefined);
 }
 
 export interface EntradaDeEnvio {

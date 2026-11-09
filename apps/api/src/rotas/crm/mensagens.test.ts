@@ -22,8 +22,10 @@ import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
 import { criarRepositorioDeConversasPg } from "../../repositorios/crm/conversas";
 import { criarRepositorioDeMensagensPg } from "../../repositorios/crm/mensagens";
 import { criarServicoDeRecebimento } from "../../servicos/crm/recebimento";
-import type { ServicoDeMensagens } from "../../servicos/crm/mensagens";
+import { criarAcessoAoCrmPg } from "../../servicos/crm/acesso";
+import { criarServicoDeMensagens, type ServicoDeMensagens } from "../../servicos/crm/mensagens";
 import { recusa, sucesso, type ResultadoCrm } from "../../servicos/crm/resultado";
+import { criarArmazenamentoFalso } from "../../testes/armazenamento-falso";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearCanal, semearMembro } from "../../testes/banco-crm";
 
 const MARYANE = usuarioDoSeed("mem_maryane");
@@ -54,6 +56,14 @@ describe("rotas de Mensagens — serviço falso, sem banco", () => {
       reenviar: (...a) => {
         chamadas.push(["reenviar", ...a]);
         return Promise.resolve(enviar ?? sucesso({ id: "m1" } as Mensagem));
+      },
+      pedirTicketDeAnexo: (...a) => {
+        chamadas.push(["pedirTicketDeAnexo", ...a]);
+        return Promise.resolve(sucesso({ submissionId: "s1", objectId: "o1", uploadUrl: "https://armazenamento-falso.test/upload/o1" }));
+      },
+      urlDoAnexo: (...a) => {
+        chamadas.push(["urlDoAnexo", ...a]);
+        return Promise.resolve(sucesso({ url: "https://armazenamento-falso.test/objeto/k", expiraEm: "2026-11-09T19:00:00.000Z" }));
       },
     };
     return { servico, chamadas };
@@ -166,6 +176,85 @@ describe("rotas de Mensagens — serviço falso, sem banco", () => {
     const resposta = await appCom(servico).inject({ method: "POST", url: "/mensagens/m1/reenviar", headers: AUTORIZACAO });
     expect(resposta.statusCode).toBe(409);
     expect(resposta.json()).toEqual({ ok: false, error: "Só uma Mensagem que não foi enviada pode ser enviada de novo.", codigo: "NAO_FALHOU" });
+  });
+
+  it("(16-09) POST /mensagens/anexos sem Authorization responde 401 e o serviço não é chamado", async () => {
+    const { servico, chamadas } = novoFalso();
+    const corpo = { conversaId: "v1", nome: "foto.png", tipoDeMidia: "image/png", tamanhoBytes: 2048 };
+    expect((await appCom(servico).inject({ method: "POST", url: "/mensagens/anexos", payload: corpo })).statusCode).toBe(401);
+    expect(chamadas).toEqual([]);
+  });
+
+  it("(16-09) POST /mensagens/anexos válido responde 200 com o ticket e repassa o Membro da sessão e o corpo", async () => {
+    const { servico, chamadas } = novoFalso();
+    const corpo = { conversaId: "v1", nome: "foto.png", tipoDeMidia: "image/png", tamanhoBytes: 2048 };
+    const resposta = await appCom(servico).inject({ method: "POST", url: "/mensagens/anexos", headers: AUTORIZACAO, payload: corpo });
+    expect(resposta.statusCode).toBe(200);
+    expect(resposta.json()).toEqual({ ok: true, dados: { submissionId: "s1", objectId: "o1", uploadUrl: "https://armazenamento-falso.test/upload/o1" } });
+    expect(chamadas[0]?.[0]).toBe("pedirTicketDeAnexo");
+    expect(chamadas[0]?.[1]).toMatchObject({ id: "mem_maryane" });
+    expect(chamadas[0]?.[2]).toEqual(corpo);
+  });
+
+  it.each([
+    ["sem conversaId", { nome: "a.png", tipoDeMidia: "image/png", tamanhoBytes: 10 }],
+    ["sem nome", { conversaId: "v1", tipoDeMidia: "image/png", tamanhoBytes: 10 }],
+    ["com nome vazio", { conversaId: "v1", nome: "  ", tipoDeMidia: "image/png", tamanhoBytes: 10 }],
+    ["sem tipoDeMidia", { conversaId: "v1", nome: "a.png", tamanhoBytes: 10 }],
+    ["com tamanho zero", { conversaId: "v1", nome: "a.png", tipoDeMidia: "image/png", tamanhoBytes: 0 }],
+    ["com tamanho negativo", { conversaId: "v1", nome: "a.png", tipoDeMidia: "image/png", tamanhoBytes: -5 }],
+    ["com tamanho fracionado", { conversaId: "v1", nome: "a.png", tipoDeMidia: "image/png", tamanhoBytes: 10.5 }],
+    ["com a chave do objeto", { conversaId: "v1", nome: "a.png", tipoDeMidia: "image/png", tamanhoBytes: 10, objectKey: "workspace/x" }],
+    ["com o Espaço", { conversaId: "v1", nome: "a.png", tipoDeMidia: "image/png", tamanhoBytes: 10, workspaceId: "ws_outro" }],
+  ])("(16-09) POST /mensagens/anexos %s responde 400 e o serviço não é chamado", async (_nome, payload) => {
+    const { servico, chamadas } = novoFalso();
+    const resposta = await appCom(servico).inject({ method: "POST", url: "/mensagens/anexos", headers: AUTORIZACAO, payload });
+    expect(resposta.statusCode).toBe(400);
+    expect(chamadas).toEqual([]);
+  });
+
+  it("(16-09) POST /mensagens aceita conteúdo vazio COM um anexo, e recusa conteúdo vazio sem anexo", async () => {
+    const { servico, chamadas } = novoFalso();
+    const app = appCom(servico);
+    const anexos = [{ submissionId: "s1", objectId: "o1" }];
+    const comAnexo = await app.inject({ method: "POST", url: "/mensagens", headers: AUTORIZACAO, payload: { ...corpoValido, conteudo: "", anexos } });
+    expect(comAnexo.statusCode).toBe(201);
+    expect(chamadas[0]?.[2]).toEqual({ ...corpoValido, conteudo: "", anexos });
+    const semNada = await app.inject({ method: "POST", url: "/mensagens", headers: AUTORIZACAO, payload: { ...corpoValido, conteudo: "", anexos: [] } });
+    expect(semNada.statusCode).toBe(400);
+    expect(chamadas).toHaveLength(1);
+  });
+
+  it("(16-09) POST /mensagens com dois anexos, ou com a chave do objeto no anexo, responde 400", async () => {
+    const { servico, chamadas } = novoFalso();
+    const app = appCom(servico);
+    const um = { submissionId: "s1", objectId: "o1" };
+    const dois = await app.inject({ method: "POST", url: "/mensagens", headers: AUTORIZACAO, payload: { ...corpoValido, anexos: [um, { submissionId: "s2", objectId: "o2" }] } });
+    expect(dois.statusCode).toBe(400);
+    const comChave = await app.inject({ method: "POST", url: "/mensagens", headers: AUTORIZACAO, payload: { ...corpoValido, anexos: [{ ...um, objectKey: "workspace/x/y" }] } });
+    expect(comChave.statusCode).toBe(400);
+    expect(chamadas).toEqual([]);
+  });
+
+  it("(16-09) GET /mensagens/{id}/anexos/{indice} sem Authorization responde 401; com ele repassa o Membro, o id e o índice", async () => {
+    const { servico, chamadas } = novoFalso();
+    const app = appCom(servico);
+    expect((await app.inject({ method: "GET", url: "/mensagens/m1/anexos/0" })).statusCode).toBe(401);
+    expect(chamadas).toEqual([]);
+    const resposta = await app.inject({ method: "GET", url: "/mensagens/m1/anexos/2", headers: AUTORIZACAO });
+    expect(resposta.statusCode).toBe(200);
+    expect(resposta.json()).toEqual({ ok: true, dados: { url: "https://armazenamento-falso.test/objeto/k", expiraEm: "2026-11-09T19:00:00.000Z" } });
+    expect(chamadas[0]?.[0]).toBe("urlDoAnexo");
+    expect(chamadas[0]?.[1]).toMatchObject({ id: "mem_maryane" });
+    expect(chamadas[0]?.[2]).toBe("m1");
+    expect(chamadas[0]?.[3]).toBe(2);
+  });
+
+  it.each(["-1", "abc", "1.5", ""])("(16-09) GET /mensagens/{id}/anexos/%s com índice inválido responde 400 ou 404 e o serviço não é chamado", async (indice) => {
+    const { servico, chamadas } = novoFalso();
+    const resposta = await appCom(servico).inject({ method: "GET", url: `/mensagens/m1/anexos/${indice}`, headers: AUTORIZACAO });
+    expect([400, 404]).toContain(resposta.statusCode);
+    expect(chamadas).toEqual([]);
   });
 
   it("não existe rota de recebida nem DELETE/PATCH em /mensagens", async () => {
@@ -427,6 +516,79 @@ describeComBanco("rotas de Mensagens — serviço real, Postgres local", () => {
       expect(resposta.json()).toMatchObject({ codigo: "CONVERSA_NA_LIXEIRA" });
       expect(await estadoDe(ws, id)).toBe("falhou");
       await pool().query("update plataforma.conversas set estado = 'ativo', na_lixeira_em = null where workspace_id = $1 and id = $2", [ws, ids.suporte.conversaId]);
+    });
+  });
+  describe("Anexo da Mensagem (16-09, 3.9.3, MSG-04) — o armazenamento é o falso, nunca o Storage real", () => {
+    const armazenamento = criarArmazenamentoFalso();
+    const appComArmazenamento = (autenticacao: ReturnType<typeof opcoesDeAutenticacao> = opcoesDeAutenticacao(ws)) =>
+      buildApp({ ...autenticacao, crm: { mensagens: criarServicoDeMensagens({ pool, acesso: criarAcessoAoCrmPg(pool), armazenamento }) } });
+    // Um PNG de 1x1 pixel de verdade.
+    const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+    const mensagens = () => criarRepositorioDeMensagensPg(pool());
+
+    const pedirTicket = (conversaId: string, extra: Record<string, unknown> = {}, aplicacao = appComArmazenamento()) =>
+      aplicacao.inject({
+        method: "POST",
+        url: "/mensagens/anexos",
+        headers: AUTORIZACAO,
+        payload: { conversaId, nome: "foto.png", tipoDeMidia: "image/png", tamanhoBytes: PNG.byteLength, ...extra },
+      });
+
+    /** Pede o ticket e põe os bytes no falso, como o navegador faria no `uploadUrl`. */
+    async function subirAnexo(conversaId: string, bytes: Uint8Array = PNG, extra: Record<string, unknown> = {}) {
+      const ticket = await pedirTicket(conversaId, extra);
+      expect(ticket.statusCode).toBe(200);
+      const { submissionId, objectId } = (ticket.json() as { dados: { submissionId: string; objectId: string } }).dados;
+      armazenamento.colocarBytes(objectId, bytes);
+      return { submissionId, objectId };
+    }
+
+    it("POST /mensagens/anexos abre a sessão da Conversa e devolve o ticket; a chave reservada é do Espaço e da Conversa, e não sai na resposta", async () => {
+      const resposta = await pedirTicket(ids.comercial.conversaId);
+      expect(resposta.statusCode).toBe(200);
+      const dados = (resposta.json() as { ok: true; dados: { submissionId: string; objectId: string; uploadUrl: string } }).dados;
+      expect(Object.keys(dados).sort()).toEqual(["objectId", "submissionId", "uploadUrl"]);
+      expect(armazenamento.chaveDoObjeto(dados.objectId).startsWith(`workspace/${ws}/conversas/${ids.comercial.conversaId}/`)).toBe(true);
+      expect(await armazenamento.sessao(dados.submissionId)).toEqual({ workspaceId: ws, formId: `conversa-${ids.comercial.conversaId}` });
+      expect(resposta.body).not.toContain("workspace/");
+    });
+
+    it("MSG-04: a Mensagem só com anexo (conteúdo vazio) é gravada com o anexo conferido e a sessão é consumida", async () => {
+      const { submissionId, objectId } = await subirAnexo(ids.comercial.conversaId);
+      const resposta = await appComArmazenamento().inject({
+        method: "POST",
+        url: "/mensagens",
+        headers: AUTORIZACAO,
+        payload: { conversaId: ids.comercial.conversaId, direcao: "enviada", conteudo: "", anexos: [{ submissionId, objectId }] },
+      });
+      expect(resposta.statusCode).toBe(201);
+      const criada = (resposta.json() as { dados: Mensagem }).dados;
+      expect(criada.statusEntrega).toBe("pendente");
+      expect(criada.anexos).toEqual([
+        { tipoDeMidia: "image/png", nome: "foto.png", objectKey: armazenamento.chaveDoObjeto(objectId), tamanhoBytes: PNG.byteLength, baixado: true },
+      ]);
+      expect((await mensagens().obter(ws, criada.id))?.anexos).toEqual(criada.anexos);
+      expect(armazenamento.sessaoConsumida(submissionId)).toBe(true);
+    });
+
+    it("GET /mensagens/{id}/anexos/0 devolve uma URL assinada do falso, sem download: a imagem abre no <img>", async () => {
+      const { submissionId, objectId } = await subirAnexo(ids.comercial.conversaId);
+      const criada = (
+        await appComArmazenamento().inject({
+          method: "POST",
+          url: "/mensagens",
+          headers: AUTORIZACAO,
+          payload: { conversaId: ids.comercial.conversaId, direcao: "enviada", conteudo: "", anexos: [{ submissionId, objectId }] },
+        })
+      ).json() as { dados: Mensagem };
+      const antes = armazenamento.urlsEmitidas.length;
+      const resposta = await appComArmazenamento().inject({ method: "GET", url: `/mensagens/${criada.dados.id}/anexos/0`, headers: AUTORIZACAO });
+      expect(resposta.statusCode).toBe(200);
+      const corpo = resposta.json() as { ok: true; dados: { url: string; expiraEm: string } };
+      expect(corpo.dados.url.startsWith("https://armazenamento-falso.test/objeto/")).toBe(true);
+      expect(Number.isNaN(Date.parse(corpo.dados.expiraEm))).toBe(false);
+      expect(armazenamento.urlsEmitidas).toHaveLength(antes + 1);
+      expect(armazenamento.urlsEmitidas.at(-1)).toEqual({ objectKey: armazenamento.chaveDoObjeto(objectId) });
     });
   });
 });

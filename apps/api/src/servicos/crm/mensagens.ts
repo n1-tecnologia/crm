@@ -50,15 +50,41 @@ import { criarRepositorioDeConsentimentosPg } from "../../repositorios/crm/conse
 import { criarRepositorioDeConversasPg } from "../../repositorios/crm/conversas";
 import { criarRepositorioDeMensagensPg, type FiltroDeMensagens } from "../../repositorios/crm/mensagens";
 import { finalidadeDeMarketing } from "../../repositorios/crm/referencias";
+import type { ArmazenamentoDeAnexos } from "../armazenamento-de-anexos";
 import { exigir, type AcessoAoCrm } from "./acesso";
 import { recusa, sucesso, type ResultadoCrm } from "./resultado";
 import { comTransacao, type FrasesDeRestricao } from "./transacao";
+
+/** O pedido de ticket para anexar um arquivo (16-09, 3.9.3): o tipo e o tamanho que o navegador diz que vai subir. */
+export interface EntradaDeTicketDeAnexo {
+  readonly conversaId: string;
+  readonly nome: string;
+  readonly tipoDeMidia: string;
+  readonly tamanhoBytes: number;
+}
+
+/** O ticket: o navegador sobe os bytes em `uploadUrl` e devolve `submissionId` e `objectId` em `POST /mensagens`. */
+export interface TicketDeAnexo {
+  readonly submissionId: string;
+  readonly objectId: string;
+  readonly uploadUrl: string;
+}
+
+/** A URL assinada de um anexo: vale poucos minutos e é pedida de novo a cada abertura. */
+export interface UrlDeAnexo {
+  readonly url: string;
+  readonly expiraEm: string;
+}
 
 export interface ServicoDeMensagens {
   listar(membro: MembroDaSessao, filtro: FiltroDeMensagens): Promise<ResultadoCrm<Pagina<Mensagem>>>;
   enviar(membro: MembroDaSessao, entrada: NovaMensagem): Promise<ResultadoCrm<Mensagem>>;
   /** "Tentar de novo" (16-06, 3.7.3): só a Mensagem `enviada` que `falhou`; volta a `pendente` e à fila. */
   reenviar(membro: MembroDaSessao, id: string): Promise<ResultadoCrm<Mensagem>>;
+  /** 16-09: abre a sessão de envio da Conversa e devolve o ticket para o navegador subir o arquivo ao bucket. */
+  pedirTicketDeAnexo(membro: MembroDaSessao, entrada: EntradaDeTicketDeAnexo): Promise<ResultadoCrm<TicketDeAnexo>>;
+  /** 16-09: uma URL assinada nova do anexo `indice` da Mensagem; só quem pode ler a Conversa. */
+  urlDoAnexo(membro: MembroDaSessao, mensagemId: string, indice: number): Promise<ResultadoCrm<UrlDeAnexo>>;
 }
 
 /** Rede de SQLSTATE: a FK composta de "em resposta a" (INV-CXE-10) vira esta frase, sem o nome dela. */
@@ -93,6 +119,8 @@ export function criarServicoDeMensagens(deps: {
   readonly enfileirar?: typeof enfileirarEnvio;
   /** Quem reabre a linha do outbox na "Tentar de novo". Só o teste de rollback troca o padrão (`reenfileirarEnvio`). */
   readonly reenfileirar?: typeof reenfileirarEnvio;
+  /** O bucket dos anexos. Padrão: o do Supabase; os testes injetam `criarArmazenamentoFalso()`. */
+  readonly armazenamento?: ArmazenamentoDeAnexos;
 }): ServicoDeMensagens {
   const enfileirar = deps.enfileirar ?? enfileirarEnvio;
   const reenfileirar = deps.reenfileirar ?? reenfileirarEnvio;
@@ -209,6 +237,14 @@ export function criarServicoDeMensagens(deps: {
         },
         FRASES,
       );
+    },
+
+    // Esqueleto do RED (16-09, Task 1).
+    async pedirTicketDeAnexo() {
+      return recusa<never>(404, "Esqueleto.");
+    },
+    async urlDoAnexo() {
+      return recusa<never>(404, "Esqueleto.");
     },
   };
 }
