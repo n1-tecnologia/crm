@@ -830,3 +830,37 @@ describe("ConversationThread — o aviso de consentimento de marketing pela regr
     expect(screen.queryByText(AVISO)).toBeNull();
   });
 });
+
+describe("ConversationThread — o estado de entrega de cada Mensagem enviada (16-11, 3.7.3)", () => {
+  it("(30) a Mensagem enviada mostra o estado em palavras de produto, e a recebida e a interna não mostram nenhum", async () => {
+    const [recebida, enviada] = mensagensDaApi.cnv_wpp as [Mensagem, Mensagem];
+    mensagensDaApi.cnv_wpp = [recebida, { ...enviada, statusEntrega: "lida" }, { ...novaMensagem("cnv_wpp", "chn_wpp", 3, "interna", "2026-10-12T09:00:00.000Z"), statusEntrega: null }];
+    montar({ conversaId: "cnv_wpp" });
+    await fioPronto("cnv_wpp mensagem");
+    const fio = within(document.querySelector("[data-fio='mensagens']") as HTMLElement);
+    expect(fio.getAllByText("Lida")).toHaveLength(1);
+    expect(fio.queryByText(/· lida/)).toBeNull();
+  });
+
+  it("(31) a que falhou mostra o motivo; Tentar de novo chama POST /mensagens/:id/reenviar e o fio passa a dizer Enviando…", async () => {
+    const [recebida, enviada] = mensagensDaApi.cnv_wpp as [Mensagem, Mensagem];
+    mensagensDaApi.cnv_wpp = [recebida, { ...enviada, statusEntrega: "falhou", motivoFalha: "Este número não tem WhatsApp." }];
+    const padrao = rotaPadrao;
+    rotaPadrao = async (url, init) => {
+      if ((init?.method ?? "GET") === "POST" && new URL(url).pathname === `/mensagens/${enviada.id}/reenviar`) {
+        mensagensDaApi.cnv_wpp = [recebida, { ...enviada, statusEntrega: "pendente", motivoFalha: null }];
+        return resposta(200, { ok: true, dados: { ...enviada, statusEntrega: "pendente", motivoFalha: null } });
+      }
+      return padrao(url, init);
+    };
+    montar({ conversaId: "cnv_wpp" });
+    await fioPronto("cnv_wpp mensagem");
+    expect(screen.getByText("Não enviada")).toBeTruthy();
+    expect(screen.getByText("Este número não tem WhatsApp.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Tentar de novo" }));
+
+    await waitFor(() => expect(screen.queryByText("Não enviada")).toBeNull());
+    expect(gravacoes()).toEqual([{ caminho: `/mensagens/${enviada.id}/reenviar`, metodo: "POST", corpo: undefined }]);
+    expect(screen.getByText("Enviando…")).toBeTruthy();
+  });
+});

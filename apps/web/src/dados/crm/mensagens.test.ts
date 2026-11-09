@@ -23,7 +23,7 @@ vi.mock("./cliente-crm", async (original) => {
 });
 
 import { ErroDeApi, invalidarCrm } from "./cliente-crm";
-import { chaveDasMensagens, enviarMensagem, useMensagens } from "./mensagens";
+import { chaveDasMensagens, enviarMensagem, reenviarMensagem, useMensagens } from "./mensagens";
 
 function resposta(status: number, corpo: unknown): Response {
   return { ok: status >= 200 && status < 300, status, json: async () => corpo } as Response;
@@ -87,6 +87,33 @@ describe("enviarMensagem", () => {
   ])("(b) numa recusa %i nada é invalidado e a ErroDeApi sobe com o codigo", async (status, codigo) => {
     fetchMock.mockResolvedValueOnce(resposta(status, { ok: false, error: "Recusado.", codigo }));
     const erro = (await enviarMensagem(entrada).catch((e: unknown) => e)) as ErroDeApi;
+    expect(erro).toBeInstanceOf(ErroDeApi);
+    expect(erro.status).toBe(status);
+    expect(erro.codigo).toBe(codigo);
+    expect(invalidarCrm).not.toHaveBeenCalled();
+  });
+});
+
+describe("reenviarMensagem (16-11, 3.7.3)", () => {
+  it("(c) manda POST /mensagens/<id>/reenviar sem corpo, devolve a Mensagem e invalida /mensagens e /conversas", async () => {
+    fetchMock.mockResolvedValueOnce(resposta(200, { ok: true, dados: { id: "m1", statusEntrega: "pendente" } }));
+    const dados = await reenviarMensagem("m1");
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://api/mensagens/m1/reenviar");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBeUndefined();
+    expect(dados.statusEntrega).toBe("pendente");
+    expect(vi.mocked(invalidarCrm).mock.calls.map(([prefixo]) => prefixo).sort()).toEqual(["/conversas", "/mensagens"]);
+  });
+
+  it.each([
+    [409, "NAO_FALHOU"],
+    [409, "CANAL_ARQUIVADO"],
+    [404, "MENSAGEM_NAO_ENCONTRADA"],
+    [403, "SEM_PERMISSAO"],
+  ])("(c) numa recusa %i (%s) nada é invalidado e a ErroDeApi sobe com o codigo", async (status, codigo) => {
+    fetchMock.mockResolvedValueOnce(resposta(status, { ok: false, error: "Recusado.", codigo }));
+    const erro = (await reenviarMensagem("m1").catch((e: unknown) => e)) as ErroDeApi;
     expect(erro).toBeInstanceOf(ErroDeApi);
     expect(erro.status).toBe(status);
     expect(erro.codigo).toBe(codigo);

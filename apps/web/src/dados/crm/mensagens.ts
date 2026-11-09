@@ -59,3 +59,8 @@ export async function enviarMensagem(entrada: NovaMensagem): Promise<Mensagem> {
   await Promise.all([invalidarCrm("/mensagens"), invalidarCrm("/conversas")]);
   return resposta.dados;
 }
+
+/** "Tentar de novo" (16-11): a Mensagem que falhou volta a `pendente` e à fila de saída. */
+export async function reenviarMensagem(_id: string): Promise<Mensagem> {
+  throw new Error("não implementado");
+}
