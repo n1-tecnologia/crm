@@ -192,3 +192,16 @@ um requisito que o catálogo não prevê é divergência, e nada é gravado.
 npm run contas-a-pagar:configurar -w @n1/api            # dry-run (padrão)
 npm run contas-a-pagar:configurar -w @n1/api -- --apply # grava
 ```
+
+## O Processo de Projetos
+
+`npm run projetos:configurar -w @n1/api -- --membro=<id>` materializa o manual
+`docs/07-processos/processo-de-projetos.md`: Espaço "Produto e Tecnologia" ›
+Pasta "Processo de Projetos" › 14 Listas. Mesmo molde dos outros evolvers:
+dry-run por padrão, `--apply` explícito, ids literais, reaplicar só cria o que
+falta e divergência recusa. Não toca Tarefa. `--membro` é obrigatório para a
+Atividade não sair assinada por quem não aplicou, e a saída mostra o banco alvo.
+
+`processo-de-projetos-catalogo.ts` foi gerado do `.md` do manual; as regras de
+passagem e os motivos das decisões de mapeamento estão no cabeçalho de
+`processo-de-projetos-evolver.ts`.

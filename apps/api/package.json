@@ -26,6 +26,7 @@
     "automacoes:previa": "vite-node src/automacoes/previa.cli.ts",
     "contas-a-pagar:importar": "vite-node src/importacao/clickup/importar-contas-a-pagar.cli.ts",
     "contas-a-pagar:configurar": "vite-node src/bootstrap/contas-a-pagar.cli.ts",
+    "projetos:configurar": "vite-node src/bootstrap/processo-de-projetos.cli.ts",
     "contas-a-receber:importar": "vite-node src/importacao/clickup/importar-contas-a-receber.cli.ts",
     "contas-a-receber:corrigir-data-pagamento": "vite-node src/importacao/clickup/corrigir-data-de-pagamento-cr.cli.ts",
     "solicitacoes:importar": "vite-node src/importacao/financeiro/importar.cli.ts",
