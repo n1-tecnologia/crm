@@ -10,6 +10,7 @@ import {
   ESTADOS_DA_CONVERSA,
   SITUACOES_DA_CONVERSA,
   TIPO_DE_IDENTIFICADOR_DO_CANAL,
+  identificadorDeResposta,
   participantesComContato,
   proximaSituacao,
   tituloDaConversa,
@@ -252,5 +253,36 @@ describe("validarMarcacao (3.2.6: estrela e leitura são do Membro)", () => {
       error: "Informe a data de leitura em ISO 8601, com hora (AAAA-MM-DDTHH:MM:SSZ).",
       field: "lidaAte",
     });
+  });
+});
+
+describe("identificadorDeResposta (WR-04: a resposta vai por onde o Contato escreveu)", () => {
+  const A = { id: "a", tipo: "whatsapp", principal: true } as const;
+  const B = { id: "b", tipo: "whatsapp", principal: false } as const;
+  const email = { id: "e", tipo: "email", principal: true } as const;
+  const canalWhatsapp = { tipo: "whatsapp" } as const;
+
+  it("WR-04: com o id de quem escreveu entre os do tipo do Canal, devolve esse (B, não o principal A)", () => {
+    expect(identificadorDeResposta([A, B], canalWhatsapp, B.id)).toBe(B);
+  });
+
+  it("WR-04: sem id de quem escreveu (null ou undefined) devolve o principal do tipo", () => {
+    expect(identificadorDeResposta([B, A], canalWhatsapp, null)).toBe(A);
+    expect(identificadorDeResposta([B, A], canalWhatsapp)).toBe(A);
+  });
+
+  it("WR-04: um id que não está na lista (transferido ou removido) volta ao principal", () => {
+    expect(identificadorDeResposta([A, B], canalWhatsapp, "outro-contato")).toBe(A);
+  });
+
+  it("WR-04: o id de um Identificador de outro tipo (e-mail) num Canal de WhatsApp volta ao principal", () => {
+    expect(identificadorDeResposta([A, B, email], canalWhatsapp, email.id)).toBe(A);
+  });
+
+  it("WR-04: sem principal do tipo devolve o primeiro do tipo, e sem nenhum do tipo, undefined", () => {
+    const C = { id: "c", tipo: "whatsapp", principal: false } as const;
+    expect(identificadorDeResposta([B, C], canalWhatsapp)).toBe(B);
+    expect(identificadorDeResposta([email], canalWhatsapp)).toBeUndefined();
+    expect(identificadorDeResposta([], canalWhatsapp, "a")).toBeUndefined();
   });
 });

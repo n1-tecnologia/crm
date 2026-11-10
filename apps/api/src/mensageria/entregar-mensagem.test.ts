@@ -51,8 +51,10 @@ describeComBanco("entregador de mensagens: a política de tentativas que não du
     });
     const contatos = criarRepositorioDeContatosPg(pool());
     const contato = await contatos.inserir(ws, { nome: `Ana ${sequencia}`, proprietarioId: "mem_ana", criadoPor: "mem_ana" });
+    const numeroDoPrincipal = `+551198765${String(sequencia).padStart(4, "0")}`;
+    let idDoPrincipal: string | undefined;
     if ((opcoes.identificador ?? "whatsapp") === "whatsapp") {
-      await contatos.inserirIdentificador(ws, contato.id, { tipo: "whatsapp", valor: `+551198765${String(sequencia).padStart(4, "0")}`, principal: true });
+      idDoPrincipal = (await contatos.inserirIdentificador(ws, contato.id, { tipo: "whatsapp", valor: numeroDoPrincipal, principal: true })).id;
     } else {
       await contatos.inserirIdentificador(ws, contato.id, { tipo: "email", valor: `ana${sequencia}@exemplo.com`, principal: true });
     }
@@ -67,7 +69,30 @@ describeComBanco("entregador de mensagens: a política de tentativas que não du
     });
     const resposta = await servico.enviar(membro, { conversaId: conversa.id, direcao: "enviada", conteudo: "olá" });
     if (!resposta.ok) throw new Error(`esperava sucesso, veio ${resposta.status}: ${resposta.error}`);
-    return { canalId, conversaId: conversa.id, mensagemId: resposta.valor.id };
+    return { canalId, contatoId: contato.id, conversaId: conversa.id, mensagemId: resposta.valor.id, idDoPrincipal, numeroDoPrincipal };
+  }
+
+  /** WR-04: um segundo WhatsApp (B, não principal) no Contato do cenário; `escreveuDeB` grava uma `recebida` da Conversa vinda dele. */
+  async function comSegundoNumero(c: Awaited<ReturnType<typeof cenario>>, opcoes: { escreveuDeB: boolean }) {
+    const numeroDeB = `+551197654${String(sequencia).padStart(4, "0")}`;
+    const b = await criarRepositorioDeContatosPg(pool()).inserirIdentificador(ws, c.contatoId, { tipo: "whatsapp", valor: numeroDeB, principal: false });
+    if (opcoes.escreveuDeB) {
+      const recebida = await criarRepositorioDeMensagensPg(pool()).inserirRecebida(ws, {
+        conversaId: c.conversaId,
+        canalId: c.canalId,
+        idExterno: `wr04-${sequencia}`,
+        criadoEm: new Date().toISOString(),
+        conteudo: "oi, é a Ana do outro número",
+        anexos: [],
+        assunto: null,
+        enderecosAdicionais: [],
+        remetenteExterno: numeroDeB,
+        identificadorId: b.id,
+        cargaBruta: null,
+      });
+      expect(recebida).toBeDefined();
+    }
+    return { idDeB: b.id, numeroDeB };
   }
 
   const mensagem = async (id: string) =>
@@ -354,6 +379,45 @@ describeComBanco("entregador de mensagens: a política de tentativas que não du
 
     // As linhas reabertas ficariam disponíveis para o `processarUm()` do próximo caso do arquivo.
     await pool().query("delete from plataforma.integration_outbox where workspace_id = $1 and aggregate_id = any($2::text[])", [ws, [a.mensagemId, b, c]]);
+  });
+
+  it("WR-04: o Contato que escreveu do segundo número recebe a resposta nesse número, não no principal", async () => {
+    const c = await cenario();
+    const { numeroDeB } = await comSegundoNumero(c, { escreveuDeB: true });
+    provedorDeTeste.programarEnvio({ ok: true, idExterno: `wr04-b-${sequencia}` });
+
+    expect(await worker().processarUm()).toBe(true);
+
+    expect(provedorDeTeste.enviados).toHaveLength(1);
+    expect(provedorDeTeste.enviados[0]!.destino.valor).toBe(numeroDeB);
+    expect(provedorDeTeste.enviados[0]!.destino.valor).not.toBe(c.numeroDoPrincipal);
+    expect((await mensagem(c.mensagemId)).status_entrega).toBe("enviada");
+  });
+
+  it("WR-04: sem nenhuma Mensagem recebida na Conversa a resposta sai para o principal, mesmo com dois números", async () => {
+    const c = await cenario();
+    await comSegundoNumero(c, { escreveuDeB: false });
+    provedorDeTeste.programarEnvio({ ok: true, idExterno: `wr04-a-${sequencia}` });
+
+    expect(await worker().processarUm()).toBe(true);
+
+    expect(provedorDeTeste.enviados).toHaveLength(1);
+    expect(provedorDeTeste.enviados[0]!.destino.valor).toBe(c.numeroDoPrincipal);
+  });
+
+  it("WR-04: o número por onde ele escreveu foi transferido a outro Contato antes da resposta: sai para o principal que sobrou, nunca para ele", async () => {
+    const c = await cenario();
+    const { idDeB, numeroDeB } = await comSegundoNumero(c, { escreveuDeB: true });
+    const contatos = criarRepositorioDeContatosPg(pool());
+    const outro = await contatos.inserir(ws, { nome: `Outra pessoa ${sequencia}`, proprietarioId: "mem_ana", criadoPor: "mem_ana" });
+    await contatos.moverIdentificador(ws, idDeB, outro.id, true);
+    provedorDeTeste.programarEnvio({ ok: true, idExterno: `wr04-t-${sequencia}` });
+
+    expect(await worker().processarUm()).toBe(true);
+
+    expect(provedorDeTeste.enviados).toHaveLength(1);
+    expect(provedorDeTeste.enviados[0]!.destino.valor).toBe(c.numeroDoPrincipal);
+    expect(provedorDeTeste.enviados[0]!.destino.valor).not.toBe(numeroDeB);
   });
 
   it("motivo do provedor com apikey: nem a Mensagem nem a linha do outbox a carregam", async () => {
