@@ -64,9 +64,11 @@ export function codigoDeExclusao(segredo: string, agora: number = Date.now()): s
 
 /** O instante do pedido, se o código é desta API; `undefined` se não é. */
 export function lerCodigoDeExclusao(segredos: readonly string[], codigo: string): Date | undefined {
-  const partes = codigo.split("-");
-  if (partes.length !== 2) return undefined;
-  const [instante, assinado] = partes as [string, string];
+  // A assinatura é base64url e pode ter `-`; o instante, em base 36, nunca tem: corta no PRIMEIRO `-`.
+  const corte = codigo.indexOf("-");
+  if (corte < 0) return undefined;
+  const instante = codigo.slice(0, corte);
+  const assinado = codigo.slice(corte + 1);
   if (!/^[0-9a-z]{1,12}$/.test(instante) || !/^[A-Za-z0-9_-]{22}$/.test(assinado)) return undefined;
   const recebido = Buffer.from(assinado);
   const confere = segredos.some((segredo) => {
