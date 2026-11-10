@@ -21,6 +21,12 @@ import type { Canal } from "@n1/dominio/crm/canais";
 import type { Mensagem } from "@n1/dominio/crm/mensagens";
 import { EVENTOS, gravarEventos } from "../persistencia/outbox";
 
+/** O código com que o entregador deixa a linha quando o Canal não estava `conectada`: a única que a volta do Canal reabre (WR-02, 16-20). */
+export const CODIGO_DO_CANAL_DESCONECTADO = "CANAL_DESCONECTADO";
+
+/** Quem pede a reabertura: a pessoa ("Tentar de novo") ou o Canal que voltou a `conectada`. */
+export type MotivoDoReenfileiramento = "tentar_de_novo" | "canal_voltou";
+
 /** `aggregate_type` do evento: casa com o índice único `integration_outbox_mensagem_enviar_uniq` da 013. */
 const TIPO_DO_AGREGADO = "mensagem";
 
@@ -52,6 +58,11 @@ export async function enfileirarEnvio(
  *
  * Só reabre linha `failed` ou `delivered`. Uma linha `pending` já vai ser entregue e uma `delivering` está nas
  * mãos de um worker: zerá-las agora soltaria a trava debaixo dele e a Mensagem poderia sair duas vezes.
+ *
+ * O `motivo` decide o quanto se reabre (WR-02, 16-20): com `tentar_de_novo` (a pessoa pediu, assumindo o risco) qualquer
+ * `failed`/`delivered`; com `canal_voltou` SÓ a `failed/CANAL_DESCONECTADO`, a que esperava a conexão. Uma linha que
+ * desistiu por outro motivo (`ENVIADO_SEM_REGISTRO`, `ENVIO_SEM_DESFECHO`, resposta ambígua) pode já ter chegado ao
+ * cliente, e uma `delivered` já chegou: reabri-las reenviaria a Mensagem sozinha.
  * Devolve `true` quando a linha foi inserida ou reaberta.
  *
  * Quem chama é responsável por ter a Mensagem `pendente` ANTES (a "Tentar de novo" a devolve a `pendente` antes
@@ -61,6 +72,7 @@ export async function reenfileirarEnvio(
   cliente: PoolClient,
   workspaceId: string,
   mensagem: Pick<Mensagem, "id" | "conversaId" | "canalId">,
+  motivo: MotivoDoReenfileiramento = "tentar_de_novo",
 ): Promise<boolean> {
   const payload = EVENTOS["mensagem.enviar.v1"].parse({
     mensagemId: mensagem.id,
@@ -75,15 +87,19 @@ export async function reenfileirarEnvio(
      on conflict (workspace_id, aggregate_type, aggregate_id, event_type) where event_type = 'mensagem.enviar.v1'
      do update set status = 'pending', attempts = 0, available_at = clock_timestamp(), locked_at = null, locked_by = null,
                    last_error_code = null, last_error_summary = null, delivered_at = null, payload = excluded.payload
-       where plataforma.integration_outbox.status in ('failed', 'delivered')`,
-    [workspaceId, TIPO_DO_AGREGADO, mensagem.id, JSON.stringify(payload)],
+       where case when $5 = 'canal_voltou'
+                  then plataforma.integration_outbox.status = 'failed' and plataforma.integration_outbox.last_error_code = $6
+                  else plataforma.integration_outbox.status in ('failed', 'delivered') end`,
+    [workspaceId, TIPO_DO_AGREGADO, mensagem.id, JSON.stringify(payload), motivo, CODIGO_DO_CANAL_DESCONECTADO],
   );
   return (rowCount ?? 0) > 0;
 }
 
 /**
  * O Canal voltou a `conectada` (B69): todas as Mensagens `enviada` ainda `pendente` dele voltam à fila, na ordem em
- * que foram escritas. Nada é descartado. Devolve quantas linhas foram inseridas ou reabertas.
+ * que foram escritas. Nada é descartado. Só se reabre o que esperava a conexão (`failed/CANAL_DESCONECTADO`) ou o que
+ * não tem linha: o que desistiu por outro motivo é da pessoa, por "Tentar de novo" (WR-02, 16-20). Devolve quantas
+ * linhas foram inseridas ou reabertas.
  */
 export async function reenfileirarPendentesDoCanal(cliente: PoolClient, workspaceId: string, canalId: string): Promise<number> {
   const { rows } = await cliente.query<{ id: string; conversa_id: string; canal_id: string }>(
@@ -95,7 +111,7 @@ export async function reenfileirarPendentesDoCanal(cliente: PoolClient, workspac
   );
   let reenfileiradas = 0;
   for (const linha of rows) {
-    if (await reenfileirarEnvio(cliente, workspaceId, { id: linha.id, conversaId: linha.conversa_id, canalId: linha.canal_id })) {
+    if (await reenfileirarEnvio(cliente, workspaceId, { id: linha.id, conversaId: linha.conversa_id, canalId: linha.canal_id }, "canal_voltou")) {
       reenfileiradas += 1;
     }
   }

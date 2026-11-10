@@ -106,14 +106,31 @@ ouvinte do tempo real o chama a cada `mensagem.nova`/`mensagem.status`, e o proc
 
 - **O ambíguo nunca é reenviado sozinho.** Tempo esgotado, resposta perdida, 500 e 2xx sem id são `ambiguo`: a
   Mensagem vira `falhou` com a frase "Sem confirmação do provedor…", e só a pessoa reenvia, por "Tentar de novo".
-  `transitorio` (conexão recusada, 429, 502, 503, 504) volta à fila até 5 tentativas. Se o provedor JÁ aceitou e o
-  banco falha ao gravar o aceite, o entregador tenta gravar de novo e, se nada resolver, a linha desiste com
-  `ENVIADO_SEM_REGISTRO` em vez de voltar à fila (repetir reenviaria ao cliente).
-- Canal fora de `conectada` não tenta: a Mensagem fica `pendente` e a linha `failed` com `CANAL_DESCONECTADO`.
+  `transitorio` (conexão recusada, 429, 502, 503, 504) volta à fila até 5 tentativas.
+- **A linha que volta sem desfecho também nunca reenvia (WR-01, 16-20).** A trava vencida volta a `pending` com
+  `last_error_code = 'TRAVA_VENCIDA'` (o worker, em `recuperarTravasVencidas`), e a exceção que escapa do entregador
+  volta com `ERRO_DO_ENTREGADOR`: nos dois casos o processo pode ter morrido DEPOIS do aceite do provedor. Na
+  reivindicação seguinte o entregador refaz as conferências e, antes do `enviar`, marca a Mensagem `falhou` com a frase
+  "Sem confirmação…" e a linha `failed/ENVIO_SEM_DESFECHO`; quem reenvia é a pessoa, por "Tentar de novo". Sem marca
+  de "envio iniciado" nem migração: a linha que cai entre reivindicar e chamar o provedor também vira "sem
+  confirmação" (falso alarme de milissegundos, só em queda). O que falha ANTES do `enviar` (leituras do banco, recusas
+  que gravam) é de quem certamente não enviou: `ERRO_ANTES_DO_ENVIO`, volta à fila na escada de `backoff()`, então
+  `ERRO_DO_ENTREGADOR` só sobra para a exceção depois do `enviar`. Resíduo aceito: a linha que esgota as 5 tentativas
+  em travas vencidas vai a `failed/TRAVA_VENCIDA` sem passar pelo entregador, e a Mensagem fica `pendente`.
+- **O aceite que não grava (WR-02, 16-20).** Se o provedor JÁ aceitou e o banco falha ao gravar o aceite, o entregador
+  tenta 3 vezes, com espera de 250 ms e 1 s (`ESPERAS_PARA_GRAVAR_O_ACEITE_MS`, `esperar` injetável). Se nada resolver,
+  a Mensagem fica `falhou` com "O provedor aceitou a Mensagem, mas não deu para registrar o envio: confira no
+  WhatsApp…" (a tela sai de "Enviando…" e mostra "Tentar de novo") e a linha desiste com `ENVIADO_SEM_REGISTRO`; se
+  nem isso grava, a exceção sobe e a guarda acima fecha a linha como ambígua na volta seguinte.
+- Canal fora de `conectada` não tenta: a Mensagem fica `pendente` e a linha `failed` com `CANAL_DESCONECTADO`
+  (`CODIGO_DO_CANAL_DESCONECTADO`, exportado por `fila-de-saida.ts`).
 - `reenfileirarEnvio` reabre a linha única da Mensagem (a `013` tem índice único por Espaço, agregado e evento) e só
-  toca `failed`/`delivered`, nunca `pending`/`delivering`; zera tentativas e trava. `reenfileirarPendentesDoCanal`
-  varre as `pendente` do Canal na ordem de escrita, e roda na mesma transação de "Simular conexão", de
-  `conexao` real e de `canal:ligar-evolution`.
+  toca `failed`/`delivered`, nunca `pending`/`delivering`; zera tentativas, código e trava. O parâmetro `motivo` decide
+  quanto: "Tentar de novo" (`tentar_de_novo`, o padrão) reabre qualquer `failed`/`delivered`; a volta do Canal
+  (`canal_voltou`) SÓ reabre `failed/CANAL_DESCONECTADO`, para nunca reenviar sozinha o que o cliente pode ter
+  recebido (`ENVIADO_SEM_REGISTRO`, `ENVIO_SEM_DESFECHO`, ambíguo) nem o `delivered`. `reenfileirarPendentesDoCanal`
+  varre as `pendente` do Canal na ordem de escrita (cria a linha que falta), e roda na mesma transação de "Simular
+  conexão", de `conexao` real e de `canal:ligar-evolution`.
 - Anexo: o entregador assina uma URL nova de cada anexo (documento com `download`) e a põe em
   `EnvioAoProvedor.anexos`. Anexo `baixado: false` numa Mensagem enviada falha com "O arquivo desta Mensagem não está
   disponível."; falha do bucket ao assinar volta à fila sem enviar.

@@ -351,6 +351,9 @@ describeComBanco("entregador de mensagens: a política de tentativas que não du
     expect(await linha(a.mensagemId)).toMatchObject({ status: "pending", attempts: 0, last_error_code: null });
     expect(await linha(c)).toMatchObject({ status: "pending", attempts: 0 });
     expect(await linha(b)).toMatchObject({ status: "failed", attempts: 3, last_error_code: "ENVIADO_SEM_REGISTRO" });
+
+    // As linhas reabertas ficariam disponíveis para o `processarUm()` do próximo caso do arquivo.
+    await pool().query("delete from plataforma.integration_outbox where workspace_id = $1 and aggregate_id = any($2::text[])", [ws, [a.mensagemId, b, c]]);
   });
 
   it("motivo do provedor com apikey: nem a Mensagem nem a linha do outbox a carregam", async () => {

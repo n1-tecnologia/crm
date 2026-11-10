@@ -6,7 +6,9 @@
  * A política de tentativas existe para uma coisa: o cliente nunca receber a mesma Mensagem duas vezes por uma
  * tentativa automática. Só o que CERTAMENTE não saiu volta à fila:
  *
- *   - aceito → `gravarEnvio` (`enviada`, `id_externo`) e a linha do outbox `delivered`;
+ *   - aceito → `gravarEnvio` (`enviada`, `id_externo`) e a linha do outbox `delivered`; se gravar o aceite falha 3 vezes
+ *     (250 ms e 1 s de espera), `falhou` com a frase de "aceitou, mas não deu para registrar" e a linha `failed/ENVIADO_SEM_REGISTRO`:
+ *     a tela mostra "Tentar de novo" e o Canal que volta a `conectada` nunca a reabre (WR-02, 16-20);
  *   - recusa permanente → `falhou` com o motivo do provedor (ou "O provedor recusou a Mensagem."), sem nova tentativa;
  *   - resposta ambígua (tempo esgotado, resposta perdida: o provedor pode ter enviado) → `falhou` com
  *     a frase de "sem confirmação" (`FRASES_DA_SAIDA.semConfirmacao`) e NUNCA reenvia sozinha: o
@@ -14,7 +16,7 @@
  *   - transitória (certamente não processada) → volta à fila na escada de `backoff()`, até `maxTentativas`; na
  *     última, `falhou` com "O provedor não respondeu depois de várias tentativas.";
  *   - Canal fora de `conectada` na hora de entregar (B69): não tenta; a Mensagem continua `pendente` e a linha do
- *     outbox vira `failed/CANAL_DESCONECTADO` até o Canal voltar (o 16-06 reenfileira);
+ *     outbox vira `failed/CANAL_DESCONECTADO` até o Canal voltar (o 16-06 reenfileira SÓ essa linha);
  *   - Mensagem que já não está `pendente` (uma corrida com "Tentar de novo"): não reenvia, a linha é `entregue`;
  *   - linha que voltou à fila SEM desfecho (trava vencida: o worker caiu; ou exceção do entregador depois do envio) →
  *     `falhou` sem confirmação, e NUNCA reenvia: o processo pode ter morrido depois do aceite do provedor e antes de
@@ -55,6 +57,7 @@ import type { ChavesDoCofre } from "../servicos/cofre";
 import { identificadorDoCanal } from "../servicos/crm/conversas";
 import { relogioDoSistema, type Relogio } from "../testes/relogio";
 import { avisarCrm } from "./avisar";
+import { CODIGO_DO_CANAL_DESCONECTADO } from "./fila-de-saida";
 import { ErroDeProvedor, type AnexoDoEnvio, type CanalParaProvedor, type EnvioAoProvedor, type ProvedorDeMensageria } from "./provedor";
 import { canalParaProvedor, provedorDoCanal, registroPadrao, type RegistroDeProvedores } from "./registro";
 
@@ -65,6 +68,7 @@ const TIPO_DO_EVENTO = "mensagem.enviar.v1";
 export const FRASES_DA_SAIDA = {
   semConfirmacao: "Sem confirmação do provedor: confira no WhatsApp antes de tentar de novo.",
   semResposta: "O provedor não respondeu depois de várias tentativas.",
+  aceitaSemRegistro: "O provedor aceitou a Mensagem, mas não deu para registrar o envio: confira no WhatsApp antes de tentar de novo.",
   recusou: "O provedor recusou a Mensagem.",
   provedorNaoLigado: "O provedor deste Canal ainda não está ligado.",
   arquivoIndisponivel: "O arquivo desta Mensagem não está disponível.",
@@ -83,18 +87,26 @@ export interface DependenciasDoEntregador {
   readonly relogio?: Relogio;
   /** O bucket dos anexos. Padrão: o do Supabase (só é tocado quando a Mensagem leva anexo); os testes injetam o falso. */
   readonly armazenamento?: ArmazenamentoDeAnexos;
+  /** A espera entre as tentativas de gravar o aceite (`ESPERAS_PARA_GRAVAR_O_ACEITE_MS`). Padrão: um `setTimeout`; os testes injetam um espião. */
+  readonly esperar?: (ms: number) => Promise<void>;
 }
 
 const permanente = (code: string, summary: string): DesfechoDaEntrega => ({ desfecho: "desistir", erro: { code, summary } });
 
-/** Quantas vezes se tenta gravar o `enviada` depois de o provedor ter aceitado (ver `gravarOAceite`). */
-const TENTATIVAS_DE_GRAVAR_O_ACEITE = 3;
+/**
+ * A espera antes da 2ª e da 3ª tentativa de gravar o `enviada` depois de o provedor ter aceitado (ver `gravarOAceite`):
+ * uma queda curta do banco passa em 1,25 s, e a Mensagem não fica presa em "Enviando…" por mais que isso a mais.
+ */
+export const ESPERAS_PARA_GRAVAR_O_ACEITE_MS: readonly number[] = [250, 1_000];
+
+const esperaPadrao = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}): EntregadorDoOutbox {
   const pool = deps.pool ?? poolPadrao;
   const registro = deps.registro ?? registroPadrao();
   const relogio = deps.relogio ?? relogioDoSistema;
   const armazenamento = deps.armazenamento ?? armazenamentoDeAnexosPadrao();
+  const esperar = deps.esperar ?? esperaPadrao;
 
   /**
    * Uma transação no cliente do pool: o desfecho da entrega e o aviso ao tempo real (16-07) saem juntos, e a aba só é
@@ -115,12 +127,15 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
   }
 
   /**
-   * O provedor JÁ aceitou: se o banco falhar agora, repetir a linha inteira reenviaria ao cliente. Por isso se
-   * tenta gravar de novo aqui, e se nada resolver a linha desiste (`ENVIADO_SEM_REGISTRO`) em vez de voltar à fila.
+   * O provedor JÁ aceitou: se o banco falhar agora, repetir a linha inteira reenviaria ao cliente. Por isso se tenta
+   * gravar de novo aqui (3 vezes, com `ESPERAS_PARA_GRAVAR_O_ACEITE_MS` entre elas). Se nada resolver, a Mensagem fica
+   * `falhou` com `FRASES_DA_SAIDA.aceitaSemRegistro` (a tela sai de "Enviando…" e mostra "Tentar de novo") e a linha
+   * desiste (`ENVIADO_SEM_REGISTRO`), nunca volta à fila (WR-02, 16-20). Se nem isso grava, a exceção sobe: o worker
+   * a trata como `ERRO_DO_ENTREGADOR` (ou a trava vence) e a guarda de linha sem desfecho fecha a linha como ambígua
+   * na volta seguinte, sem reenviar (WR-01).
    */
   async function gravarOAceite(workspaceId: string, mensagemId: string, idExterno: string): Promise<DesfechoDaEntrega> {
-    let ultimoErro: unknown;
-    for (let i = 0; i < TENTATIVAS_DE_GRAVAR_O_ACEITE; i += 1) {
+    for (let i = 0; i <= ESPERAS_PARA_GRAVAR_O_ACEITE_MS.length; i += 1) {
       try {
         await emTransacao(async (cliente) => {
           // `undefined` = já não estava `pendente` (alguém resolveu antes): nada a gravar nem a avisar, e a linha encerra igual.
@@ -128,11 +143,12 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
           if (gravada) await avisarCrm(cliente, { workspaceId, tipo: "mensagem.status", conversaId: gravada.conversaId, mensagemId: gravada.id });
         });
         return { desfecho: "entregue" };
-      } catch (erro) {
-        ultimoErro = erro;
+      } catch {
+        const espera = ESPERAS_PARA_GRAVAR_O_ACEITE_MS[i];
+        if (espera !== undefined) await esperar(espera);
       }
     }
-    return permanente("ENVIADO_SEM_REGISTRO", sanitizarErro(ultimoErro, "ENVIADO_SEM_REGISTRO").summary);
+    return recusarEnvio(workspaceId, mensagemId, FRASES_DA_SAIDA.aceitaSemRegistro, "ENVIADO_SEM_REGISTRO");
   }
 
   async function recusarEnvio(workspaceId: string, mensagemId: string, motivo: string, code: string): Promise<DesfechoDaEntrega> {
@@ -174,7 +190,7 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
     if (!canal) return encerra(permanente("CANAL_NAO_ENCONTRADO", "O Canal da Mensagem não existe mais."));
     // B69: Canal que caiu entre enfileirar e entregar. A Mensagem segue `pendente` (nada é descartado).
     if (canal.conexao !== "conectada") {
-      return encerra(permanente("CANAL_DESCONECTADO", "O Canal não estava conectado na hora de entregar; a Mensagem aguarda a reconexão."));
+      return encerra(permanente(CODIGO_DO_CANAL_DESCONECTADO, "O Canal não estava conectado na hora de entregar; a Mensagem aguarda a reconexão."));
     }
 
     const conversa = await criarRepositorioDeConversasPg(pool()).obter(workspaceId, mensagem.conversaId);

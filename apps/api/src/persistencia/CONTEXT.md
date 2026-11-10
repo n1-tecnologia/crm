@@ -267,7 +267,10 @@ com backup manual do schema `plataforma` antes, `npm run migrar -w @n1/api -- --
 - **Dois workers no mesmo outbox.** O `OutboxWorker` do `automation/` passou a ignorar `event_type like 'mensagem.%'`
   quando não recebe `tiposDeEvento`; o worker de saída da mensageria o recebe com `["mensagem.enviar.v1"]`, ganhou
   `entregador` próprio, `recuperarTravasVencidasMs` (só dos tipos dele) e `acordar()` (uma volta única), e o
-  `sanitizarErro` esconde o padrão `apikey`. O caminho HTTP do `automation/` ficou como era.
+  `sanitizarErro` esconde o padrão `apikey`. A trava vencida volta a `pending` com `last_error_code = 'TRAVA_VENCIDA'`
+  (`CODIGO_DA_TRAVA_VENCIDA`) e a exceção do entregador com `ERRO_DO_ENTREGADOR`: o worker não sabe se a entrega saiu, e
+  quem entrega decide (a saída da mensageria fecha a linha como ambígua, WR-01, 16-20). O caminho HTTP do `automation/`
+  ficou como era.
 - **`avisarCrm` no mesmo commit.** Os serviços do CRM e o entregador avisam o tempo real por `pg_notify` no cliente da
   transação (nada antes do `commit`, nada depois do `rollback`). A conexão `LISTEN` (`mensageria/ouvinte-pg.ts`)
   fica **fora do pool**, uma por processo, e soma 1 ao orçamento de conexões (o pool tem 10): quem dimensiona o
