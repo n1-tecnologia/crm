@@ -327,9 +327,12 @@ describe("criarConexaoDoTempoReal — reconexão, releitura de 5 s e rajada (3.8
     const sinal = (fetchImpl.mock.calls[0]![1] as RequestInit).signal as AbortSignal;
     expect(sinal.aborted).toBe(true);
 
-    await vi.advanceTimersByTimeAsync(INTERVALO_SEM_TEMPO_REAL_MS);
-    expect(aoReler).toHaveBeenCalledTimes(2); // a releitura de 5 s voltou
-    expect(fetchImpl).toHaveBeenCalledTimes(2); // e a aba reconectou depois da espera
+    await vi.advanceTimersByTimeAsync(999);
+    expect(fetchImpl).toHaveBeenCalledTimes(1); // a espera da reconexão ainda não acabou
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(2); // a aba reconectou depois de 1 s
+    await vi.advanceTimersByTimeAsync(INTERVALO_SEM_TEMPO_REAL_MS - 1_000);
+    expect(aoReler).toHaveBeenCalledTimes(2); // e a releitura de 5 s voltou
   });
 
   it("WR-08: com a batida do servidor a cada 25 s por 3 min a conexão nunca cai e só há um fetch", async () => {

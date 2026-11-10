@@ -15,7 +15,7 @@
  */
 
 import { useEffect } from "react";
-import { lerEventoParaATela, type EventoParaATela } from "@n1/dominio/crm/eventos";
+import { lerEventoParaATela, SILENCIO_MAXIMO_DO_FLUXO_MS, type EventoParaATela } from "@n1/dominio/crm/eventos";
 import { clienteDoNavegador } from "@/autenticacao/cliente-navegador";
 import { invalidarCrmComArrays } from "./crm/cliente-crm";
 
@@ -102,6 +102,9 @@ type Temporizador = ReturnType<typeof setTimeout>;
  * - Abre (primeiro pedaço do corpo, o `: aberto` do servidor): `aoAbrir`, desliga a releitura, zera a espera e relê
  *   tudo uma vez (`aoReler`) — o servidor não reenvia o que se perdeu no intervalo (não há "ressincronizar").
  * - Eventos em rajada esperam `JANELA_DE_AGRUPAMENTO_MS` e saem em UMA chamada de `aoEventos` (T-16-30).
+ * - Fluxo mudo: sem nenhum byte (a batida `: batida` do servidor conta) por `SILENCIO_MAXIMO_DO_FLUXO_MS`, a tentativa é
+ *   abortada e cai como qualquer outra (notebook que dormiu, NAT que derrubou, `fetch` que nunca responde): `aoCair`,
+ *   releitura de 5 s e nova tentativa. Cada tentativa tem o seu `AbortController` e o seu relógio.
  * - `parar()` aborta o `fetch`, limpa os temporizadores e descarta o que esperava a janela.
  */
 export function criarConexaoDoTempoReal(opcoes: OpcoesDaConexao): { parar(): void } {
@@ -110,7 +113,8 @@ export function criarConexaoDoTempoReal(opcoes: OpcoesDaConexao): { parar(): voi
   const agendar: (retorno: () => void, ms: number) => Temporizador = opcoes.agendar
     ? (retorno, ms) => opcoes.agendar!(retorno, ms)
     : (retorno, ms) => setTimeout(retorno, ms);
-  const controle = new AbortController();
+  let tentativaEmCurso: AbortController | undefined;
+  let silencio: Temporizador | undefined;
   let parado = false;
   let tentativas = 0;
   let emQueda = false;
@@ -118,6 +122,11 @@ export function criarConexaoDoTempoReal(opcoes: OpcoesDaConexao): { parar(): voi
   let releitura: Temporizador | undefined;
   let agrupamento: Temporizador | undefined;
   let pendentes: EventoParaATela[] = [];
+
+  function desarmarSilencio(): void {
+    if (silencio !== undefined) clearTimeout(silencio);
+    silencio = undefined;
+  }
 
   function ligarReleitura(): void {
     if (releitura !== undefined) return;
@@ -170,6 +179,20 @@ export function criarConexaoDoTempoReal(opcoes: OpcoesDaConexao): { parar(): voi
 
   async function conectar(): Promise<void> {
     if (parado) return;
+    // Um controlador por tentativa: o relógio de silêncio aborta só a tentativa corrente, e `parar()` a que estiver em curso.
+    const controleDaTentativa = new AbortController();
+    tentativaEmCurso = controleDaTentativa;
+    let leitor: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    // Sem nenhum byte (a batida do servidor conta) por `SILENCIO_MAXIMO_DO_FLUXO_MS`, a tentativa é cortada; quem cai é o
+    // laço de leitura ao sair, pelo caminho de sempre, uma vez só (WR-08).
+    const armarSilencio = (): void => {
+      desarmarSilencio();
+      silencio = agendar(() => {
+        silencio = undefined;
+        controleDaTentativa.abort();
+        void leitor?.cancel().catch(() => undefined);
+      }, SILENCIO_MAXIMO_DO_FLUXO_MS);
+    };
     try {
       const token = await opcoes.obterToken().catch(() => undefined);
       if (parado) return;
@@ -177,9 +200,10 @@ export function criarConexaoDoTempoReal(opcoes: OpcoesDaConexao): { parar(): voi
         cair();
         return;
       }
+      armarSilencio();
       const resposta = await buscar(`${opcoes.urlBase}/eventos`, {
         headers: { authorization: `Bearer ${token}` },
-        signal: controle.signal,
+        signal: controleDaTentativa.signal,
       });
       if (parado) return;
       if (!resposta.ok || !resposta.body) {
@@ -187,7 +211,7 @@ export function criarConexaoDoTempoReal(opcoes: OpcoesDaConexao): { parar(): voi
         cair();
         return;
       }
-      const leitor = resposta.body.getReader();
+      leitor = resposta.body.getReader();
       const decodificador = new TextDecoder();
       let resto = "";
       let abriu = false;
@@ -195,6 +219,7 @@ export function criarConexaoDoTempoReal(opcoes: OpcoesDaConexao): { parar(): voi
         const { done, value } = await leitor.read();
         if (parado) return;
         if (done) break;
+        armarSilencio();
         if (!abriu) {
           abriu = true;
           abrir();
@@ -206,6 +231,11 @@ export function criarConexaoDoTempoReal(opcoes: OpcoesDaConexao): { parar(): voi
       cair();
     } catch {
       cair();
+    } finally {
+      desarmarSilencio();
+      // Libera a conexão desta tentativa, termine como terminar.
+      controleDaTentativa.abort();
+      if (tentativaEmCurso === controleDaTentativa) tentativaEmCurso = undefined;
     }
   }
 
@@ -214,7 +244,8 @@ export function criarConexaoDoTempoReal(opcoes: OpcoesDaConexao): { parar(): voi
   return {
     parar() {
       parado = true;
-      controle.abort();
+      tentativaEmCurso?.abort();
+      desarmarSilencio();
       for (const temporizador of [reconexao, releitura, agrupamento]) {
         if (temporizador !== undefined) clearTimeout(temporizador);
       }

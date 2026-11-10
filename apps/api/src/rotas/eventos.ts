@@ -18,22 +18,22 @@
 
 import { PassThrough } from "node:stream";
 import type { FastifyInstance } from "fastify";
+import { BATIDA_DO_FLUXO_MS } from "@n1/dominio/crm/eventos";
 import type { HubDeEventos } from "../mensageria/hub-de-eventos";
 
 export interface OpcoesDeEventos {
   /** Sem hub a rota responde 503. `index.ts` o cria antes do `buildApp`. */
   readonly hub?: HubDeEventos;
-  /** Padrão 25 s: o comentário `: batida` que segura a conexão atrás do proxy. */
+  /** Padrão `BATIDA_DO_FLUXO_MS` (25 s, o contrato com a aba): o comentário `: batida` que segura a conexão atrás do proxy. */
   readonly batidaMs?: number;
   /** Padrão 45 min: o servidor fecha o fluxo e a aba reconecta com o token renovado. */
   readonly duracaoMaximaMs?: number;
 }
 
-const BATIDA_PADRAO_MS = 25_000;
 const DURACAO_MAXIMA_PADRAO_MS = 45 * 60_000;
 
 export async function rotasDeEventos(app: FastifyInstance, opcoes: OpcoesDeEventos): Promise<void> {
-  const batidaMs = opcoes.batidaMs ?? BATIDA_PADRAO_MS;
+  const batidaMs = opcoes.batidaMs ?? BATIDA_DO_FLUXO_MS;
   const duracaoMaximaMs = opcoes.duracaoMaximaMs ?? DURACAO_MAXIMA_PADRAO_MS;
 
   app.get("/eventos", async (request, reply) => {

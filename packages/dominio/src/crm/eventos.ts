@@ -23,6 +23,18 @@ export interface EventoDoCrm {
 /** O que sai para a aba: o mesmo evento sem o Espaço. */
 export type EventoParaATela = Omit<EventoDoCrm, "workspaceId">;
 
+/**
+ * O contrato do fluxo `GET /eventos` entre a api (quem bate) e a web (quem conta). O servidor manda `: batida` a cada
+ * `BATIDA_DO_FLUXO_MS` e segura a conexão abaixo do `proxy_read_timeout` de 120 s do nginx.
+ */
+export const BATIDA_DO_FLUXO_MS = 25_000;
+
+/**
+ * A aba dá a conexão por morta depois de tanto tempo sem NENHUM byte (a batida conta): passa de duas batidas, para uma
+ * batida atrasada pelo proxy não derrubar uma conexão boa (WR-08).
+ */
+export const SILENCIO_MAXIMO_DO_FLUXO_MS = 60_000;
+
 /** O tamanho máximo de um id no aviso: com 4 campos de até 64 caracteres o NOTIFY fica muito abaixo dos 8000 bytes. */
 const MAXIMO_DO_ID = 64;
 
