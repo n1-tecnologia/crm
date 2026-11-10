@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 16
 current_phase_name: "Base da mensageria: entrada, saída, tempo real e mídia"
 status: executing
-stopped_at: Completed 16-19-PLAN.md
-last_updated: "2026-11-10T18:13:02.958Z"
+stopped_at: Completed 16-20-PLAN.md
+last_updated: "2026-11-10T18:19:06.447Z"
 last_activity: 2026-11-10
 last_activity_desc: Phase 16 execution started
-state_head: fefe91b90f52e94261085cb2dbb3d3232ba96267
+state_head: e79b762963e995d4d3bb4751ae515baad745197a
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 294
-  completed_plans: 288
+  completed_plans: 289
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 16 (Base da mensageria: entrada, saída, tempo real e mídia) — EXECUTING
-Plan: 19 of 22 executed (lacunas 16-17 a 16-22); próximo 16-20
+Plan: 20 of 22 executed (lacunas 16-17 a 16-22); próximo 16-21
 Status: Ready to execute
 Last activity: 2026-11-10 — Phase 16 execution started
 
@@ -507,6 +507,7 @@ Progress: [██████░░░░] 63%
 | Phase 16 P17 | 25 min | 3 tasks | 11 files |
 | Phase 16 P18 | 14 min | 2 tasks | 7 files |
 | Phase 16 P19 | 7 min | 2 tasks | 7 files |
+| Phase 16 P20 | 25 min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -854,6 +855,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 16]: 16-17: o fato 'Canal real' é a credencial ativa do próprio provedor no cofre; simular_conexao recusa o Canal ligado (409 TRANSICAO_INVALIDA) e a ficha esconde o botão (CR-01)
 - [Phase 16]: 16-18: um tratador unico (criarEncerramento) roda no SIGTERM/SIGINT a mesma desmontagem da recarga (fluxos, paradas, fluxos, servidor, pool) e sai do processo, com teto de 15 s abaixo dos 20 s do systemd; provado com um processo de verdade no mesmo vite-node da unidade (o index.ts nao entra no teste porque carrega o ambiente de producao)
 - [Phase 16]: 16-19: o cliente SSE da tela corta o fluxo mudo em 60 s (SILENCIO_MAXIMO_DO_FLUXO_MS, batida inclusa), com AbortController e relógio por tentativa; a espera de reconexão só zera após 30 s de conexão estável (CONEXAO_ESTAVEL_MS); batida e silêncio são um contrato só em @n1/dominio/crm/eventos
+- [Phase 16]: 16-20: sem marca de envio iniciado; a linha que volta sem desfecho (TRAVA_VENCIDA/ERRO_DO_ENTREGADOR) fecha como falhou sem confirmação e só sai por Tentar de novo — Nenhuma ida a mais ao banco por envio e nenhuma migração; falso alarme só em queda de processo
+- [Phase 16]: 16-20: a volta do Canal só reabre failed/CANAL_DESCONECTADO (reenfileirarEnvio com motivo canal_voltou); Tentar de novo segue reabrindo qualquer failed/delivered — Nunca reenviar sozinha o que o cliente pode ter recebido (ENVIADO_SEM_REGISTRO, ENVIO_SEM_DESFECHO)
 
 ### Pending Todos
 
@@ -915,6 +918,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-10T18:13:02.655Z
-Stopped at: Completed 16-19-PLAN.md
+Last session: 2026-11-10T18:19:06.168Z
+Stopped at: Completed 16-20-PLAN.md
 Resume file: None

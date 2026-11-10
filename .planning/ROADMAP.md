@@ -914,7 +914,7 @@ Plans:
 **Ajuste (D-16-04):** a fase inclui um adaptador mínimo da Evolution (fronteira em `COVERAGE.md`) e uma prova ao vivo com a instância do dono; o "Pronto quando" da fase passa a ter as duas partes de `16-CONTEXT.md` (provedor de teste nos testes automáticos; WhatsApp real ao vivo).
 **Requirements**: MSG-01 a MSG-06 (IDs locais da fase, definidos em `16-CONTEXT.md` `<domain>`)
 **Depends on:** Phase 15 (a ordem do plano: unificar o CRM primeiro, mensageria depois)
-**Plans:** 19/22 plans executed — 16/16 originais executados (14 ondas; 16-15 e 16-16 têm checkpoints do dono — pré-voo, publicação, prova ao vivo e a decisão do áudio; nenhum plano autônomo toca produção) e 6 de lacuna (16-17 a 16-22, 4 ondas, da verificação de 2026-11-10: CR-01, T-16-28, WR-01, WR-02, WR-04 e WR-08; a publicação é checkpoint do dono no 16-22)
+**Plans:** 20/22 plans executed — 16/16 originais executados (14 ondas; 16-15 e 16-16 têm checkpoints do dono — pré-voo, publicação, prova ao vivo e a decisão do áudio; nenhum plano autônomo toca produção) e 6 de lacuna (16-17 a 16-22, 4 ondas, da verificação de 2026-11-10: CR-01, T-16-28, WR-01, WR-02, WR-04 e WR-08; a publicação é checkpoint do dono no 16-22)
 
 Plans:
 
@@ -968,7 +968,7 @@ Plans:
 
 **Lacunas — Wave 2** *(blocked on Wave 1 completion)*
 - [x] 16-19-PLAN.md — WR-08: a aba percebe o fluxo SSE mudo em 60 s (contrato da batida no domínio) e a espera só zera depois de conexão estável
-- [ ] 16-20-PLAN.md — WR-01 + WR-02: a linha sem desfecho nunca reenvia sozinha; o aceite não gravado fecha a Mensagem; a volta do Canal só reabre `CANAL_DESCONECTADO`
+- [x] 16-20-PLAN.md — WR-01 + WR-02: a linha sem desfecho nunca reenvia sozinha; o aceite não gravado fecha a Mensagem; a volta do Canal só reabre `CANAL_DESCONECTADO`
 
 **Lacunas — Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 16-21-PLAN.md — WR-04: a resposta sai pelo Identificador por onde o Contato escreveu (`identificadorDeResposta` no domínio)
