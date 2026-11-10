@@ -27,6 +27,7 @@ import {
   AcompanhanteDoTempoReal,
   chavesDoEvento,
   chavesDosEventos,
+  CONEXAO_ESTAVEL_MS,
   criarConexaoDoTempoReal,
   ESPERA_MAXIMA_DE_RECONEXAO_MS,
   INTERVALO_SEM_TEMPO_REAL_MS,
@@ -367,6 +368,54 @@ describe("criarConexaoDoTempoReal — reconexão, releitura de 5 s e rajada (3.8
     expect(((fetchImpl.mock.calls[0]![1] as RequestInit).signal as AbortSignal).aborted).toBe(true);
     await vi.advanceTimersByTimeAsync(1_000);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("WR-08: o servidor que abre e fecha na hora, três vezes seguidas, é reconectado em 1 s, 2 s e 4 s", async () => {
+    fetchImpl.mockImplementation(async () => {
+      const fluxo = fluxoDe(": aberto\n\n");
+      fluxo.fechar();
+      return respostaAberta(fluxo.corpo);
+    });
+    ligar();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    for (const [indice, espera] of [1_000, 2_000, 4_000].entries()) {
+      await vi.advanceTimersByTimeAsync(espera - 1);
+      expect(fetchImpl).toHaveBeenCalledTimes(indice + 1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fetchImpl).toHaveBeenCalledTimes(indice + 2);
+    }
+  });
+
+  it("WR-08: a conexão que ficou aberta CONEXAO_ESTAVEL_MS zera a espera: ao fechar, a próxima tentativa é em 1 s", async () => {
+    const fluxo = fluxoControlado();
+    fetchImpl.mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValueOnce(respostaAberta(fluxo.corpo)).mockRejectedValue(new TypeError("Failed to fetch"));
+    ligar();
+    await vi.advanceTimersByTimeAsync(1_000); // a primeira falha deixa a espera em 2 s; a segunda tentativa abre
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    fluxo.enviar(": aberto\n\n");
+    await vi.advanceTimersByTimeAsync(BATIDA_DO_FLUXO_MS);
+    fluxo.enviar(": batida\n\n");
+    await vi.advanceTimersByTimeAsync(CONEXAO_ESTAVEL_MS - BATIDA_DO_FLUXO_MS);
+
+    fluxo.fechar();
+    await vi.advanceTimersByTimeAsync(999);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it("WR-08: parar() com a conexão aberta, o relógio de silêncio e o de estabilidade armados não deixa temporizador", async () => {
+    const fluxo = fluxoControlado();
+    fetchImpl.mockResolvedValue(respostaAberta(fluxo.corpo));
+    const conexao = ligar();
+    await vi.advanceTimersByTimeAsync(0);
+    fluxo.enviar(": aberto\n\n");
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+    conexao.parar();
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("parar() aborta o fetch, limpa os temporizadores e não agenda mais nada", async () => {
