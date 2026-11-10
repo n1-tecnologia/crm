@@ -34,7 +34,7 @@ Termina com o sinal de retomada do plano 16-15 (no fim desta seção). Nada aqui
 4. Espere a instância mostrar **conectada** (`open`).
 
 Conferir: o painel mostra a instância nova como conectada e o celular lista o aparelho.
-Hora: ______  Resultado: ______
+Hora: 2026-11-09  Resultado: **ok.** Instância `igor-dev` criada e conectada pelo dono (número de teste). Conferido pela API: `connectionStatus` = `open`, `integration` = `WHATSAPP-BAILEYS`, dono terminado em `0104`. O JID veio com 12 dígitos (sem o nono dígito); `conferirNumeroConectado` tolera o 9, então o Canal aceita o número com ou sem ele.
 
 ### Passo 2 — O painel está atrás de HTTPS e fechado para fora (SEG-11)
 
@@ -81,7 +81,7 @@ Cole as linhas que saírem (ou "nenhuma" para a que faltar). O que cada uma deci
 | `DATABASE_SAVE_DATA_INSTANCE` (ou `CACHE_REDIS_SAVE_INSTANCES`) | `true` em uma delas faz a instância sobreviver a um reinício da Evolution. Sem nenhuma, reiniciar a Evolution derruba a instância e pede QR de novo. |
 | `AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES` | `true` faz `fetchInstances` devolver o **token da instância**, que é o que o comando guarda no cofre (T-16-51, A10). Com `false` o comando recusa: não use a chave global no lugar sem decidir isso comigo (ela cria e apaga instâncias, inclusive a do Financeiro). |
 
-Hora: ______  Resultado: ______
+Hora: 2026-11-09  Resultado: `DATABASE_SAVE_DATA_INSTANCE=true` (a instância sobrevive a um reinício da Evolution; reiniciar para rotacionar a chave global é seguro). `CACHE_REDIS_SAVE_INSTANCES`: nenhuma. `AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=false`, **mas na 2.4.0 o `fetchInstances?instanceName=` com a chave global devolve o `token` mesmo assim, e esse token autentica a instância** (`connectionState` com ele: `200`; com apikey inválida: `401`). A10 provada na prática; o `false` não faz o comando recusar nesta versão (é uma dependência de comportamento da Evolution: se uma versão futura parar de devolver o token, o `canal:ligar-evolution` recusa, por desenho).
 
 ### Passo 5 — As variáveis no notebook (e a chave global só na sessão)
 
