@@ -234,3 +234,10 @@ Depois disso, o que resta é prova do dono (itens 1 a 4 acima) e a decisão sobr
 
 _Verificado: 2026-11-10_
 _Verificador: Claude (gsd-verifier)_
+
+## Escopo do plano de lacunas (decisão do dono, 2026-11-10)
+
+Perguntado, o dono escolheu que `/gsd-plan-phase 16 --gaps` cubra **CR-01, T-16-28 e WR-01, WR-02, WR-04 e WR-08** (ver
+`16-REVIEW.md` e `16-REVIEW-DISPOSITION.md` para o texto e o arquivo:linha de cada um). Ficam para a Sessão 4: WR-03 (é o
+mesmo defeito de T-16-28), WR-05, WR-06, WR-07 e IN-01 a IN-05. Qualquer correção vai para produção por nova publicação da
+API e da web, **que só o dono manda fazer**; o plano não deve incluir `publicar.sh`, `git push` nem ligar nada em produção.
