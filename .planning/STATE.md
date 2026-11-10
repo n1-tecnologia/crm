@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 milestone: v1.0
 current_phase: 16
-current_phase_name: base-da-mensageria-entrada-sa-da-tempo-real-e-m-dia
+current_phase_name: "Base da mensageria: entrada, saída, tempo real e mídia"
 status: executing
-stopped_at: Completed 16-16-PLAN.md (prova ao vivo em producao); fase 16 aguarda a verificacao
-last_updated: "2026-11-10T17:38:34.387Z"
-last_activity: 2026-11-09
+stopped_at: Completed 16-17-PLAN.md
+last_updated: "2026-11-10T17:48:38.917Z"
+last_activity: 2026-11-10
 last_activity_desc: Phase 16 execution started
-state_head: 1e6c1d7b5faccdd78197d2a56d29e1f2f03628fe
+state_head: 99cd75429342bc0fda8c6b4bb71c8c875e207658
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 294
-  completed_plans: 285
+  completed_plans: 286
 milestone_name: milestone
 ---
 
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 
 ## Current Position
 
-Phase: 16 (base-da-mensageria-entrada-sa-da-tempo-real-e-m-dia) — READY TO EXECUTE
-Plan: 16 of 16
+Phase: 16 (Base da mensageria: entrada, saída, tempo real e mídia) — EXECUTING
+Plan: 17 of 22 executed (lacunas 16-17 a 16-22); próximo 16-18
 Status: Ready to execute
-Last activity: 2026-11-09 — Phase 16 execution started
+Last activity: 2026-11-10 — Phase 16 execution started
 
 > Nota: `phase.complete` apontou a Fase 2 como "próxima" por ela estar sem `[x]` no ROADMAP; corrigido à mão para a Fase 16 (que declara `Depends on: Phase 15`). As Fases 2, 4 e 8 seguem abertas no ROADMAP e não foram tocadas.
 
@@ -504,6 +504,7 @@ Progress: [██████░░░░] 63%
 | Phase 16 P12 | 11 min | 3 tasks | 15 files |
 | Phase 16 P13 | 16 min | 2 tasks | 8 files |
 | Phase 16 P14 | 16 min | 3 tasks | 15 files |
+| Phase 16 P17 | 25 min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -848,6 +849,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 16]: 16-13: conexao_confirmada aceita Canal já conectado (rodar de novo troca o segredo e tira a marca de simulada); conectar e conexao_perdida ficam para a Sessão 4
 - [Phase 16]: 16-14: EVOLUTION_API_KEY (chave global) fica fora do .env.example do runtime; so a linha de comando de canal:ligar-evolution a le e o cofre nunca a guarda
 - [Phase 16]: 16-14: bug latente em repositorios/crm/mensagens.ts:239 (ORDER BY seq liga ao alias seq::text) causa o flake de mensagens.test.ts; corrigir com plataforma.mensagens.seq antes da prova ao vivo (16-16)
+- [Phase 16]: 16-17: o fato 'Canal real' é a credencial ativa do próprio provedor no cofre; simular_conexao recusa o Canal ligado (409 TRANSICAO_INVALIDA) e a ficha esconde o botão (CR-01)
 
 ### Pending Todos
 
@@ -909,6 +911,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-10T16:42:21.471Z
-Stopped at: Completed 16-16-PLAN.md (prova ao vivo em producao); fase 16 aguarda a verificacao
+Last session: 2026-11-10T17:48:38.598Z
+Stopped at: Completed 16-17-PLAN.md
 Resume file: None

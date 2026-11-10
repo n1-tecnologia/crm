@@ -914,7 +914,7 @@ Plans:
 **Ajuste (D-16-04):** a fase inclui um adaptador mínimo da Evolution (fronteira em `COVERAGE.md`) e uma prova ao vivo com a instância do dono; o "Pronto quando" da fase passa a ter as duas partes de `16-CONTEXT.md` (provedor de teste nos testes automáticos; WhatsApp real ao vivo).
 **Requirements**: MSG-01 a MSG-06 (IDs locais da fase, definidos em `16-CONTEXT.md` `<domain>`)
 **Depends on:** Phase 15 (a ordem do plano: unificar o CRM primeiro, mensageria depois)
-**Plans:** 22 plans — 16/16 originais executados (14 ondas; 16-15 e 16-16 têm checkpoints do dono — pré-voo, publicação, prova ao vivo e a decisão do áudio; nenhum plano autônomo toca produção) e 6 de lacuna (16-17 a 16-22, 4 ondas, da verificação de 2026-11-10: CR-01, T-16-28, WR-01, WR-02, WR-04 e WR-08; a publicação é checkpoint do dono no 16-22)
+**Plans:** 17/22 plans executed — 16/16 originais executados (14 ondas; 16-15 e 16-16 têm checkpoints do dono — pré-voo, publicação, prova ao vivo e a decisão do áudio; nenhum plano autônomo toca produção) e 6 de lacuna (16-17 a 16-22, 4 ondas, da verificação de 2026-11-10: CR-01, T-16-28, WR-01, WR-02, WR-04 e WR-08; a publicação é checkpoint do dono no 16-22)
 
 Plans:
 
@@ -963,7 +963,7 @@ Plans:
 - [x] 16-16-PLAN.md — Prova ao vivo em produção pelo dono, decisão do áudio e `16-PROVAS.md` (checkpoints)
 
 **Lacunas — Wave 1** *(gap closure, `/gsd-execute-phase 16 --gaps-only`)*
-- [ ] 16-17-PLAN.md — CR-01 (MSG-05, D-16-03): "Simular conexão" recusa o Canal já ligado a um provedor real (domínio, 409 na api, ficha sem o botão)
+- [x] 16-17-PLAN.md — CR-01 (MSG-05, D-16-03): "Simular conexão" recusa o Canal já ligado a um provedor real (domínio, 409 na api, ficha sem o botão)
 - [ ] 16-18-PLAN.md — T-16-28 / WR-03: tratador único de SIGTERM/SIGINT (fluxos, workers, servidor, pool, saída; teto de 15 s), com teste num processo real
 
 **Lacunas — Wave 2** *(blocked on Wave 1 completion)*
