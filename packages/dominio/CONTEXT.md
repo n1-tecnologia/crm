@@ -1002,6 +1002,11 @@ funções antigas saíram de `derive-conversacional.ts` no 15-42.
 **A mensageria no domínio (Fase 16).** Três módulos novos de `src/crm/` (sem barril) levam para o domínio o que a
 `apps/api` e a tela leem igual, e um acréscimo em `crm/canais.ts`:
 
+- `crm/conversas.ts`, `identificadorDeResposta(identificadores, canal, idDeQuemEscreveu?)` (WR-04, 16-21): para onde a
+  resposta de uma Conversa sai. Devolve o Identificador de quem escreveu quando ele está entre os do tipo do Canal;
+  senão o principal do tipo, senão o primeiro, senão `undefined`. O chamador passa a lista que leu do Contato DA
+  Conversa (o id só escolhe dentro dela); sem o id é a regra de abrir Conversa. O entregador da saída e
+  `identificadorDoCanal` da api usam a mesma função.
 - `crm/recebimento.ts` (`@n1/dominio/crm/recebimento`): `RecebidaDoProvedor` (o evento de mensagem que o provedor
   entrega: remetente, conteúdo, anexos, `idExterno`, `criadoEm`; sem `workspaceId`, o Espaço vem do Canal) e as duas
   decisões puras de `receberMensagem`: `destinoDaRecebida` (RN-CXE-09: usa a aberta ou pendente, reabre a última

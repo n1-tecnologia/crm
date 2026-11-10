@@ -122,6 +122,13 @@ ouvinte do tempo real o chama a cada `mensagem.nova`/`mensagem.status`, e o proc
   a Mensagem fica `falhou` com "O provedor aceitou a Mensagem, mas não deu para registrar o envio: confira no
   WhatsApp…" (a tela sai de "Enviando…" e mostra "Tentar de novo") e a linha desiste com `ENVIADO_SEM_REGISTRO`; se
   nem isso grava, a exceção sobe e a guarda acima fecha a linha como ambígua na volta seguinte.
+- **O destino é por onde o Contato escreveu (WR-04, 16-21).** A resposta sai para o Identificador da última Mensagem
+  `recebida` da Conversa (`identificadorDaUltimaRecebida`, o `identificador_id` que a recepção gravou), desde que ele
+  ainda seja do Contato da Conversa e do tipo do Canal; sem recebida, ou com aquele Identificador transferido a outro
+  Contato ou removido, sai para o principal do tipo (ou o primeiro). A regra é `identificadorDeResposta`, do domínio:
+  o id de quem escreveu só ESCOLHE dentro da lista que o entregador leu com `workspace_id` e o `contato_id` da
+  Conversa, então nunca sai para um número de outro Contato (T-16-19). Abrir Conversa e criar Tarefa conversacional
+  usam a mesma função sem o id (`identificadorDoCanal`): continuam indo ao principal.
 - Canal fora de `conectada` não tenta: a Mensagem fica `pendente` e a linha `failed` com `CANAL_DESCONECTADO`
   (`CODIGO_DO_CANAL_DESCONECTADO`, exportado por `fila-de-saida.ts`).
 - `reenfileirarEnvio` reabre a linha única da Mensagem (a `013` tem índice único por Espaço, agregado e evento) e só

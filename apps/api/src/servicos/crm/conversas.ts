@@ -36,6 +36,7 @@ import { ACOES_DO_CRM, type AcaoDoCrm } from "@n1/dominio/crm/atividades";
 import type { Pagina } from "@n1/dominio/crm/comum";
 import { nomeDeExibicaoDoContato } from "@n1/dominio/crm/contatos";
 import {
+  identificadorDeResposta,
   participantesComContato,
   proximaSituacao,
   TIPO_DE_IDENTIFICADOR_DO_CANAL,
@@ -466,14 +467,14 @@ export const canalArquivado = () =>
  * O Identificador do Contato que o Canal resolve (o principal vem primeiro), ou
  * o 409 com a frase. RN-CXE-21: `telefone` não é WhatsApp.
  */
-export function identificadorDoCanal<I extends { readonly tipo: string; readonly principal: boolean }>(
+export function identificadorDoCanal<I extends { readonly id: string; readonly tipo: string; readonly principal: boolean }>(
   identificadores: readonly I[],
   canal: Pick<Canal, "tipo">,
 ): ResultadoCrm<I> {
-  const tipoDoIdentificador = TIPO_DE_IDENTIFICADOR_DO_CANAL[canal.tipo];
-  const doTipo = identificadores.filter((identificador) => identificador.tipo === tipoDoIdentificador);
-  const identificador = doTipo.find((candidato) => candidato.principal) ?? doTipo[0];
+  // A regra de escolha é do domínio (WR-04, a mesma da resposta); sem o id de quem escreveu, abrir Conversa vai ao principal.
+  const identificador = identificadorDeResposta(identificadores, canal);
   if (!identificador) {
+    const tipoDoIdentificador = TIPO_DE_IDENTIFICADOR_DO_CANAL[canal.tipo];
     return recusa<never>(409, `Este Contato não tem ${rotuloDoIdentificador(tipoDoIdentificador)} para conversar por este Canal.`, {
       codigo: "CONTATO_SEM_IDENTIFICADOR_DO_CANAL",
       campo: "contatoId",
