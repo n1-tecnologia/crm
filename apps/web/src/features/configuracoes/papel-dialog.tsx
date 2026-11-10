@@ -64,7 +64,7 @@ export function PapelDialog({
       open
       wide
       title={editando ? `Editar ${papel.name}` : "Novo Papel"}
-      description="Um Papel personalizado declara uma base, que é o teto do que ele pode, e os módulos que libera no menu."
+      description="Um Papel personalizado declara uma base, que é o teto do que ele pode, e os módulos que libera. Por enquanto o menu e as páginas ainda não escondem os módulos desmarcados."
       confirmLabel={editando ? "Gravar" : "Criar Papel"}
       {...(motivo ? { confirmDisabledReason: motivo } : {})}
       onConfirm={gravar}

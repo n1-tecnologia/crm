@@ -31,6 +31,13 @@ vi.mock("@/dados/crm/sucessao", () => ({
   invalidarCrmDaSucessao: vi.fn(async () => undefined),
 }));
 
+// `AcessoDoMembro` importa a Server Action de reenviar o convite, que importa `server-only`: fora do Next o vitest não
+// transforma o `"use server"`. Este teste não a exercita.
+vi.mock("@/features/convite/acoes", () => ({
+  aceitarOConvite: vi.fn(),
+  reenviarOConvite: vi.fn(async () => ({ ok: true as const })),
+}));
+
 let state: DataState;
 let alvoId: string;
 

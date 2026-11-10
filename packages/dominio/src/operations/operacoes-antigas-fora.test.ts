@@ -79,7 +79,8 @@ describe("OPERACOES sem o CRM antigo (15-32, UCR-12)", () => {
     }
   });
 
-  it("o registro encolheu exatamente as 40 operações (285 -> 245)", () => {
-    expect(Object.keys(OPERACOES).length).toBe(245);
+  it("nenhuma das 40 operações que saíram continua no registro (o total não é fixado: cada operação nova o muda)", () => {
+    expect(SAIRAM).toHaveLength(40);
+    expect(SAIRAM.filter((nome) => Object.hasOwn(OPERACOES, nome))).toEqual([]);
   });
 });

@@ -118,7 +118,7 @@ export function AcessoDoMembro({
           <div className="mt-1 flex flex-wrap gap-1.5">
             {modulos.length === 0 ? <span className="app-meta">Nenhum.</span> : modulos.map((m) => <Pilula key={m}>{ROTULO_DO_MODULO[m]}</Pilula>)}
           </div>
-          <p className="app-meta mt-1">Vêm do Papel{role ? ` ${role.name}` : ""}: para mudar os módulos, mude o Papel ou edite-o em Papéis.</p>
+          <p className="app-meta mt-1">Vêm do Papel{role ? ` ${role.name}` : ""}: para mudar os módulos, mude o Papel ou edite-o em Papéis. O menu e as páginas ainda não escondem os módulos que o Papel não libera.</p>
         </div>
       </div>
 

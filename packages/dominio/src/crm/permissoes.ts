@@ -9,7 +9,9 @@
  *
  * Matriz, na ordem em que é avaliada:
  *   1. Membro desconhecido (sem Papel ou sem estado) → recusa.
- *   2. `ler` → só `ativo` e `suspenso`.
+ *   2. `ler` → só `ativo`. O `suspenso` não entra (12.1.5 B): é a mesma regra do hook de
+ *      autenticação, e vale também onde o hook não olha de novo, como a reconferência de 60 s do
+ *      fluxo de eventos.
  *   3. Escrita → só `ativo`.
  *   4. `convidado` → só consulta, em qualquer recurso.
  *   5. `funil` → só `administrador` e `proprietario` (inclui Etapas e padrão,
@@ -64,8 +66,8 @@ export function podeNoCrm(
   if (base === undefined || estado === undefined) return "Membro não encontrado neste Espaço de Trabalho.";
 
   if (acao === "ler") {
-    if (estado === "ativo" || estado === "suspenso") return undefined;
-    return "Só um Membro ativo ou suspenso consulta o CRM.";
+    if (estado === "ativo") return undefined;
+    return "Só um Membro ativo consulta o CRM.";
   }
 
   if (estado !== "ativo") return "Só um Membro ativo altera o CRM.";

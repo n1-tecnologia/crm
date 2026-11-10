@@ -66,9 +66,12 @@ describe("GET /eventos: quem abre e quando", () => {
     expect(hub.assinantes).toBe(0);
   });
 
-  it("o Membro suspenso consulta: o fluxo abre (GET é leitura)", async () => {
-    const resposta = await montar({ hub: hubDisponivel(), duracaoMaximaMs: 60 }, "suspenso").inject({ method: "GET", url: "/eventos", headers: AUTORIZACAO });
-    expect(resposta.statusCode).toBe(200);
+  it("o Membro suspenso não abre o fluxo: 403 SUSPENSO antes do hub (12.1.5 B, a leitura também)", async () => {
+    const hub = hubDisponivel();
+    const resposta = await montar({ hub, duracaoMaximaMs: 60 }, "suspenso").inject({ method: "GET", url: "/eventos", headers: AUTORIZACAO });
+    expect(resposta.statusCode).toBe(403);
+    expect(resposta.json()).toMatchObject({ ok: false, codigo: "SUSPENSO" });
+    expect(hub.assinantes).toBe(0);
   });
 });
 

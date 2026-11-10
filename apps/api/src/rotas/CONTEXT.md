@@ -93,7 +93,7 @@ Três rotas ao lado das de Contato, nas tabelas da 011:
 - `GET /contatos/:id/notas` — as notas do Contato, a mais recente primeiro,
   `{ ok: true, itens, total }`. Querystring só `limite` (teto de
   `LIMITES_CRM.paginaMaxima`) e `deslocamento`; `estado` e `q` são 400.
-  Qualquer Membro ativo ou suspenso lê, inclusive de Contato `mesclado` ou
+  Qualquer Membro ativo lê (o suspenso não entra: 12.1.5 B), inclusive de Contato `mesclado` ou
   na lixeira (o histórico não some com o estado).
 - `POST /contatos/:id/notas` — corpo `{ conteudo }` (`.strict()`, aparado,
   1 a 5000 caracteres), **201** com a nota. O autor é sempre o Membro da
@@ -123,7 +123,7 @@ Contato, sobre `plataforma.contato_consentimentos` (011), que é SÓ INSERÇÃO:
 - `GET /contatos/:id/consentimentos` — o histórico do Contato, o mais recente
   (por `em`) primeiro, `{ ok: true, itens, total }`, sem paginação. A tela
   calcula o vigente por finalidade e tipo de Canal com `consentimentoVigente`
-  do domínio. Qualquer Membro ativo ou suspenso lê, inclusive de Contato
+  do domínio. Qualquer Membro ativo lê (o suspenso não entra: 12.1.5 B), inclusive de Contato
   `mesclado` ou na lixeira.
 - `POST /contatos/:id/consentimentos` — corpo `{ finalidadeId, tipoDeCanal,
   decisao, origem, em?, evidenciaMensagemId? }` (`.strict()`), **201** com a

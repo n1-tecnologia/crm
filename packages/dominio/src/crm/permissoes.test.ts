@@ -31,11 +31,7 @@ describe("podeNoCrm — leitura (a)", () => {
     expect(podeNoCrm(base, "ativo", "ler", recurso)).toBeUndefined();
   });
 
-  it.each(casos)("%s lê %s quando suspenso", (base, recurso) => {
-    expect(podeNoCrm(base, "suspenso", "ler", recurso)).toBeUndefined();
-  });
-
-  it.each(["pendente", "removido"] as const satisfies readonly MemberState[])(
+  it.each(["pendente", "suspenso", "removido"] as const satisfies readonly MemberState[])(
     "Membro %s não lê o CRM",
     (estado) => {
       for (const base of BASES) {

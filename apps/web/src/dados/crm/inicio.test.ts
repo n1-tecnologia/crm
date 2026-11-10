@@ -96,7 +96,7 @@ describe("useLeadsAAtender", () => {
   });
 
   it("(e) a recusa da api vira erro, deixa a lista vazia e não repete", async () => {
-    fetchMock.mockResolvedValue(resposta(403, { ok: false, error: "Só um Membro ativo ou suspenso consulta o CRM.", codigo: "PERMISSAO" }));
+    fetchMock.mockResolvedValue(resposta(403, { ok: false, error: "Só um Membro ativo consulta o CRM.", codigo: "PERMISSAO" }));
     const { result } = renderHook(() => useLeadsAAtender(["q1"]), { wrapper: comCache });
 
     await waitFor(() => expect(result.current.erro).toBeInstanceOf(ErroDeApi));
