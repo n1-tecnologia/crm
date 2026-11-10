@@ -46,7 +46,7 @@ O backup manual do schema `plataforma` antes da `013` (passo 9, T-16-58) **foi r
 | 11 `migrar` e `banco:conceder` | aplicados pelo `publicar.sh` na VM ("Nada a aplicar" na segunda publicação, em `74554ab`) |
 | 12 variáveis no `api.env` | `EVOLUTION_URL` e `API_URL_PUBLICA` presentes (contagem 2, sem duplicata, modo `600`) |
 | 13 publicar a API | `74554ab` no ar em `127.0.0.1:3020`; `/saude` público `ok` |
-| 14 drop-in e workers | o journal do boot mostra, às 16:30 UTC: "ouvinte do tempo real ativo" e "conectado", "processador de entrada da mensageria ativo", "worker de saída da mensageria ativo" e "coleta de órfãos ativa". O `restart` estourou o `TimeoutStopSec=20` e o systemd matou o processo antigo com SIGKILL (as conexões do fluxo de eventos seguram o desligamento); o serviço subiu limpo |
+| 14 drop-in e workers | o journal do boot mostra, às 16:30 UTC: "ouvinte do tempo real ativo" e "conectado", "processador de entrada da mensageria ativo", "worker de saída da mensageria ativo" e "coleta de órfãos ativa". O `restart` estourou o `TimeoutStopSec=20` e o systemd matou o processo antigo com SIGKILL (causa provável, pela leitura de `apps/api/src/index.ts`: com um ouvinte de `SIGTERM` registrado o Node deixa de encerrar sozinho, os ouvintes só param os workers e o hub, e nada chama `app.close()` nem `process.exit` nesse caminho (o `app.close()` só existe na desmontagem da recarga em desenvolvimento); **não reproduzido**, a hipótese anterior das conexões do fluxo de eventos não está provada); o serviço subiu limpo |
 | 15 SSE atrás do nginx (`: aberto` na hora) | **não conferido diretamente** (exige o token de login do dono). Indício: o ouvinte conectou e a prova de 52 ms passa; a tela ainda tem a releitura de 5 s como reserva, então "a Mensagem apareceu" não distingue as duas vias |
 | 16 web e Canal | web em `74554ab` (Vercel verde); Canal "Igor Business" ligado à `igor-dev` (webhook apontado, segredo e token no cofre, fila com 0 pendentes) |
 | 17 duas abas | **o dono não cronometrou nem relatou separadamente**; relato geral: "testei imagem, áudios e textos, tudo funcionando" |
@@ -96,6 +96,6 @@ grupos (Sessão 6). Esta prova viu a figurinha ser processada sem erro, mas ela 
 - **Rotacionar a chave global da Evolution** (`AUTHENTICATION_API_KEY`): foi colada na conversa. Reiniciar a Evolution é seguro.
 - Trocar o `SERVER_URL` da Evolution para https.
 - O `deploy-api` do GitHub segue vermelho por `VPS_HOST` vazio (conhecido; aborta antes de qualquer SSH).
-- O desligamento do serviço leva SIGKILL por causa das conexões do fluxo de eventos abertas (`TimeoutStopSec=20`).
+- O desligamento do serviço leva SIGKILL aos 20 s (`TimeoutStopSec=20`): causa provável, pela leitura de `apps/api/src/index.ts`: com um ouvinte de `SIGTERM` registrado o Node deixa de encerrar sozinho, os ouvintes só param os workers e o hub, e nada chama `app.close()` nem `process.exit` nesse caminho (o `app.close()` só existe na desmontagem da recarga em desenvolvimento); **não reproduzido**, a hipótese anterior das conexões do fluxo de eventos não está provada. Fix provável: no `SIGTERM`, rodar a mesma desmontagem (`hub.encerrarTodos()`, `app.close()`, `encerrar()`) e sair.
 - `DATABASE_SSL_INSECURE=true` e o papel `postgres.<projeto>` no `.env` do notebook; o login por senha de root na VM.
 - Sem backup do schema `plataforma` antes da `013`.

@@ -104,7 +104,7 @@ status: complete
 ## Issues Encountered
 
 - Quem colou o bloco de root duas vezes no terminal do Mac por engano não alterou nada (os caminhos não existem lá); passou a ser um comando único `ssh root@… "…"`.
-- O `restart` do serviço estourou o `TimeoutStopSec=20` e levou SIGKILL por causa das conexões do fluxo de eventos abertas. O serviço subiu limpo. Anotado em `deferred-items.md`.
+- O `restart` do serviço estourou o `TimeoutStopSec=20` e levou SIGKILL; a causa provável (pela leitura de `index.ts`, não reproduzida) é que nada encerra o processo no caminho do `SIGTERM`, e não as conexões do fluxo de eventos. O serviço subiu limpo. Anotado em `deferred-items.md`.
 - O dono relatou "tudo funcionando" sem cronometrar as duas abas; por isso a truth `backstop` de 2 s fica `unknown` e a verificação da fase deve sair `human_needed`.
 
 ## Known Stubs
