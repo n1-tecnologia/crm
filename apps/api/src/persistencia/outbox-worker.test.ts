@@ -433,6 +433,20 @@ d("worker com entregador próprio (16-05, Postgres real)", () => {
     expect(await buscarLinha(id)).toMatchObject({ status: "failed", last_error_code: "TRAVA_VENCIDA" });
   });
 
+  it("(x) a trava vencida devolvida a pending chega ao entregador marcada com TRAVA_VENCIDA (WR-01, 16-20)", async () => {
+    const id = await linhaDaMensagem();
+    await travar(id, 180, 1);
+    const vistas: (string | null)[] = [];
+    const worker = criar(async (l) => {
+      vistas.push(l.last_error_code);
+      return { desfecho: "entregue" };
+    }, { recuperarTravasVencidasMs: 120_000 });
+
+    expect(await worker.processarUm()).toBe(true);
+
+    expect(vistas).toEqual(["TRAVA_VENCIDA"]);
+  });
+
   it("(u) a recuperação só toca os tipos do worker: a trava vencida de outro tipo de evento não é mexida", async () => {
     const daSolicitacao = await inserirLinhaPendente({ availableAt: haSegundos(5) });
     await travar(daSolicitacao, 600, 1);

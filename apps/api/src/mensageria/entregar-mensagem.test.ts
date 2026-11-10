@@ -10,16 +10,19 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
+import type { Pool } from "pg";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { MembroDaSessao } from "../plugins/autenticacao";
 import { encerrar, pool } from "../persistencia/conexao";
+import type { LinhaOutbox } from "../persistencia/outbox-worker";
 import { criarRepositorioDeContatosPg } from "../repositorios/crm/contatos";
 import { criarRepositorioDeConversasPg } from "../repositorios/crm/conversas";
 import type { ChavesDoCofre } from "../servicos/cofre";
 import { criarAcessoAoCrmPg } from "../servicos/crm/acesso";
 import { criarServicoDeMensagens } from "../servicos/crm/mensagens";
+import { criarArmazenamentoFalso } from "../testes/armazenamento-falso";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearCanal, semearMembro } from "../testes/banco-crm";
-import { FRASES_DA_SAIDA, criarWorkerDeSaida } from "./entregar-mensagem";
+import { FRASES_DA_SAIDA, criarEntregadorDeMensagens, criarWorkerDeSaida } from "./entregar-mensagem";
 import { provedorDeTeste } from "./provedores/teste";
 
 const chaves: ChavesDoCofre = { atual: { versao: 1, chave: randomBytes(32) } };
@@ -198,7 +201,16 @@ describeComBanco("entregador de mensagens: a política de tentativas que não du
     expect(await mensagem(c.mensagemId)).toMatchObject({ status_entrega: "enviada", id_externo: "ja-saiu" });
   });
 
-  it("linha delivering com trava de 3 min (worker que caiu): volta a pending e é entregue; trava de 30 s não é tomada", async () => {
+  /** Põe a linha do outbox como o worker a deixaria depois de uma queda: `pending`, com tentativas e o código do que a trouxe de volta. */
+  const voltouSemDesfecho = (mensagemId: string, codigo: string, tentativas = 1) =>
+    pool().query(
+      `update plataforma.integration_outbox
+          set status = 'pending', attempts = $3, last_error_code = $4, available_at = now() - interval '1 second'
+        where workspace_id = $1 and aggregate_id = $2`,
+      [ws, mensagemId, tentativas, codigo],
+    );
+
+  it("WR-01: linha delivering com trava de 3 min (worker que caiu) volta marcada e fecha como sem confirmação, sem chamar o provedor; trava de 30 s não é tomada", async () => {
     const velha = await cenario();
     const recente = await cenario();
     await pool().query(
@@ -215,10 +227,50 @@ describeComBanco("entregador de mensagens: a política de tentativas que não du
     expect(await worker().processarUm()).toBe(true);
     expect(await worker().processarUm()).toBe(false);
 
-    expect(await linha(velha.mensagemId)).toMatchObject({ status: "delivered" });
-    expect((await mensagem(velha.mensagemId)).status_entrega).toBe("enviada");
+    expect(provedorDeTeste.enviados).toHaveLength(0);
+    expect(await mensagem(velha.mensagemId)).toMatchObject({ status_entrega: "falhou", motivo_falha: FRASES_DA_SAIDA.semConfirmacao, id_externo: null });
+    expect(await linha(velha.mensagemId)).toMatchObject({ status: "failed", last_error_code: "ENVIO_SEM_DESFECHO" });
     expect(await linha(recente.mensagemId)).toMatchObject({ status: "delivering" });
+    expect((await mensagem(recente.mensagemId)).status_entrega).toBe("pendente");
+  });
+
+  it("WR-01: a exceção que escapou do entregador depois do enviar (ERRO_DO_ENTREGADOR) não reenvia: falhou sem confirmação", async () => {
+    const c = await cenario();
+    await voltouSemDesfecho(c.mensagemId, "ERRO_DO_ENTREGADOR");
+
+    expect(await worker().processarUm()).toBe(true);
+
+    expect(provedorDeTeste.enviados).toHaveLength(0);
+    expect(await mensagem(c.mensagemId)).toMatchObject({ status_entrega: "falhou", motivo_falha: FRASES_DA_SAIDA.semConfirmacao });
+    expect(await linha(c.mensagemId)).toMatchObject({ status: "failed", last_error_code: "ENVIO_SEM_DESFECHO" });
+    await disponivelAgora(c.mensagemId);
+    expect(await worker().processarUm()).toBe(false);
+  });
+
+  it("WR-01: a linha que voltou por erro transitório do provedor (HTTP_503) sai normalmente", async () => {
+    const c = await cenario();
+    await voltouSemDesfecho(c.mensagemId, "HTTP_503");
+
+    expect(await worker().processarUm()).toBe(true);
+
     expect(provedorDeTeste.enviados).toHaveLength(1);
+    expect((await mensagem(c.mensagemId)).status_entrega).toBe("enviada");
+    expect(await linha(c.mensagemId)).toMatchObject({ status: "delivered" });
+  });
+
+  it("WR-01: depois do desfecho ambíguo, Tentar de novo reabre a linha (código nulo, tentativas 0) e a Mensagem sai uma vez", async () => {
+    const c = await cenario();
+    await voltouSemDesfecho(c.mensagemId, "TRAVA_VENCIDA");
+    await worker().processarUm();
+    expect(provedorDeTeste.enviados).toHaveLength(0);
+
+    const reenvio = await servico.reenviar(membro, c.mensagemId);
+    expect(reenvio.ok).toBe(true);
+    expect(await linha(c.mensagemId)).toMatchObject({ status: "pending", attempts: 0, last_error_code: null });
+
+    expect(await worker().processarUm()).toBe(true);
+    expect(provedorDeTeste.enviados).toHaveLength(1);
+    expect((await mensagem(c.mensagemId)).status_entrega).toBe("enviada");
   });
 
   it("motivo do provedor com apikey: nem a Mensagem nem a linha do outbox a carregam", async () => {
@@ -236,5 +288,47 @@ describeComBanco("entregador de mensagens: a política de tentativas que não du
     const fila = await linha(c.mensagemId);
     expect(depois.motivo_falha).not.toContain("chave-secreta-123");
     expect(fila.last_error_summary ?? "").not.toContain("chave-secreta-123");
+  });
+});
+
+describe("entregador de mensagens sem banco: a falha antes do envio é certa de não ter saído (WR-01, 16-20)", () => {
+  const poolQueCai = {
+    query: async () => {
+      throw new Error("conexão com o banco caiu");
+    },
+    connect: async () => {
+      throw new Error("conexão com o banco caiu");
+    },
+  } as unknown as Pool;
+
+  const entregador = () =>
+    criarEntregadorDeMensagens({ pool: () => poolQueCai, armazenamento: criarArmazenamentoFalso(), registro: { teste: provedorDeTeste, porProvedor: {} }, chaves });
+
+  const linhaValida = (): LinhaOutbox => ({
+    id: "out_1",
+    workspace_id: "ws_sem_banco",
+    aggregate_type: "mensagem",
+    aggregate_id: "msg_1",
+    event_type: "mensagem.enviar.v1",
+    event_version: 1,
+    payload: { mensagemId: "msg_1", conversaId: "cnv_1", canalId: "can_1" },
+    status: "delivering",
+    attempts: 1,
+    available_at: new Date().toISOString(),
+    locked_at: new Date().toISOString(),
+    locked_by: "teste",
+    last_error_code: null,
+    last_error_summary: null,
+    created_at: new Date().toISOString(),
+    delivered_at: null,
+  });
+
+  it("WR-01: o banco que cai antes do envio vira tentar_de_novo com ERRO_ANTES_DO_ENVIO e nada é lançado", async () => {
+    provedorDeTeste.limpar();
+
+    const resultado = await entregador()(linhaValida(), { ultimaTentativa: false });
+
+    expect(resultado).toMatchObject({ desfecho: "tentar_de_novo", erro: { code: "ERRO_ANTES_DO_ENVIO" } });
+    expect(provedorDeTeste.enviados).toHaveLength(0);
   });
 });
