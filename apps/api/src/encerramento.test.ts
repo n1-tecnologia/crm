@@ -5,12 +5,17 @@
  * produção (`vite-node`, o `ExecStart` da unidade), seguram um fluxo longo aberto e mandam SIGTERM. O que se mede é o
  * que o systemd mede: o processo sai, com que código e em quanto tempo. O ambiente do filho leva só `PATH`, `HOME` e as
  * variáveis do modo — nada do arquivo de ambiente da api, nenhuma conexão com banco.
+ *
+ * Os casos de baixo são puros: um processo falso (um `EventEmitter` com `exit` espião) e um agendador injetado, sem
+ * `spawn`, para as bordas do tratador (SIGINT, segundo sinal, etapa que falha, teto, recarga).
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
 import http from "node:http";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { EventEmitter } from "node:events";
+import { describe, expect, it, vi } from "vitest";
+import { criarEncerramento, TETO_DO_ENCERRAMENTO_MS, type OpcoesDoEncerramento, type Temporizador } from "./encerramento";
 
 const RAIZ_DA_API = fileURLToPath(new URL("..", import.meta.url));
 const VITE_NODE = fileURLToPath(new URL("../../../node_modules/vite-node/dist/cli.mjs", import.meta.url));
@@ -146,5 +151,171 @@ describe("o SIGTERM num processo de verdade (vite-node, como na unidade systemd)
       if (filho.processo.exitCode === null && filho.processo.signalCode === null) filho.processo.kill("SIGKILL");
       await filho.saiu;
     }
+  });
+});
+
+/** Um processo falso: emite sinais como o `process` e guarda a chamada de `exit` num espião. */
+function processoFalso() {
+  const emissor = new EventEmitter();
+  const exit = vi.fn();
+  return { emissor, exit, processo: Object.assign(emissor, { exit }) };
+}
+
+/** Um agendador que não espera: guarda a ação e o prazo, e o teste decide quando disparar. */
+function agendadorManual() {
+  const agendados: Array<{ acao: () => void; ms: number; cancelado: boolean }> = [];
+  const agendar = (acao: () => void, ms: number): Temporizador => {
+    const item = { acao, ms, cancelado: false };
+    agendados.push(item);
+    return { cancelar: () => (item.cancelado = true) };
+  };
+  return { agendados, agendar };
+}
+
+interface Registro {
+  readonly nivel: string;
+  readonly mensagem: string;
+  readonly dados?: Record<string, unknown> | undefined;
+}
+
+/** Monta o encerramento com todas as etapas anotando a ordem em `chamadas`. */
+function montar(sobrescritas: Partial<OpcoesDoEncerramento> = {}) {
+  const chamadas: string[] = [];
+  const registros: Registro[] = [];
+  const falso = processoFalso();
+  const agendador = agendadorManual();
+  const encerramento = criarEncerramento({
+    fecharFluxos: () => {
+      chamadas.push("fluxos");
+    },
+    fecharServidor: async () => {
+      chamadas.push("servidor");
+    },
+    encerrarPool: async () => {
+      chamadas.push("pool");
+    },
+    registrar: (nivel, mensagem, dados) => {
+      registros.push({ nivel, mensagem, dados });
+    },
+    agendar: agendador.agendar,
+    ...sobrescritas,
+  });
+  falso.exit.mockImplementation((codigo: number) => {
+    chamadas.push(`exit:${codigo}`);
+  });
+  return { chamadas, registros, falso, agendador, encerramento };
+}
+
+describe("criarEncerramento: as bordas do tratador", () => {
+  it.each(["SIGTERM", "SIGINT"])("%s: fluxos, paradas, fluxos de novo, servidor, pool e exit(0), nessa ordem", async (sinal) => {
+    const { chamadas, falso, encerramento } = montar();
+    encerramento.aoEncerrar(async () => {
+      chamadas.push("parada-a");
+    });
+    encerramento.aoEncerrar(async () => {
+      chamadas.push("parada-b");
+    });
+    encerramento.instalar(falso.processo);
+
+    falso.emissor.emit(sinal);
+    await vi.waitFor(() => expect(falso.exit).toHaveBeenCalled());
+
+    expect(chamadas).toEqual(["fluxos", "parada-a", "parada-b", "fluxos", "servidor", "pool", "exit:0"]);
+  });
+
+  it("dois SIGTERM seguidos: o servidor fecha uma vez e o processo sai uma vez", async () => {
+    const { chamadas, registros, falso, encerramento } = montar();
+    encerramento.instalar(falso.processo);
+
+    falso.emissor.emit("SIGTERM");
+    falso.emissor.emit("SIGTERM");
+    await vi.waitFor(() => expect(falso.exit).toHaveBeenCalled());
+    await Promise.resolve();
+
+    expect(chamadas.filter((chamada) => chamada === "servidor")).toHaveLength(1);
+    expect(falso.exit).toHaveBeenCalledTimes(1);
+    expect(registros.some((registro) => registro.mensagem.includes("ignorado"))).toBe(true);
+  });
+
+  it("uma parada que rejeita: as outras paradas, o servidor e o pool rodam do mesmo jeito, a etapa fica no registro e a saída é 1", async () => {
+    const { chamadas, registros, falso, encerramento } = montar();
+    encerramento.aoEncerrar(async () => {
+      throw new Error("senha-de-conexao-que-nao-pode-ir-ao-registro");
+    });
+    encerramento.aoEncerrar(async () => {
+      chamadas.push("parada-boa");
+    });
+    encerramento.instalar(falso.processo);
+
+    falso.emissor.emit("SIGTERM");
+    await vi.waitFor(() => expect(falso.exit).toHaveBeenCalled());
+
+    expect(chamadas).toEqual(["fluxos", "parada-boa", "fluxos", "servidor", "pool", "exit:1"]);
+    const falha = registros.find((registro) => registro.mensagem === "encerramento: paradas falhou");
+    expect(falha?.nivel).toBe("error");
+    // Só o nome do erro vai para o registro: a mensagem pode carregar um segredo.
+    expect(JSON.stringify(registros)).not.toContain("senha-de-conexao");
+  });
+
+  it("uma parada que nunca resolve: o teto corta em tetoMs, registra e sai com 1", async () => {
+    const { registros, falso, agendador, encerramento } = montar({ tetoMs: 1_000 });
+    encerramento.aoEncerrar(() => new Promise<void>(() => {}));
+    encerramento.instalar(falso.processo);
+
+    falso.emissor.emit("SIGTERM");
+    await Promise.resolve();
+    expect(agendador.agendados).toHaveLength(1);
+    expect(agendador.agendados[0]?.ms).toBe(1_000);
+    expect(falso.exit).not.toHaveBeenCalled();
+
+    agendador.agendados[0]?.acao();
+
+    expect(falso.exit).toHaveBeenCalledTimes(1);
+    expect(falso.exit).toHaveBeenCalledWith(1);
+    const teto = registros.find((registro) => registro.mensagem === "encerramento: teto estourado");
+    expect(teto?.dados).toEqual({ tetoMs: 1_000 });
+  });
+
+  it("sem tetoMs o teto é de 15 s, abaixo dos 20 s da unidade, e o encerramento limpo o cancela", async () => {
+    const { falso, agendador, encerramento } = montar();
+    encerramento.instalar(falso.processo);
+
+    falso.emissor.emit("SIGTERM");
+    await vi.waitFor(() => expect(falso.exit).toHaveBeenCalledWith(0));
+
+    expect(TETO_DO_ENCERRAMENTO_MS).toBe(15_000);
+    expect(agendador.agendados[0]?.ms).toBe(15_000);
+    expect(agendador.agendados[0]?.cancelado).toBe(true);
+  });
+
+  it("desmontar() sozinho (o caminho da recarga) nunca sai do processo, e duas chamadas devolvem a mesma promessa", async () => {
+    const { chamadas, falso, encerramento } = montar();
+    encerramento.instalar(falso.processo);
+
+    const primeira = encerramento.desmontar();
+    const segunda = encerramento.desmontar();
+    expect(segunda).toBe(primeira);
+    expect(await primeira).toEqual({ ok: true });
+
+    expect(falso.exit).not.toHaveBeenCalled();
+    expect(chamadas.filter((chamada) => chamada === "servidor")).toHaveLength(1);
+  });
+
+  it("desinstalar() deixa a instância sem ouvinte de SIGTERM nem de SIGINT", () => {
+    const { falso, encerramento } = montar();
+    encerramento.instalar(falso.processo);
+    expect(falso.emissor.listenerCount("SIGTERM")).toBe(1);
+    expect(falso.emissor.listenerCount("SIGINT")).toBe(1);
+
+    encerramento.desinstalar();
+
+    expect(falso.emissor.listenerCount("SIGTERM")).toBe(0);
+    expect(falso.emissor.listenerCount("SIGINT")).toBe(0);
+  });
+
+  it("aoEncerrar() não pendura ouvinte de sinal nenhum", () => {
+    const { falso, encerramento } = montar();
+    encerramento.aoEncerrar(async () => {});
+    expect(falso.emissor.listenerCount("SIGTERM")).toBe(0);
   });
 });

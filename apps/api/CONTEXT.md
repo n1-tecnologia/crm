@@ -45,6 +45,7 @@ não escreve nada — nem o schema nasce num banco vazio (D-12 da Fase 7).
 | Pasta | O contrato |
 |---|---|
 | `src/index.ts` | Ponto de composição: `carregarEnv()` + `buildApp()` + `listen()`. |
+| `src/encerramento.ts` | O tratador único de SIGTERM e SIGINT e da desmontagem da recarga do `vite-node --watch` (Fase 16, 16-18): fecha os fluxos SSE, espera as paradas dos workers, fecha o servidor, encerra o pool e sai, nessa ordem, com teto de 15 s (`TETO_DO_ENCERRAMENTO_MS`), abaixo dos 20 s da unidade systemd. Não conhece Fastify nem o banco: o `index.ts` injeta as etapas. |
 | `src/app.ts` | Monta o Fastify (CORS, autenticação, rotas, erro) sem escutar — o que permite `app.inject()` nos testes. |
 | `src/plugins/` | Hooks transversais registrados na raiz, antes de qualquer rota — hoje só `autenticacao.ts`. |
 | `src/rotas/` | Um arquivo por recurso. Só traduz HTTP ↔ serviço: sem regra de negócio, sem SQL. `rotas/crm/` (Fase 7): as rotas REST do CRM, um recurso por arquivo, registradas por `rotasDeCrm`. |

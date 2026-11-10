@@ -78,6 +78,16 @@ Mudou o arquivo? Reinicie (como root): `systemctl restart n1-crm-api`.
 | Voltar uma versão | `ln -sfn /opt/n1-crm/releases/<sha> /opt/n1-crm/current && systemctl restart n1-crm-api` |
 | Ligar os workers | `systemctl edit n1-crm-api` → `[Service]` + `Environment=OUTBOX_WORKER_ATIVO=true` (e desligar no notebook: dois processando o mesmo outbox duplicam envio) |
 | Ligar a mensageria | drop-in `mensageria.conf`, como root, só do dono: ver "Mensageria (Fase 16)", abaixo |
+| Reiniciar | `systemctl restart n1-crm-api`: a api sai sozinha, em menos de 20 s, e o `journalctl` mostra as linhas `encerramento: …` (ver "O desligamento", abaixo) |
+
+**O desligamento (Fase 16, 16-18, T-16-28).** O SIGTERM do `systemctl restart`/`stop` (e o SIGINT) roda um tratador
+único (`src/encerramento.ts`): deixa o tempo real indisponível e fecha os fluxos SSE, espera cada worker terminar a volta
+em voo, fecha o servidor, encerra o pool e sai com `0`. O journal mostra, nessa ordem, `encerramento: sinal SIGTERM`,
+`encerramento: fluxos`, `paradas`, `servidor` e `pool`. O encerramento tem teto de 15 s, abaixo dos 20 s de
+`TimeoutStopSec`: se uma etapa pendurar, o processo registra `encerramento: teto estourado` e sai com `1`, em vez de
+esperar o SIGKILL. O que se confere num `restart` saudável é a ausência de `State 'stop-sigterm' timed out. Killing` no
+`journalctl`. **A PRIMEIRA publicação desta versão ainda é desligada pelo processo antigo**, que não tem o tratador, e pode
+levar o SIGKILL uma última vez: confira o tempo num `restart` seguinte.
 
 Publicar à mão, da raiz do repositório (o mesmo passo do CI):
 
@@ -384,7 +394,8 @@ journalctl -u n1-crm-api -n 30   # esperado: "processador de entrada da mensager
 Uma flag liga o processador de entrada e o worker de saída. `MENSAGERIA_WORKER_ID` (opcional) dá o nome
 do de entrada; o de saída é `<nome>-saida`. A coleta de órfãos (`COLETA_DE_ORFAOS_ATIVA=true`) é outra linha do
 mesmo drop-in, e só faz sentido com o bucket configurado. Para desligar, troque para `false` (ou apague o
-arquivo) e `systemctl restart n1-crm-api`. Duas instâncias do processo não duplicam trabalho (a fila usa
+arquivo) e `systemctl restart n1-crm-api` (o restart sai limpo, em menos de 20 s: ver "O desligamento" em "Operar").
+Duas instâncias do processo não duplicam trabalho (a fila usa
 `for update skip locked`), mas o worker de um notebook ligado ao MESMO banco competiria com a VPS: desligue o do notebook.
 
 **O tempo real e o orçamento de conexões.** O ouvinte `LISTEN` (`TEMPO_REAL_ATIVO`, ligado por padrão) é uma

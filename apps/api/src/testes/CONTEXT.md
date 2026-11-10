@@ -13,6 +13,14 @@ precisa de um relógio injetável em produção, não só no teste, e
 `relogioDoSistema` é a implementação real desse contrato, não um duplo de
 teste.
 
+`processo-que-encerra.ts` (Fase 16, 16-18) é um processo, não uma biblioteca: `encerramento.test.ts` o sobe como filho com
+o mesmo `vite-node` da unidade systemd e manda SIGTERM de verdade. Sobe um Fastify com um fluxo SSE longo, em porta
+escolhida pelo sistema, imprime `PRONTO <porta>` e roda em três modos: o tratador novo (`criarEncerramento`), `MODO=antigo`
+(só um ouvinte de SIGTERM que para o worker, o comportamento que levava ao SIGKILL) e `TRAVAR_PARADA=1` com `TETO_MS`
+(a parada nunca resolve, o teto corta). Ele **não usa o `index.ts`** de propósito: a subida do `index.ts` carrega o arquivo
+de ambiente da api, que aponta para produção. O filho recebe só `PATH`, `HOME` e as variáveis do modo, e não abre conexão
+com banco. A ligação do `index.ts` ao tratador é conferida por `tsc` e pela publicação, não por este processo.
+
 ## Por que o servidor é real, não um mock de `fetch`
 
 O worker de outbox e o adapter do financeiro chamam `fetch` de verdade. Um
