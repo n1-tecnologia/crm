@@ -12,6 +12,7 @@ import { CP, CR } from "./operations/financeiro";
 import { createTask, changeTaskStatus } from "./operations/tasks";
 import { USUARIOS_DO_SEED } from "./usuarios-do-seed";
 import type { DataState } from "./state";
+import { colecaoPelaChave } from "./testes/crm-de-teste";
 
 const AGORA = "2026-09-16T12:00:00.000Z";
 
@@ -26,9 +27,7 @@ describe("buildGestaoBootstrap", () => {
 
   it("zero Tarefas, Contatos, Negócios, Conversas e demais fixtures do protótipo (D-07)", () => {
     expect(s.tasks.length).toBe(0);
-    expect(s.contacts.length).toBe(0);
-    expect(s.companies.length).toBe(0);
-    expect(s.deals.length).toBe(0);
+    for (const colecao of ["contacts", "companies", "deals"]) expect(colecaoPelaChave(s, colecao)).toHaveLength(0);
     expect(s.conversations.length).toBe(0);
     expect(s.chatSessions.length).toBe(0);
     expect(s.activity.length).toBe(0);
@@ -38,7 +37,7 @@ describe("buildGestaoBootstrap", () => {
     expect(s.links.length).toBe(0);
     expect(s.teams.length).toBe(0);
     expect(s.queues.length).toBe(0);
-    expect(s.channels.length).toBe(0);
+    expect(colecaoPelaChave(s, "channels")).toHaveLength(0);
     expect(s.forms.length).toBe(0);
   });
 
@@ -61,12 +60,19 @@ describe("buildGestaoBootstrap", () => {
     expect(s.tags.filter((t) => t.name.startsWith("conta ")).length).toBe(8);
   });
 
-  it("o Agente de lançamento, o Agente padrão, o Funil padrão e a Coleção existem", () => {
+  it("o Agente de lançamento, o Agente padrão e a Coleção existem", () => {
     const agentIds = s.agents.map((x) => x.id);
     expect(agentIds).toContain("agt_padrao");
     expect(agentIds).toContain(CP.agentId);
-    expect(s.funnels.map((x) => x.id)).toEqual(["fnl_padrao"]);
     expect(s.collections.some((c) => c.id === "col_financeiro_erp")).toBe(true);
+  });
+
+  it("um Espaço novo nasce sem Funil e sem nada do CRM; o Funil padrão é o da tabela (D-15-13)", () => {
+    expect(colecaoPelaChave(s, "funnels")).toEqual([]);
+    // O Workspace não guarda mais o Funil padrão: ele é `plataforma.funis.padrao`.
+    expect(Object.keys(s.workspace).filter((chave) => /funnel/i.test(chave))).toEqual([]);
+    // O Agente padrão continua nascendo com o Espaço (B33).
+    expect(s.workspace.defaultAgentId).toBe("agt_padrao");
   });
 
   it("as Automações A2–A6, A9 e R2–R6 são exatamente as que buildSeed() já monta (config, não fixture)", () => {

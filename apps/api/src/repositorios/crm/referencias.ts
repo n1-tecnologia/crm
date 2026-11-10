@@ -4,9 +4,6 @@
  *
  *   - a Fila e a Origem padrão do Canal (D-09: Fila não tem tabela própria) —
  *     `queues` e o item `kind = 'origem'` de `catalog`, ambos `ativo`;
- *   - os Canais do seed (`channels`), para a unicidade de nome e de conta valer
- *     entre os dois acervos (A5; RN-CXE-31 e INV-CXE-01 não podem ter um
- *     furo entre a tabela nova e a antiga);
  *   - a revisão do Espaço (`plataforma.workspaces.revisao`), que outro
  *     navegador compara em `verificarRevisao` para se re-hidratar (A4).
  *
@@ -16,7 +13,6 @@
  */
 
 import type { Pool, PoolClient } from "pg";
-import type { TipoComProvedor } from "@n1/dominio/provedores-de-canal";
 
 type Cliente = Pool | PoolClient;
 
@@ -30,6 +26,20 @@ export async function filaAtiva(cliente: Cliente, workspaceId: string, filaId: s
         and id = $2
         and dados->>'lifecycle' = 'ativo'`,
     [workspaceId, filaId],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
+/** O Agente existe NESTE Espaço e está `ativo` (o mesmo filtro de `assignConversation` no modelo antigo). */
+export async function agenteAtivo(cliente: Cliente, workspaceId: string, agenteId: string): Promise<boolean> {
+  const { rowCount } = await cliente.query(
+    `select 1
+       from plataforma.registros
+      where workspace_id = $1
+        and colecao = 'agents'
+        and id = $2
+        and dados->>'lifecycle' = 'ativo'`,
+    [workspaceId, agenteId],
   );
   return (rowCount ?? 0) > 0;
 }
@@ -49,50 +59,6 @@ export async function origemAtiva(cliente: Cliente, workspaceId: string, origemI
   return (rowCount ?? 0) > 0;
 }
 
-export interface ConflitoComCanalAntigo {
-  readonly id: string;
-  readonly nome: string;
-  readonly motivo: "nome" | "conta";
-}
-
-/**
- * Um Canal do seed, ativo, com o mesmo nome (sem caixa nem espaços nas pontas)
- * ou a mesma conta (`channelType` + `externalId`) do alvo. O nome pesa mais que
- * a conta quando os dois casam.
- */
-export async function canalAntigoEmConflito(
-  cliente: Cliente,
-  workspaceId: string,
-  alvo: { readonly nome?: string | undefined; readonly tipo?: TipoComProvedor | undefined; readonly identificadorExterno?: string | undefined },
-): Promise<ConflitoComCanalAntigo | undefined> {
-  const valores: unknown[] = [workspaceId];
-  const alternativas: string[] = [];
-  let porNome = "false";
-  if (alvo.nome !== undefined) {
-    valores.push(alvo.nome);
-    porNome = `lower(btrim(dados->>'name')) = lower(btrim($${valores.length}))`;
-    alternativas.push(porNome);
-  }
-  if (alvo.tipo !== undefined && alvo.identificadorExterno !== undefined) {
-    valores.push(alvo.tipo, alvo.identificadorExterno);
-    alternativas.push(`(dados->>'channelType' = $${valores.length - 1} and dados->>'externalId' = $${valores.length})`);
-  }
-  if (alternativas.length === 0) return undefined;
-  const { rows } = await cliente.query<{ id: string; nome: string; por_nome: boolean }>(
-    `select id, dados->>'name' as nome, ${porNome} as por_nome
-       from plataforma.registros
-      where workspace_id = $1
-        and colecao = 'channels'
-        and dados->>'lifecycle' = 'ativo'
-        and (${alternativas.join(" or ")})
-      order by por_nome desc, ordem, id
-      limit 1`,
-    valores,
-  );
-  const linha = rows[0];
-  return linha ? { id: linha.id, nome: linha.nome, motivo: linha.por_nome ? "nome" : "conta" } : undefined;
-}
-
 /**
  * Soma 1 em `plataforma.workspaces.revisao` (A4), na transação da escrita do
  * Canal: o Canal relacional não passa pelo store, então é aqui que o outro
@@ -104,4 +70,78 @@ export async function avancarRevisaoDoEspaco(cliente: Cliente, workspaceId: stri
     "update plataforma.workspaces set revisao = revisao + 1, atualizado_em = now() where workspace_id = $1",
     [workspaceId],
   );
+}
+
+/**
+ * A finalidade de consentimento existe NESTE Espaço, é `kind = 'finalidadeConsentimento'`
+ * e está `ativo` (3.2.4). O Catálogo continua em `registros` até a unificação (OQ7): o
+ * consentimento novo só aponta para ele por id.
+ */
+export async function finalidadeDeConsentimentoAtiva(cliente: Cliente, workspaceId: string, id: string): Promise<boolean> {
+  const { rowCount } = await cliente.query(
+    `select 1
+       from plataforma.registros
+      where workspace_id = $1
+        and colecao = 'catalog'
+        and id = $2
+        and dados->>'kind' = 'finalidadeConsentimento'
+        and dados->>'lifecycle' = 'ativo'`,
+    [workspaceId, id],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
+/** O nome do item `finalidadeConsentimento` ativo do Espaço; `undefined` se não existe, é de outro Espaço ou não está ativo. */
+export async function nomeDaFinalidadeAtiva(cliente: Cliente, workspaceId: string, id: string): Promise<string | undefined> {
+  const { rows } = await cliente.query<{ nome: string | null }>(
+    `select dados->>'name' as nome
+       from plataforma.registros
+      where workspace_id = $1
+        and colecao = 'catalog'
+        and id = $2
+        and dados->>'kind' = 'finalidadeConsentimento'
+        and dados->>'lifecycle' = 'ativo'`,
+    [workspaceId, id],
+  );
+  return rows[0] === undefined ? undefined : (rows[0].nome ?? id);
+}
+
+/**
+ * O nome de exibição de quem é (ou era) Atribuído de uma Conversa, para a Atividade: o Membro
+ * (`displayName`) ou o Agente (`name`) DESTE Espaço, em qualquer estado. `undefined` quando o
+ * registro não existe — quem chama omite o nome em vez de inventar um.
+ */
+export async function nomeDoAtribuido(
+  cliente: Cliente,
+  workspaceId: string,
+  atribuido: { readonly tipo: "membro" | "agente"; readonly id: string },
+): Promise<string | undefined> {
+  const { rows } = await cliente.query<{ nome: string | null }>(
+    `select dados->>$3 as nome
+       from plataforma.registros
+      where workspace_id = $1 and colecao = $4 and id = $2`,
+    [workspaceId, atribuido.id, atribuido.tipo === "membro" ? "displayName" : "name", atribuido.tipo === "membro" ? "members" : "agents"],
+  );
+  return rows[0]?.nome ?? undefined;
+}
+
+/**
+ * O id da finalidade "marketing" do Espaço: o item `finalidadeConsentimento` de nome
+ * "marketing", sem diferenciar maiúscula — o mesmo critério com que
+ * `marketingConsentMissing` (`derive.ts`) a acha no modelo antigo. `undefined` quando
+ * o Espaço não tem a finalidade.
+ */
+export async function finalidadeDeMarketing(cliente: Cliente, workspaceId: string): Promise<string | undefined> {
+  const { rows } = await cliente.query<{ id: string }>(
+    `select id
+       from plataforma.registros
+      where workspace_id = $1
+        and colecao = 'catalog'
+        and dados->>'kind' = 'finalidadeConsentimento'
+        and lower(dados->>'name') = 'marketing'
+      order by ordem, id
+      limit 1`,
+    [workspaceId],
+  );
+  return rows[0]?.id;
 }

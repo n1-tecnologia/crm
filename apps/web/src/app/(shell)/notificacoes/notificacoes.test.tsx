@@ -5,16 +5,28 @@
  *
  * Molde de `pagina-do-espaco.test.tsx`: `buildSeed()`, `StoreProvider` de
  * verdade, zero rede.
+ *
+ * 15-14 — a seção "Conversas atribuídas a você" lê do CRM novo (`GET /conversas`): `fetch`
+ * roteado e sessão falsa, sem tocar no `state.conversations` do modelo antigo.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { buildSeed } from "@n1/dominio/seed";
+import { conversaAntigaDeTeste } from "@/testes/crm-antigo-de-teste";
 import { addTaskComment, changeTaskStatus, updateTask } from "@n1/dominio/operations";
 import type { DataState } from "@n1/dominio/state";
+import { SWRConfig } from "swr";
 import { StoreProvider } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
+import type { ConversaNaLista } from "@n1/dominio/crm/conversas";
 import NotificacoesPage from "@/app/(shell)/notificacoes/page";
+
+const { obterSessao } = vi.hoisted(() => ({ obterSessao: vi.fn() }));
+
+vi.mock("@/autenticacao/cliente-navegador", () => ({
+  clienteDoNavegador: () => ({ auth: { getSession: obterSessao } }),
+}));
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
@@ -30,10 +42,21 @@ let state: DataState;
 
 beforeEach(() => {
   state = buildSeed();
+  // O seed não cria mais Conversa (15-31): a Conversa do modelo antigo atribuída ao Membro, que a página NÃO lista, é posta aqui.
+  state.conversations.push(conversaAntigaDeTeste({ id: "cnv_antiga_1", atribuidaA: JULIA, title: "Conversa antiga da Júlia" }));
+  process.env.NEXT_PUBLIC_API_URL = "http://api";
+  obterSessao.mockReset();
+  obterSessao.mockResolvedValue({ data: { session: { access_token: "tok" } } });
+  // Sem Conversa na api por padrão: a lista de Conversas só aparece nos casos que a montam.
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ ok: true, itens: [], total: 0 }) }) as Response),
+  );
 });
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
 });
 
 async function montar(memberId = JULIA) {
@@ -43,9 +66,11 @@ async function montar(memberId = JULIA) {
   };
   await act(async () => {
     render(
-      <StoreProvider sessao={{ memberId }} estadoInicial={{ data: state, revisao: 1, ordens: {} }} transporte={transporte}>
-        <NotificacoesPage />
-      </StoreProvider>,
+      <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+        <StoreProvider sessao={{ memberId }} estadoInicial={{ data: state, revisao: 1, ordens: {} }} transporte={transporte}>
+          <NotificacoesPage />
+        </StoreProvider>
+      </SWRConfig>,
     );
   });
 }
@@ -92,5 +117,60 @@ describe("Notificações › Menções a você (11-04)", () => {
     await montar();
 
     expect(screen.queryByText(/na descrição de/)).toBeNull();
+  });
+});
+
+describe("Notificações › Conversas atribuídas a você (15-14)", () => {
+  function conversa(id: string, situacao: "aberta" | "pendente"): ConversaNaLista {
+    return {
+      id,
+      canalId: "can_1",
+      contatoId: "ctt_1",
+      titulo: `Pedido ${id}`,
+      tituloEditado: false,
+      situacao,
+      estado: "ativo",
+      naLixeiraEm: null,
+      filaId: null,
+      atribuido: { tipo: "membro", id: JULIA },
+      adiadaAte: null,
+      adiamentoMotivo: null,
+      participantes: [],
+      resolvidaEm: null,
+      reabertaEm: null,
+      reaberturas: 0,
+      criadoPor: { tipo: "membro", id: JULIA },
+      criadoEm: "2026-11-01T10:00:00.000Z",
+      atualizadoEm: "2026-11-01T10:00:00.000Z",
+      contatoNome: "Ana Souza",
+      estrela: false,
+      naoLidas: 0,
+      ultimaRecebidaEm: null,
+    };
+  }
+
+  it("lista a Conversa da api pelo nome do Contato e leva à Caixa de Entrada; o número da seção é o total da api", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const situacao = new URL(url).searchParams.get("situacao");
+        const corpo = situacao === "aberta" ? { ok: true, itens: [conversa("cnv_nova", "aberta")], total: 5 } : { ok: true, itens: [], total: 0 };
+        return { ok: true, status: 200, json: async () => corpo } as Response;
+      }),
+    );
+
+    await montar();
+
+    await vi.waitFor(() => expect(screen.getByText("Conversas atribuídas a você")).toBeTruthy());
+    const nome = screen.getByText("Ana Souza");
+    expect(nome.closest("a")?.getAttribute("href")).toBe("/crm/caixa-de-entrada/cnv_nova");
+    expect(screen.getByText("aberta · Pedido cnv_nova")).toBeTruthy();
+    expect(screen.getByText("Mostrando 1 de 5. As demais estão na Caixa de Entrada.")).toBeTruthy();
+  });
+
+  it("as Conversas antigas do seed atribuídas ao Membro não aparecem", async () => {
+    expect(state.conversations.some((c) => c.assignee?.kind === "member" && c.assignee.id === JULIA)).toBe(true);
+    await montar();
+    expect(screen.queryByText("Conversas atribuídas a você")).toBeNull();
   });
 });

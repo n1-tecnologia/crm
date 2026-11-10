@@ -11,16 +11,16 @@
  * no sucesso: numa recusa a `ErroDeApi` sobe com `codigo` e `campo` (um 409 de
  * conta ou nome em uso) e a tela segue como estava.
  *
- * Quem escreve um Canal por aqui também chama `useRehidratar()`: o resto do app
- * ainda lê o Canal de `state.channels`, que a api projeta em `GET /estado`
- * (D-11). A ficha (`[canal]/page.tsx`) não lê `GET /canais/:id`: depois de cada
- * escrita ela re-hidrata e lê o Canal atualizado do store.
+ * O resto do app (o fio da Conversa, a lista da Caixa) ainda lê o Canal projetado
+ * em `GET /estado` (D-11): quem escreve um Canal por aqui também chama
+ * `useRehidratar()` para esse espelho acompanhar. A ficha
+ * (`[canal]/page.tsx`) lê o Canal de `GET /canais/:id` (`useCanal`).
  */
 
 import useSWR from "swr";
 import { LIMITES_CRM } from "@n1/dominio/crm/comum";
-import type { Canal, EdicaoDeCanal, EstadoDoCanal, NovoCanal } from "@n1/dominio/crm/canais";
-import { chamarCrm, invalidarCrm } from "./cliente-crm";
+import type { Canal, CanalNaFicha, EdicaoDeCanal, EstadoDoCanal, NovoCanal } from "@n1/dominio/crm/canais";
+import { chamarCrm, ErroDeApi, invalidarCrm } from "./cliente-crm";
 
 export interface FiltroDeCanais {
   readonly estado?: EstadoDoCanal;
@@ -72,6 +72,23 @@ export function chaveDoCanal(id: string): string {
   return `/canais/${id}`;
 }
 
+/** Recusa 4xx não melhora ao repetir (um 404, por exemplo): só rede e 5xx tentam de novo. */
+function valeRepetir(erro: Error): boolean {
+  return !(erro instanceof ErroDeApi) || erro.status === 0 || erro.status >= 500;
+}
+
+/**
+ * O Canal da ficha, com `ligadoAoProvedor` (CR-01, 16-17). O 404 da api fica em `error` (`ErroDeApi`): a página decide o
+ * que mostrar. As escritas devolvem `Canal` e invalidam `/canais`: a ficha relê esta rota e recebe o fato de novo.
+ */
+export function useCanal(id: string | undefined) {
+  return useSWR<CanalNaFicha, Error>(
+    id === undefined ? null : chaveDoCanal(id),
+    async (chave: string) => (await chamarCrm<{ ok: true; dados: CanalNaFicha }>(chave)).dados,
+    { shouldRetryOnError: valeRepetir },
+  );
+}
+
 /** Cria o Canal `desconectada` (D-08). Só o sucesso invalida a lista. */
 export function criarCanal(entrada: NovoCanal): Promise<Canal> {
   return gravar("/canais", "POST", entrada);
@@ -82,7 +99,7 @@ export function editarCanal(id: string, edicao: EdicaoDeCanal): Promise<Canal> {
   return gravar(chaveDoCanal(id), "PATCH", edicao);
 }
 
-/** D-08: conecta marcando a conexão como simulada. A api recusa Canal arquivado ou já conectado (409 `TRANSICAO_INVALIDA`). */
+/** D-08: conecta marcando a conexão como simulada. A api recusa Canal arquivado, já conectado ou já ligado a um provedor real (409 `TRANSICAO_INVALIDA`, CR-01). */
 export function simularConexaoDoCanal(id: string): Promise<Canal> {
   return gravar(`${chaveDoCanal(id)}/simular-conexao`, "POST");
 }

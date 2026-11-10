@@ -70,7 +70,20 @@ export const EVENTOS = {
       mensagemId: z.enum(["gasto-novo", "relatorio"]),
     })
     .strict(),
+  // MSG-02 / 3.7.1 — a Mensagem que a Caixa pede para sair. Nem o texto nem o telefone entram aqui: quem entrega
+  // (`mensageria/`) lê a Mensagem e o Canal de volta no banco. Quem consome é o entregador da mensageria, nunca o
+  // worker do `automation/` (`outbox-worker.ts` não reivindica `mensagem.%`).
+  "mensagem.enviar.v1": z
+    .object({
+      mensagemId: z.string(),
+      conversaId: z.string(),
+      canalId: z.string(),
+    })
+    .strict(),
 } as const;
+
+/** Os eventos da mensageria: têm entregador próprio e o worker do `automation/` os deixa em paz. */
+export const EVENTOS_DA_MENSAGERIA = ["mensagem.enviar.v1"] as const;
 
 export type NomeDeEvento = keyof typeof EVENTOS;
 

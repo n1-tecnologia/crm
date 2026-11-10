@@ -11,10 +11,10 @@
  */
 
 import { fail, ok, type DataState, type OperationResult } from "../../state";
-import type { Agent, AgentExecution, AgentVersion, ExecutionStep, Id, KnowledgeReference } from "../../types";
-import { contactDisplayName } from "../../derive";
+import type { Agent, AgentExecution, AgentVersion, ExecutionStep, Id, KnowledgeReference, NomesDasAncoras } from "../../types";
 import { conhecimentoAcessivel, versaoCorrenteDoAgente } from "../../derive-ia";
 import { memberActor, nextId, recordActivity } from "../activity";
+import { nomeLidoDoCrm } from "./nomes-das-ancoras";
 import { baseDoPapel, recusaDeGovernarAgente, recusaDeMembroAtivo } from "./permissoes-ia";
 import { RESOURCE_TYPE_LABEL } from "../../rotulos";
 
@@ -123,6 +123,10 @@ export function montarVersaoDoAgente(
  * `arquivado` e `na lixeira` liberam o Agente de todas as Tarefas e Conversas
  * no ato, com evento por registro; a restauração não as devolve. `pausado`
  * preserva — por isso só as duas saídas chamam aqui.
+ *
+ * Aqui só as Conversas que ainda moram em `state.conversations` (as de Grupo, F14-D-05). As do
+ * CRM novo (`plataforma.conversas`) o servidor solta no mesmo commit, pelo `aoConfirmar` de
+ * `arquivarAgente` e `enviarAgenteALixeira` (`gesto-no-crm/ia.ts`, 3.4.9).
  */
 function liberarResponsabilidades(state: DataState, actingMemberId: Id, agent: Agent): { readonly tarefas: number; readonly conversas: number } {
   let tarefas = 0;
@@ -362,19 +366,19 @@ export interface EnsaioInput {
   readonly anchor?: { readonly type: string; readonly id: Id };
 }
 
-/** O nome do registro-alvo para a Composição do Contexto; o id quando o tipo não é dos ancoráveis. */
-function nomeDaAncora(state: DataState, type: string, id: Id): string {
+/**
+ * O nome do registro-alvo para a Composição do Contexto; o id quando o tipo não é dos ancoráveis
+ * ou o registro não está em `nomes`. Negócio, Contato e Conversa vivem nas tabelas do CRM novo
+ * (Fase 15, 3.4.9): o nome vem de `nomes`, que o servidor leu.
+ */
+function nomeDaAncora(state: DataState, type: string, id: Id, nomes: NomesDasAncoras): string {
   switch (type) {
     case "task":
       return state.tasks.find((t) => t.id === id)?.title ?? id;
     case "deal":
-      return state.deals.find((d) => d.id === id)?.title ?? id;
-    case "contact": {
-      const contact = state.contacts.find((c) => c.id === id);
-      return contact ? contactDisplayName(contact) : id;
-    }
+    case "contact":
     case "conversation":
-      return state.conversations.find((c) => c.id === id)?.title ?? id;
+      return nomeLidoDoCrm(nomes, id) ?? id;
     case "knowledgeDocument":
       return state.documents.find((d) => d.id === id)?.title ?? id;
     case "list":
@@ -425,7 +429,14 @@ function referenciasDoEnsaio(state: DataState, agentId: Id): KnowledgeReference[
  * efeito e sem Registro no registro-alvo. Nunca grava Memória. Permitido em
  * `rascunho` e `ativo` — a única Execução que um rascunho admite (RN-AGE-10).
  */
-export function ensaiarAgente(state: DataState, actingMemberId: Id, agentId: Id, input: EnsaioInput): OperationResult<AgentExecution> {
+export function ensaiarAgente(
+  state: DataState,
+  actingMemberId: Id,
+  agentId: Id,
+  input: EnsaioInput,
+  /** O nome dos registros do CRM novo que a Âncora cita, lido pelo servidor; ausente vale `{}` (o ensaio nomeia pelo id). */
+  nomes: NomesDasAncoras = {},
+): OperationResult<AgentExecution> {
   const agent = agentePorId(state, agentId);
   if (!agent) return fail("Agente não encontrado.");
   const recusa = recusaDeGovernarAgente(state, actingMemberId, agent, "editar");
@@ -515,7 +526,7 @@ export function ensaiarAgente(state: DataState, actingMemberId: Id, agentId: Id,
     steps,
     output: `Ensaio concluído: ${steps.length} passo(s), ${escritas} escrita(s) simulada(s).`,
     contextComposition: {
-      ...(anchor ? { anchor: { ...anchor, name: nomeDaAncora(state, anchor.type, anchor.id) } } : {}),
+      ...(anchor ? { anchor: { ...anchor, name: nomeDaAncora(state, anchor.type, anchor.id, nomes) } } : {}),
       readRecordIds: anchor ? [anchor.id] : [],
       fragmentRefs: knowledgeReferences.flatMap((r) => r.fragmentIds.map((fragmentId) => ({ documentId: r.documentId, version: r.version, fragmentId }))),
       memoryItemIds: [],

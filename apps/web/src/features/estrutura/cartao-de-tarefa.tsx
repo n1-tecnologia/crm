@@ -15,12 +15,13 @@
 
 import { CalendarClock, Flag, ListChecks, User as UserIcon, Users, Wallet } from "lucide-react";
 import { checklistProgress, isBlocked, isOverdue, subtaskProgress } from "@n1/dominio/derive";
-import { negocioDaTarefa } from "@n1/dominio/derive-conversacional";
 import type { DataState } from "@n1/dominio/state";
 import type { Task } from "@n1/dominio/types";
+import { useResumoDaTarefa } from "@/dados/crm/tarefas-conversacionais";
 import { iconeDoTipoNoQuadro } from "@/features/estrutura/icone-de-tipo";
 import type { FinanceProfile } from "@/features/estrutura/financeiro/lens";
 import { valorDaConta } from "@/features/estrutura/financeiro/lens";
+import { useNomesDosClientes } from "@/features/estrutura/financeiro/use-nomes-dos-clientes";
 import { PRIORITY_LABEL } from "@/features/shell/format";
 import { CartaoDeQuadro, RostoDeIcone, type CampoDoCartao } from "@/features/shell/quadro";
 import { ActorAvatar, ConditionMarker, Icone, Pilula, StateSeal } from "@/features/shell/ui";
@@ -50,8 +51,13 @@ export function CartaoDeTarefa({
   const bloqueada = isBlocked(state, task);
   const checklist = checklistProgress(task);
   const subtarefas = subtaskProgress(state, task.id);
-  const negocio = tipo?.name === "Reunião" ? negocioDaTarefa(state, task) : undefined;
+  // 14-15: o Negócio da Reunião vem do resumo da api. Só a Reunião o pede (`pausado` nas demais:
+  // um cartão de Tarefa comum não faz chamada), e sem resumo ainda o subtítulo fica sem ele.
+  const negocio = useResumoDaTarefa(task.id, { pausado: tipo?.name !== "Reunião" })?.negocio;
   const doTipo = iconeDoTipoNoQuadro(tipo);
+  // 15-19: o nome do cliente da conta vem de `POST /crm/nomes`. Uma chamada por cartão financeiro visível
+  // (aceito para o volume atual); os demais cartões passam lista vazia e não chamam a api.
+  const nomesDosClientes = useNomesDosClientes(state, financeiro ? [task] : []);
 
   const membros = task.assignees.filter((a) => a.kind === "member");
   const primeiro = membros[0] ? state.members.find((m) => m.id === membros[0]!.id) : undefined;
@@ -74,10 +80,10 @@ export function CartaoDeTarefa({
       : { icone: ListChecks, rotulo: "Progresso", valor: "—", vazio: true };
 
   const prazo = task.dueDate ? fmt.taskDate(task.dueDate) : financeiro ? "sem vencimento" : "sem prazo";
-  const tipoENome = [task.readableId, negocio ? `Reunião · ${negocio.title}` : tipo?.name].filter(Boolean).join(" · ");
+  const tipoENome = [task.readableId, negocio ? `Reunião · ${negocio.titulo}` : tipo?.name].filter(Boolean).join(" · ");
   // A contraparte da Conta; o "—" do perfil (sem cliente) é marcador de TABELA,
   // não subtítulo — aí o cartão cai no identificador · Tipo (achado da revisão).
-  const contraparte = financeiro?.counterpart(state, task).trim();
+  const contraparte = financeiro?.counterpart(state, task, nomesDosClientes).trim();
   const subtitulo = (financeiro && contraparte && contraparte !== "—" ? contraparte : tipoENome) || undefined;
   const temPilulas = task.priority !== "semPrioridade" || task.tagIds.length > 0 || vencida || bloqueada;
 

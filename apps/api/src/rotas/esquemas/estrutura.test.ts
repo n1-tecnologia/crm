@@ -249,4 +249,14 @@ describe("esquemas/estrutura — a forma dos args de structure.ts", () => {
       ).success,
     ).toBe(false);
   });
+
+  it("(d) 3.3.7 — createList aceita o Canal[] opcional da execução local, limitado em tamanho", () => {
+    const lista = { name: "L", parentType: "space", parentId: "spc_1", modeloDeTarefa: "conversacional", canaisDeAtendimento: ["can_1"] };
+    expect(ESTRUTURA.createList.safeParse(viaJson([lista, [{ id: "can_1", nome: "WhatsApp", estado: "ativo" }]])).success).toBe(true);
+    expect(ESTRUTURA.createList.safeParse(viaJson([lista])).success).toBe(true);
+    const cem = Array.from({ length: 100 }, (_, i) => ({ id: `can_${i}` }));
+    expect(ESTRUTURA.createList.safeParse(viaJson([lista, cem])).success).toBe(true);
+    expect(ESTRUTURA.createList.safeParse(viaJson([lista, [...cem, { id: "can_x" }]])).success).toBe(false);
+    expect(ESTRUTURA.createList.safeParse(viaJson([lista, [], "extra"])).success).toBe(false);
+  });
 });

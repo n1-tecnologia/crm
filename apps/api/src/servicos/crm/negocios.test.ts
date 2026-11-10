@@ -11,17 +11,19 @@
  * Rode com `TZ=America/Sao_Paulo` (Pitfall 5).
  */
 
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { NovoFunil, FunilDetalhado } from "@n1/dominio/crm/funis";
 import type { NegocioDetalhado, NovoNegocio } from "@n1/dominio/crm/negocios";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { encerrar, pool } from "../../persistencia/conexao";
-import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearMembro } from "../../testes/banco-crm";
+import { describeComBanco, limparEspaco, novoEspacoDeTeste, poolDoDono, prepararBancoCrm, semearMembro } from "../../testes/banco-crm";
+import { comMesclagemNoMeio } from "../../testes/duas-conexoes";
 import { criarAcessoAoCrmPg } from "./acesso";
 import { criarServicoDeContatos } from "./contatos";
 import { criarServicoDeEmpresas } from "./empresas";
 import { criarServicoDeFunis } from "./funis";
-import { criarServicoDeNegocios } from "./negocios";
+import { criarNegocioNoCliente, criarServicoDeNegocios } from "./negocios";
 import type { ResultadoCrm } from "./resultado";
 
 const acesso = criarAcessoAoCrmPg(pool);
@@ -477,5 +479,88 @@ describeComBanco("ServicoDeNegocios — Postgres local", () => {
     const paraLixeira = recusado(await servico.editar(membro, criado.negocio.id, { empresaId: naLixeira }));
     expect(paraLixeira.status).toBe(409);
     expect(paraLixeira.codigo).toBe("EMPRESA_INATIVA");
+  });
+
+  it("(j) criarNegocioNoCliente (14-14) dentro de outra transação: com `id` o Negócio nasce com ele; sem Funil, o padrão e a Etapa inicial; a recusa volta como valor e nada fica", async () => {
+    const cliente = await pool().connect();
+    try {
+      await cliente.query("begin");
+      const id = randomUUID();
+      const criado = valor(await criarNegocioNoCliente(cliente, membro, { titulo: "Dentro de outra transação", contatoId }, { id }));
+      expect(criado.negocio.id).toBe(id);
+      expect(criado.negocio.funilId).toBe(vendas.funil.id);
+      expect(criado.negocio.etapaId).toBe(vendas.etapas[0]!.id);
+      expect(criado.negocio.proprietarioId).toBe("mem_ana");
+
+      // Sem `id`, o banco decide.
+      const sem = valor(await criarNegocioNoCliente(cliente, membro, { titulo: "Sem id", contatoId }));
+      expect(sem.negocio.id).not.toBe(id);
+
+      const semFunil = recusado(await criarNegocioNoCliente(cliente, membro, { titulo: "Funil que não existe", contatoId, funilId: randomUUID() }));
+      expect(semFunil).toMatchObject({ status: 404, codigo: "FUNIL_NAO_ENCONTRADO" });
+      await cliente.query("commit");
+    } finally {
+      cliente.release();
+    }
+    expect((await linhaNoBanco((await pool().query<{ id: string }>("select id from plataforma.negocios where workspace_id = $1 and titulo = 'Dentro de outra transação'", [ws])).rows[0]!.id))?.estado).toBe("ativo");
+    const naoCriado = await pool().query("select 1 from plataforma.negocios where workspace_id = $1 and titulo = 'Funil que não existe'", [ws]);
+    expect(naoCriado.rowCount).toBe(0);
+  });
+
+  it("(i) RN-CON-14: Contato `mesclado` não ganha Negócio, nem entra por edição; `arquivado` continua aceito", async () => {
+    const absorvido = await contato("Absorvido de Negócio");
+    const sobrevivente = await contato("Sobrevivente de Negócio");
+    await poolDoDono().query(
+      "update plataforma.contatos set estado = 'mesclado', mesclado_em_id = $3, mesclado_em = now() where workspace_id = $1 and id = $2",
+      [ws, absorvido, sobrevivente],
+    );
+    const quantos = async () =>
+      (await pool().query<{ n: number }>("select count(*)::int as n from plataforma.negocios where workspace_id = $1 and titulo like 'Mesclado (i)%'", [ws]))
+        .rows[0]!.n;
+
+    const criacao = recusado(await servico.criar(membro, { titulo: "Mesclado (i) criar", contatoId: absorvido }));
+    expect(criacao.status).toBe(409);
+    expect(criacao.codigo).toBe("CONTATO_MESCLADO");
+    expect(criacao.campo).toBe("contatoId");
+    expect(await quantos()).toBe(0);
+
+    const doSobrevivente = await negocio("Mesclado (i) edição", { contatoId: sobrevivente });
+    const edicao = recusado(await servico.editar(membro, doSobrevivente.negocio.id, { contatoId: absorvido }));
+    expect(edicao.status).toBe(409);
+    expect(edicao.codigo).toBe("CONTATO_MESCLADO");
+    expect((await linhaNoBanco(doSobrevivente.negocio.id))?.contato_id).toBe(sobrevivente);
+
+    // RN-CON-19: arquivado continua referenciável.
+    const arquivado = await contato("Arquivado de Negócio");
+    valor(await contatos.arquivar(admin, arquivado));
+    expect(valor(await servico.criar(membro, { titulo: "Mesclado (i) arquivado", contatoId: arquivado })).negocio.contatoId).toBe(arquivado);
+  });
+
+  it("(j) WR-01: Contato mesclado no meio da criação ou da edição → 409, e nenhuma linha nasce nem muda", async () => {
+    const absorvido = await contato("Absorvido no meio (j)");
+    const sobrevivente = await contato("Sobrevivente no meio (j)");
+    const quantos = async () =>
+      (await pool().query<{ n: number }>("select count(*)::int as n from plataforma.negocios where workspace_id = $1 and titulo like 'No meio (j)%'", [ws]))
+        .rows[0]!.n;
+
+    // Criar: B espera a trava do Contato e, depois do commit de A, enxerga `mesclado`.
+    const criacao = await comMesclagemNoMeio(ws, absorvido, sobrevivente, () =>
+      servico.criar(membro, { titulo: "No meio (j) criar", contatoId: absorvido }),
+    );
+    expect(criacao.esperando).toBe(true);
+    expect(recusado(criacao.resultado)).toMatchObject({ status: 409, codigo: "CONTATO_MESCLADO", campo: "contatoId" });
+    expect(await quantos()).toBe(0);
+
+    // Editar trocando para o Contato que está sendo mesclado. O Postgres pode escolher B como vítima de um
+    // deadlock; as duas saídas são recusas 409 e a linha do Negócio não muda.
+    const outroAbsorvido = await contato("Absorvido no meio (j) edição");
+    const doSobrevivente = await negocio("No meio (j) edição", { contatoId: sobrevivente });
+    const edicao = await comMesclagemNoMeio(ws, outroAbsorvido, sobrevivente, () =>
+      servico.editar(membro, doSobrevivente.negocio.id, { contatoId: outroAbsorvido }),
+    );
+    const recusada = recusado(edicao.resultado);
+    expect(recusada.status).toBe(409);
+    expect(["CONTATO_MESCLADO", "CONFLITO_TRANSITORIO"]).toContain(recusada.codigo);
+    expect((await linhaNoBanco(doSobrevivente.negocio.id))?.contato_id).toBe(sobrevivente);
   });
 });

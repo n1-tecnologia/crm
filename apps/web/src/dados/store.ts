@@ -62,6 +62,7 @@ import type { Id } from "@n1/dominio/types";
 import type { PedidoDeGravacao, RespostaDeGravacao, Transporte } from "./transporte";
 import { esperaOServidor } from "./operacoes-que-esperam";
 import { instalarGuardaDeNavegacao } from "./guarda-de-navegacao";
+import { AcompanhanteDoTempoReal } from "./tempo-real";
 
 /**
  * D-11 / Open Question 2 da Fase 12: as implementações reais de `Transporte`
@@ -665,7 +666,18 @@ export function StoreProvider({
   readonly children: ReactNode;
 }) {
   const [store] = useState(() => criarStore({ sessao, estadoInicial, transporte }));
-  return createElement(StoreContext.Provider, { value: store }, createElement(AcompanhanteDaRevisao, { store }), children);
+  /*
+    O SSE de `GET /eventos` (16-08, D-16-01) SOMA à releitura da revisão: o `AcompanhanteDaRevisao` continua perguntando
+    a revisão do Espaço a cada 5 s (o que não é CRM só chega por ali), e o `AcompanhanteDoTempoReal` revalida as listas
+    e o fio do CRM quando a api avisa. Um não substitui o outro.
+  */
+  return createElement(
+    StoreContext.Provider,
+    { value: store },
+    createElement(AcompanhanteDaRevisao, { store }),
+    createElement(AcompanhanteDoTempoReal),
+    children,
+  );
 }
 
 /**

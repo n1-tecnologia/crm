@@ -83,6 +83,8 @@ const QUERY_NEGOCIOS = QUERY_LISTA.extend({
   situacao: z.enum(SITUACOES_NEGOCIO).optional(),
   empresaId: ID.optional(),
   contatoId: ID.optional(),
+  /** O filtro "Meus" do quadro (F14-D-06): o web manda o id do Membro da sessão. Só restringe; Papel e Espaço seguem valendo. */
+  proprietarioId: ID.optional(),
 });
 
 const CORPO_DE_MOVIMENTO = z.object({ etapaId: ID, funilId: ID.optional() }).strict();

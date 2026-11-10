@@ -21,7 +21,7 @@ import type {
   AutonomyLevel,
   TriggerKind,
 } from "@n1/dominio";
-import { ID, type Confere, type Esquemas, type Igual } from "./fragmentos";
+import { FUNIS_DO_NAVEGADOR, ID, opcional, type Confere, type Esquemas, type Igual } from "./fragmentos";
 import { z } from "zod";
 
 const TRIGGER_KIND = z.enum(["evento", "agendamento", "manual", "condicaoTemporal"]);
@@ -121,7 +121,8 @@ const POLITICA_DE_ERRO_INPUT = z
   .strict();
 
 export const IA_AUTOMACOES_EDITOR = {
-  criarAutomacao: z.tuple([CRIAR_AUTOMACAO_INPUT]),
+  // `funis` opcional no fim: o navegador pode mandá-lo, o servidor o descarta (T-15-92).
+  criarAutomacao: z.tuple([CRIAR_AUTOMACAO_INPUT, opcional(FUNIS_DO_NAVEGADOR)]),
   editarAutomacao: z.tuple([ID, EDITAR_AUTOMACAO_INPUT]),
   duplicarAutomacao: z.tuple([ID]),
   criarRascunhoDaAutomacao: z.tuple([ID]),

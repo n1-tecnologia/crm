@@ -3,8 +3,8 @@
  * 08-01 Task 1 — a fatia web do traçador: a página `[provedor]` renderiza o
  * formulário, "Conectar" dispara um `POST /canais` só com `provedor`, `nome` e
  * `identificador` (e o Bearer da sessão), o estado é re-hidratado e a lista das
- * Configurações da Caixa de Entrada mostra o Canal novo com o selo do provedor
- * e a marca "cadastrado", ao lado do Canal do seed marcado como "demo" (D-12).
+ * Configurações da Caixa de Entrada (que lê `GET /canais`) mostra o Canal novo com
+ * o selo do provedor e a marca "cadastrado", ao lado do que já existia (15-12).
  * O slug que não é provedor vira `notFound()` (T-08-08).
  *
  * O teste mora em `features/crm/` porque `app/` só guarda convenção de arquivo
@@ -12,18 +12,20 @@
  * verdade com o seed e um `Transporte` cujo `hidratar` é espião.
  */
 
+import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { SWRConfig } from "swr";
+import { SWRConfig, useSWRConfig } from "swr";
 import { buildSeed } from "@n1/dominio/seed";
 import { StoreProvider } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
 import ConectarProvedorPage from "@/app/(shell)/crm/caixa-de-entrada/configuracoes/canais/conectar/[provedor]/page";
 import ConfiguracoesDaCaixaPage from "@/app/(shell)/crm/caixa-de-entrada/configuracoes/page";
 
-const { obterSessao, router } = vi.hoisted(() => ({
+const { obterSessao, router, revalidador } = vi.hoisted(() => ({
   obterSessao: vi.fn(),
   router: { push: vi.fn(), replace: vi.fn() },
+  revalidador: { revalidar: undefined as undefined | ((prefixo: string) => Promise<unknown>) },
 }));
 
 vi.mock("@/autenticacao/cliente-navegador", () => ({
@@ -32,7 +34,8 @@ vi.mock("@/autenticacao/cliente-navegador", () => ({
 
 vi.mock("@/dados/crm/cliente-crm", async (original) => {
   const real = await original<typeof import("@/dados/crm/cliente-crm")>();
-  return { ...real, invalidarCrm: vi.fn(async () => undefined) };
+  // `invalidarCrm` real usa o `mutate` global; aqui ele repassa o prefixo ao `mutate` do cache isolado do teste.
+  return { ...real, invalidarCrm: vi.fn(async (prefixo: string) => revalidador.revalidar?.(prefixo)) };
 });
 
 vi.mock("next/navigation", () => ({
@@ -52,6 +55,33 @@ const NOME = "Canal do Traçador";
 
 let fetchMock: ReturnType<typeof vi.fn>;
 let hidratar: ReturnType<typeof vi.fn>;
+/** Os Canais ativos que `GET /canais` devolve; o POST acrescenta o novo, como a api. */
+let canaisDaApi: Array<Record<string, unknown>>;
+
+/** O Canal da 008 como a api o devolve (camelCase em português). */
+function canalDaApi(sobre: Record<string, unknown>): Record<string, unknown> {
+  return {
+    id: "c-seed",
+    nome: "Comercial SP",
+    tipo: "whatsapp",
+    provedor: "whatsapp-cloud",
+    identificadorExterno: "+5511987654321",
+    conexao: "conectada",
+    conexaoSimulada: false,
+    conectadaEm: null,
+    estado: "ativo",
+    arquivadoEm: null,
+    configuradoPor: "mem_rafael",
+    filaPadraoId: null,
+    proprietarioPadraoId: null,
+    origemPadraoId: null,
+    gruposHabilitados: false,
+    criadoPor: "mem_rafael",
+    criadoEm: "2026-11-01T00:00:00.000Z",
+    atualizadoEm: "2026-11-01T00:00:00.000Z",
+    ...sobre,
+  };
+}
 
 beforeEach(() => {
   process.env.NEXT_PUBLIC_API_URL = "http://api";
@@ -61,28 +91,21 @@ beforeEach(() => {
   obterSessao.mockResolvedValue({ data: { session: { access_token: "tok" } } });
 
   const seed = buildSeed();
-  const whatsapp = seed.channels.find((c) => c.id === "chn_wpp")!;
-  // A forma de `canalParaChannel` (apps/api): o Canal da 008 na forma do modelo antigo.
-  const projetado = {
-    ...whatsapp,
-    id: ID_DO_POST,
-    name: NOME,
-    externalId: "+5511977770001",
-    provider: "whatsapp-nao-oficial" as const,
-    relational: true,
-    simulatedConnection: false,
-    connection: "desconectada" as const,
-  };
-  hidratar = vi.fn(async () => ({
-    data: { ...seed, channels: [...seed.channels, projetado] },
-    revisao: 2,
-    ordens: {},
-    memberId: "mem_rafael",
-  }));
+  canaisDaApi = [canalDaApi({})];
+  // O Canal novo como a api o devolve do POST (nasce `desconectada`, D-08).
+  const criado = canalDaApi({ id: ID_DO_POST, nome: NOME, provedor: "whatsapp-nao-oficial", identificadorExterno: "+5511977770001", conexao: "desconectada" });
+  hidratar = vi.fn(async () => ({ data: seed, revisao: 2, ordens: {}, memberId: "mem_rafael" }));
 
   fetchMock = vi.fn(async (url: string, init: RequestInit = {}) => {
-    if ((init.method ?? "GET") === "POST" && url === "http://api/canais") {
-      return resposta(201, { ok: true, dados: { ...projetado, nome: NOME } });
+    const metodo = init.method ?? "GET";
+    if (metodo === "POST" && url === "http://api/canais") {
+      canaisDaApi = [...canaisDaApi, criado];
+      return resposta(201, { ok: true, dados: criado });
+    }
+    const alvo = new URL(String(url));
+    if (metodo === "GET" && alvo.pathname === "/canais") {
+      const itens = alvo.searchParams.get("estado") === "arquivado" ? [] : canaisDaApi;
+      return resposta(200, { ok: true, itens, total: itens.length });
     }
     return resposta(404, { ok: false, error: "Rota não encontrada." });
   });
@@ -93,6 +116,17 @@ afterEach(() => {
   cleanup();
 });
 
+function RegistrarRevalidacao() {
+  const { mutate } = useSWRConfig();
+  useEffect(() => {
+    revalidador.revalidar = (prefixo) => mutate((chave) => typeof chave === "string" && chave.startsWith(prefixo));
+    return () => {
+      revalidador.revalidar = undefined;
+    };
+  }, [mutate]);
+  return null;
+}
+
 function provedores(filhos: React.ReactNode) {
   const transporte: Transporte = {
     gravar: vi.fn(async () => ({ tipo: "falha" as const, erro: "não configurado neste teste." })),
@@ -100,6 +134,7 @@ function provedores(filhos: React.ReactNode) {
   };
   return (
     <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+      <RegistrarRevalidacao />
       <StoreProvider sessao={{ memberId: "mem_rafael" }} estadoInicial={{ data: buildSeed(), revisao: 1, ordens: {} }} transporte={transporte}>
         {filhos}
       </StoreProvider>
@@ -147,10 +182,10 @@ describe("08-01 traçador — web", () => {
     expect(within(itemNovo).getByText("não oficial")).toBeTruthy();
     expect(within(itemNovo).getByText("cadastrado")).toBeTruthy();
 
-    const nomeDoSeed = buildSeed().channels.find((c) => c.id === "chn_wpp")!.name;
-    const itemDoSeed = screen.getByText(nomeDoSeed).closest("li")!;
-    expect(within(itemDoSeed).getByText("oficial")).toBeTruthy();
-    expect(within(itemDoSeed).getByText("demo")).toBeTruthy();
+    // O Canal que já existia na api segue na lista, sem a marca de demonstração (todo Canal é da tabela).
+    const itemAntigo = screen.getByText("Comercial SP").closest("li")!;
+    expect(within(itemAntigo).getByText("oficial")).toBeTruthy();
+    expect(within(itemAntigo).queryByText("demo")).toBeNull();
   });
 
   it("(q) um slug que não é provedor vira notFound()", async () => {

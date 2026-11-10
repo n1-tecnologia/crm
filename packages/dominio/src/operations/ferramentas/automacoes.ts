@@ -12,12 +12,12 @@
  */
 
 import type { DataState } from "../../state";
-import type { Automation, AutomationAction, AutomationExecution, AutomationVersion, Contact, Grupo, Id } from "../../types";
-import { contactDisplayName } from "../../derive";
+import type { Automation, AutomationAction, AutomationExecution, AutomationVersion, ContatoDaFerramenta, CrmDasFerramentas, Grupo, Id } from "../../types";
 import { participacoesVigentes } from "../../derive-ferramentas";
 import { memberActor, nextId, recordActivity } from "../activity";
-import { sendMessageSemConferencia, startConversation } from "../conversations";
-import { encerrarParticipacao, nomeDoParticipante, registrarNoGrupo } from "./participacoes";
+import { sendMessageSemConferencia, startConversation } from "./conversa-de-grupo";
+import { encerrarParticipacao, registrarNoGrupo } from "./participacoes";
+import { contatoNoCrm, nomeDoParticipanteNoCrm } from "./permissoes";
 
 const now = (): string => new Date().toISOString();
 
@@ -64,53 +64,41 @@ function runAction(
   state: DataState,
   automation: Automation,
   evento: EventoDeFerramentas,
-  contato: Contact,
+  contato: ContatoDaFerramenta,
   grupo: Grupo | undefined,
   action: AutomationAction,
+  crm: CrmDasFerramentas | undefined,
 ): { readonly ok: boolean; readonly output: string } {
   const owner = automation.ownerMemberId;
   const spec = parseJson<ActionSpec>(action.params) ?? {};
   const atorDaAutomacao = { kind: "automation" as const, id: automation.id };
   if (action.kind === "controle") return { ok: false, output: `Controle não suportado: ${action.controlKind ?? "?"}` };
   switch (action.toolId) {
-    case "contato.adicionarTag": {
-      const tag = state.tags.find((t) => t.id === spec.tagId && t.lifecycle === "ativo");
-      if (!tag) return { ok: false, output: "Tag não encontrada." };
-      if (contato.tagIds.includes(tag.id)) return { ok: true, output: `Já tinha a Tag ${tag.name}` };
-      contato.tagIds.push(tag.id);
-      recordActivity(state, { actor: atorDaAutomacao, delegate: memberActor(owner), action: "Tag adicionada", objectType: "contact", objectId: contato.id, objectName: contactDisplayName(contato), after: tag.name, detail: automation.name });
-      return { ok: true, output: `Tag: ${tag.name}` };
-    }
-    case "contato.definirCampo": {
-      const definicao = state.fieldDefinitions.find((d) => d.id === spec.definitionId && d.target === "contact" && d.lifecycle === "ativo");
-      if (!definicao || spec.value === undefined) return { ok: false, output: "Campo ou valor ausente." };
-      const atual = contato.fieldValues.find((v) => v.definitionId === definicao.id);
-      if (atual) {
-        atual.value = spec.value;
-        atual.state = "ativo";
-      } else contato.fieldValues.push({ definitionId: definicao.id, value: spec.value, state: "ativo" });
-      recordActivity(state, { actor: atorDaAutomacao, delegate: memberActor(owner), action: "Valor de Campo definido", objectType: "contact", objectId: contato.id, objectName: contactDisplayName(contato), after: `${definicao.name}: ${String(spec.value)}`, detail: automation.name });
-      return { ok: true, output: `${definicao.name}: ${String(spec.value)}` };
-    }
+    // O Contato do CRM novo não guarda Tag nem Valor de Campo gravados por Automação de
+    // Ferramentas (isso era do Contato antigo, que sai na 3.5.4): a Ação falha dizendo isso,
+    // em vez de fingir que gravou.
+    case "contato.adicionarTag":
+    case "contato.definirCampo":
+      return { ok: false, output: "Esta Ação ainda não grava no Contato do CRM novo (Tag e Campo do Contato não migraram)." };
     case "grupo.removerParticipante": {
       if (!grupo) return { ok: false, output: "O Evento não é de Grupo." };
       const p = participacoesVigentes(grupo).find((x) => x.contactId === contato.id);
       if (!p) return { ok: true, output: "Já não estava no Grupo" };
       encerrarParticipacao(grupo, p, { causa: "removido", removidoPor: atorDaAutomacao });
-      registrarNoGrupo(state, grupo, { actor: atorDaAutomacao, delegate: memberActor(owner), action: "Participante removido", detail: `${nomeDoParticipante(state, p)} — ${automation.name}` });
-      return { ok: true, output: `Removido: ${nomeDoParticipante(state, p)}` };
+      registrarNoGrupo(state, grupo, { actor: atorDaAutomacao, delegate: memberActor(owner), action: "Participante removido", detail: `${nomeDoParticipanteNoCrm(crm, p)} — ${automation.name}` });
+      return { ok: true, output: `Removido: ${nomeDoParticipanteNoCrm(crm, p)}` };
     }
     case "mensagem.enviarAoContato": {
       if (!spec.template) return { ok: false, output: "Sem texto." };
-      const canalId = spec.channelId ?? grupo?.canalId ?? state.channels.find((c) => c.channelType === "whatsapp" && c.lifecycle === "ativo")?.id;
+      const canalId = spec.channelId ?? grupo?.canalId ?? crm?.canais.find((c) => c.tipo === "whatsapp" && c.estado === "ativo")?.id;
       if (!canalId) return { ok: false, output: "Sem Canal para enviar." };
       // 1.2.2 — `startConversation` confere o dono (Membro ativo, não Convidado) e segue
       // exportada; o envio vai pela variante interna: a Automação age por delegação do
       // dono, e `sendMessage` (registrada) passou a recusar pelo ator.
-      const conversa = startConversation(state, owner, canalId, contato.id);
+      const conversa = startConversation(state, owner, canalId, contato.id, crm);
       if (!conversa.ok) return { ok: false, output: conversa.error };
-      const texto = spec.template.replace(/\{\{nome\}\}/g, contato.firstName || contactDisplayName(contato)).replace(/\{\{grupo\}\}/g, grupo?.nome ?? "");
-      const envio = sendMessageSemConferencia(state, owner, { conversationId: conversa.value.id, content: texto, actor: atorDaAutomacao, delegate: memberActor(owner) });
+      const texto = spec.template.replace(/\{\{nome\}\}/g, contato.nome.trim().split(/\s+/)[0] || contato.nome).replace(/\{\{grupo\}\}/g, grupo?.nome ?? "");
+      const envio = sendMessageSemConferencia(state, owner, { conversationId: conversa.value.id, content: texto, actor: atorDaAutomacao, delegate: memberActor(owner), ...(crm ? { crm } : {}) });
       return envio.ok ? { ok: true, output: "Mensagem enviada" } : { ok: false, output: envio.error };
     }
     default:
@@ -118,7 +106,7 @@ function runAction(
   }
 }
 
-function execute(state: DataState, automation: Automation, version: AutomationVersion, evento: EventoDeFerramentas, contato: Contact, grupo: Grupo | undefined): AutomationExecution {
+function execute(state: DataState, automation: Automation, version: AutomationVersion, evento: EventoDeFerramentas, contato: ContatoDaFerramenta, grupo: Grupo | undefined, crm: CrmDasFerramentas | undefined): AutomationExecution {
   const objectType = evento.kind === "respostaDeFlowRecebida" ? "flow" : "grupo";
   const objectId = evento.kind === "respostaDeFlowRecebida" ? evento.flowId : evento.grupoId;
   const objectName = evento.kind === "respostaDeFlowRecebida" ? (state.flows.find((f) => f.id === evento.flowId)?.nome ?? "Flow") : (grupo?.nome ?? "Grupo");
@@ -143,7 +131,7 @@ function execute(state: DataState, automation: Automation, version: AutomationVe
   state.automationExecutions.push(execution);
   const inicio = Date.now();
   for (const action of [...version.actions].sort((a, b) => a.order - b.order)) {
-    const result = runAction(state, automation, evento, contato, grupo, action);
+    const result = runAction(state, automation, evento, contato, grupo, action, crm);
     execution.steps.push({
       index: execution.steps.length,
       kind: action.kind === "controle" ? "raciocinio" : "ferramenta",
@@ -183,9 +171,9 @@ function execute(state: DataState, automation: Automation, version: AutomationVe
  * dispará-la (DO-AUT-11).
  */
 let profundidade = 0;
-export function emitirEventoDeFerramentas(state: DataState, evento: EventoDeFerramentas): AutomationExecution[] {
+export function emitirEventoDeFerramentas(state: DataState, evento: EventoDeFerramentas, crm?: CrmDasFerramentas): AutomationExecution[] {
   if (profundidade > 2) return [];
-  const contato = state.contacts.find((c) => c.id === evento.contactId);
+  const contato = contatoNoCrm(crm, evento.contactId);
   if (!contato) return [];
   const grupo = evento.kind === "respostaDeFlowRecebida" ? undefined : state.grupos.find((g) => g.id === evento.grupoId);
   const executions: AutomationExecution[] = [];
@@ -196,7 +184,7 @@ export function emitirEventoDeFerramentas(state: DataState, evento: EventoDeFerr
       const version = publishedVersion(automation);
       if (!version || version.trigger?.kind !== "evento" || version.trigger.eventType !== evento.kind) continue;
       if (!escopoAlcanca(state, automation, evento)) continue;
-      executions.push(execute(state, automation, version, evento, contato, grupo));
+      executions.push(execute(state, automation, version, evento, contato, grupo, crm));
     }
   } finally {
     profundidade -= 1;

@@ -44,6 +44,77 @@ como chama — o closure continua o mesmo, só a exportação por baixo mudou.
   nomear o Ator de um Registro. A interface reexporta de lá, para haver uma
   fonte só.
 
+**O seed não cria o CRM antigo (Fase 15, 15-31, 3.5.3, UCR-11, D-15-13).** `buildSeed()` nasce sem Contato, Empresa,
+Vínculo, Funil, Negócio, Canal e Conversa (só as duas Conversas de Grupo, F14-D-05) e sem a Pasta "Meus negócios" e as
+Listas espelho dos Funis; a demonstração do CRM é `npm run bootstrap:crm-demo -w @n1/api`, que carrega as mesmas linhas nas
+tabelas novas com os mesmos ids. O que o seed guarda em `registros` para ids do CRM continua, apontando para o demo:
+os Vínculos de Tarefa (`lnk_*`, `lnk_cr_*`, `lnk_tsk_pv_*`), a Proveniência (com o nome do Contato escrito na Tarefa de
+Pós-venda), o cliente das Contas a receber (`cnt_cr_*`), as Participações dos Grupos (id do Contato e número de WhatsApp
+calculado, Canal participante `chn_wpp` com o identificador `+5511987654321`) e as âncoras/escopos de Funil das
+Automações. O atalho "Caixa de entrada" do Comercial também fica. O que o seed antigo fazia SOBRE esses registros saiu com
+eles: a Tag "Em grupo de alunos" nos Contatos, os Grupos habilitados no Canal e os Envios de Flow nas Conversas do CRM.
+O construtor antigo (`seed-crm-antigo.ts`, `semearCrmAntigo`) foi apagado no 15-43, com o caso temporário de
+`seed-sem-crm-antigo.test.ts` que o chamava.
+
+**Fase 15, plano 32 (UCR-12): as operações do CRM antigo saíram de `OPERACOES`.** Os módulos
+`operations/{contacts,conversations,deals,iniciar-conversa,crm-antigo}.ts` foram apagados, e `criarCanal`
+e `configurarCanal` saíram de `operations/canais.ts`: 40 nomes (deals 12, Conversa 6, Contato e Empresa 19,
+`iniciarConversa` 1, Canal 2) respondem 404 em `POST /operacoes/:nome` (285 -> 245 operações). Dois destinos
+para o que ainda se usa:
+
+- `ChannelType`, `ProvedorDeCanal`, `ChannelCapabilities`, `CHANNEL_CAPABILITIES` e `capacidadesDoCanal`
+  moram em `crm/capacidades.ts` (o que um Canal pode fazer, por Tipo e provedor). `types/crm.ts` os reexporta
+  para quem importa de `@n1/dominio/types` (a web e a api).
+- Grupo, Flow e Automação (F14-D-05) ainda chamam `startConversation`, `sendMessage`,
+  `sendMessageSemConferencia` e `receiveMessage`, e a Conversa de grupo na Caixa ainda resolve, reabre,
+  atribui, estrela e manda para a lixeira pelo store. Isso ficou em `operations/ferramentas/conversa-de-grupo.ts`
+  (com `recusaDeEscritaNoCrmAntigo`): só `resolveConversation`, `reopenConversation`, `assignConversation`,
+  `trashConversation` e `toggleConversationStar` continuam em `OPERACOES` e no barril; o resto é composição
+  interna, sem rota. `canonicalIdentifier` (comparar números de WhatsApp) foi para `ferramentas/permissoes.ts`.
+  Tudo isso sai com Grupo e Flow (Sessões 6 e 7); linha `deviation` aberta em `.planning/WINDOWS.md`.
+- Os testes de leitura do CRM antigo e de Mensageria que moraram em `operations/sobre-o-crm-antigo.test.ts` foram
+  reescritos no 15-42 (ver abaixo).
+
+**Fase 15, plano 42 (UCR-12): o domínio deixou de ler o CRM antigo.** Nenhum arquivo de produção do domínio lê as oito
+coleções (`contacts`, `companies`, `contactCompanyLinks`, `companyCompanyLinks`, `distinctFromLinks`, `funnels`,
+`deals`, `channels`); `conversations` fica só em Grupo e Flow. O `DataState` perdeu as coleções no 15-43 (ver abaixo):
+
+- **Derivações apagadas.** `derive.ts` sem `contactDisplayRole`, `principalCompanyId`, `effectiveProbability`,
+  `weightedValue`, `lastInteraction`, `marketingConsentMissing` e `duplicateSuspicions`; `derive-conversacional.ts`
+  sem `contatoDaTarefa`, `conversaDaTarefa`, `canalDaTarefa`, `negocioDaTarefa`, `canaisQueAlcancam`, `canaisDaLista*`,
+  `listaSemCanais`, `canaisDoFio`, `canaisDeResposta`, `canalPadraoDe*` e `canalDaAbaInicial` (ficam as por ids e as
+  `...NasTabelas`); `derive-ferramentas.ts` sem `contatosComWhatsApp`. `responseWindowOpenUntil(conversa, canal,
+  capacidades)` recebe o Canal em vez de procurá-lo no estado (o Flow passa o de `plataforma.canais`).
+- **Operações.** `removeMember`/`previewSuccession` só tocam o que mora em `registros` (a sucessão do CRM é de
+  `GET /membros/:id/sucessao-no-crm`; a Conversa de Grupo continua passando ao Sucessor, D-15-08); `createTask` só aceita
+  o Vínculo de nascimento marcado `alvoConferido` (`VINCULO_NAO_CONFERIDO`); o Canal de atendimento da Lista só vale se
+  está em `canais` (`plataforma.canais`), sem recuo ao estado.
+- **Grupo, Flow e Automação (WINDOWS #37).** `startConversation`, `sendMessage` e `receiveMessage`
+  (`ferramentas/conversa-de-grupo.ts`, que NÃO saiu com o 15-43) tomam o Canal de `crm.canais` e o Contato de
+  `crm.contatos`; o Contato é o `ContatoDaFerramenta` (id, nome, estado, WhatsApp). Não conferem mais o consentimento de
+  marketing do Contato antigo (o Canal da tabela não tem Mensagens de modelo) nem restauram Contato arquivado ao receber
+  Mensagem (RN-CON-13 é do CRM novo).
+- **Automações de Contas a receber (WINDOWS #35).** `OpcoesDaAgenda.clientes` (`ClientesLidos`) leva o nome e o dono dos
+  clientes lidos de `plataforma.contatos`; o `scheduler-worker` os lê na transação da volta
+  (`automacoes/clientes-da-lista.ts`). Sem eles, R4/R5 dizem "o cliente" e não mencionam o dono. A Execução disparada
+  por evento (não pela agenda) ainda não recebe o dado.
+- **Testes.** `testes/crm-de-teste.ts` (Canal, Contato e Conversa mínimos, `colecaoPelaChave`) e
+  `testes/crm-das-ferramentas.ts` (o recorte do demo antigo que Grupo, Comunidade e Flow usam) substituem o
+  `semearCrmAntigo` nos testes. `sobre-o-crm-antigo.test.ts` virou `painel-barra-e-modelo-da-lista.test.ts`; a Mensageria
+  e o Rascunho foram para `ferramentas/conversa-de-grupo.test.ts`.
+
+**Fase 15, plano 43 (UCR-12): o `DataState` não tem mais o CRM antigo.** `contacts`, `companies`, `deals`, `funnels`,
+`contactCompanyLinks`, `companyCompanyLinks`, `distinctFromLinks` e `channels` saíram de `DataState` e de `TODAS`
+(`colecoes.ts`), e com eles os tipos `Contact`, `Company`, `Deal`, `Funnel`, `Stage`, `Channel`, `MessageTemplate` e os
+Vínculos de `types/crm.ts` (ficam `ContactIdentifierType`, `Queue`, `BusinessHours`, `Inbox` e o reexport de
+`ChannelType`/`ProvedorDeCanal`/`ChannelCapabilities`). `conversations` fica no `DataState`, agora `ConversaDeGrupo[]`
+(`types/conversa-de-grupo.ts`, com `MensagemDeGrupo`, `Draft`, `Participant`, `Snooze` e `DeletionMark`): é o que Grupo,
+Flow e as composições das Automações ainda leem (F14-D-05), e `conversa-de-grupo.ts` continua. `hidratar()` da api segue
+carregando toda coleção que achar em `registros`: uma linha antiga que sobrou volta como chave desconhecida até o
+`migrar:crm-antigo` apagá-la (`apps/api/src/persistencia/hidratar-crm-antigo.test.ts` prova as duas metades).
+`responseWindowOpenUntil` e `rotuloDoCanal` recebem o Canal pelo recorte `{ channelType, provider }` (o `Canal` de
+`plataforma.canais` serve), não pelo `Channel` antigo.
+
 `seed-financeiro.ts`/`seed-contas-a-receber.ts` aceitam `{ fixtures: false }`
 (padrão `true`): monta só a configuração do processo, sem os Membros e as
 Tarefas fictícias que reproduzem o histórico do ClickUp — é o que
@@ -60,7 +131,7 @@ do repositório.
 
 Uma linha por chave de `OPERACOES` (`operations/registro.ts`): a operação, o módulo onde ela mora, a recusa que ela chama antes de gravar e, quando vale dizer, o porquê. `src/quem-pode.test.ts` lê esta tabela e deixa o `npm run check` vermelho se faltar uma operação, sobrar uma, repetir uma, ficar uma "Conferência" vazia ou pendente, ou se uma linha disser "sem conferência" sem justificar. **Operação nova precisa de linha aqui.**
 
-Duas coisas valem para a tabela inteira. O 403 de Membro `suspenso` (`recusaDeSuspenso`, na rota `POST /operacoes/:nome`, 1.2.1) vale para toda operação antes de qualquer recusa abaixo: o domínio só repete a barreira onde a linha diz. E as variantes `…SemConferencia` (09-03, como `sendMessageSemConferencia`) não são operações registradas: ficam fora do registro e, por isso, fora da tabela.
+Duas coisas valem para a tabela inteira. O 403 de Membro `suspenso` (`recusaDeSuspenso`, na rota `POST /operacoes/:nome`, 1.2.1) vale para toda operação antes de qualquer recusa abaixo: o domínio só repete a barreira onde a linha diz. E as variantes `…SemConferencia` (09-03, como `sendMessageSemConferencia`) não são operações registradas: ficam fora do registro e, por isso, fora da tabela. O mesmo vale para as quatro operações `…NasTabelas` de `operations/tarefa-conversacional-nas-tabelas.ts` (Fase 14, plano 14-02: `criarTarefaConversacionalNasTabelas`, `trocarCanalDaTarefaNasTabelas`, `vincularNegocioATarefaNasTabelas`, `ligarNegocioNovoATarefaNasTabelas`): recebem Contato, Canal, Conversa e Negócio já conferidos nas tabelas do CRM, então só as rotas `/tarefas-conversacionais` da api as chamam, dentro da transação, e `POST /operacoes/:nome` não as alcança. Desde o 14-17 isso é tudo o que existe da Tarefa conversacional: ela é criada e alterada só pelas rotas `/tarefas-conversacionais`, e as quatro operações antigas (`criarTarefaConversacional` e as outras três), que conferiam Contato, Canal e Negócio no estado do navegador, saíram do registro e desta tabela; ficam `alterarModeloDaLista` e `definirCanaisDaLista`, do modelo da Lista.
 
 O que cada nome de recusa quer dizer, em uma linha:
 
@@ -69,10 +140,14 @@ O que cada nome de recusa quer dizer, em uma linha:
 - `listWriteRefusal` (`tasks.ts`): Membro ativo, não Convidado, que alcança a Lista (criar Tarefa).
 - `containerAdminRefusal` (`derive.ts`): Administrador ou Proprietário que alcança o contêiner, ou concessão `administrar` nele ou acima. `mayConfigure` e `sprintFolder` a embrulham. `containerTrashRefusal` (`structure.ts`) aceita também a concessão `excluir`.
 - `mayBuild` (`structure.ts`): criar contêiner. Membro ativo, não Convidado, que alcança o pai.
-- `templateAdminRefusal` / `recusaDeGerirTags` / `recusaDeGerirCanais`: Administrador ou Proprietário ativo (catálogo de Templates), ou quem administra o Espaço (Tags, Canais).
+- `templateAdminRefusal` / `recusaDeGerirTags`: Administrador ou Proprietário ativo (catálogo de Templates), ou quem administra o Espaço (Tags). `recusaDeGerirCanais` saiu na 15-32 com `criarCanal` e `configurarCanal`: o Canal grava pelas rotas `/canais`.
 - `mayEditView`: o dono da Visão pessoal, ou `containerAdminRefusal` na compartilhada.
-- `recusaDeEscritaNoCrmAntigo` (`crm-antigo.ts`, 09-03): Membro ativo de Papel base diferente de Convidado. `mayCreateCrmRecord` (`contacts.ts`) é a mesma regra com a frase "cria registro", nas seis operações de Contato e Empresa que já conferiam.
+- `recusaDeEscritaNoCrmAntigo` (`operations/ferramentas/conversa-de-grupo.ts`, 09-03; era `crm-antigo.ts`): Membro ativo de Papel base diferente de Convidado. Só as cinco operações da Conversa de grupo na Caixa a usam depois da 15-32.
 - `recusaDeMembroAtivo`: em `ferramentas/` (`ferramentas/permissoes.ts`) exige Membro ativo e não Convidado; em `ia/` (`ia/permissoes-ia.ts`) exige só Membro ativo, e o Convidado é barrado por outra recusa da mesma linha quando existe. `recusaDeAdministracao` (Ferramentas): Proprietário ou Administrador.
+- `crm?: CrmDasFerramentas` (`types/ferramentas.ts`, Fase 15, 15-07): o ÚLTIMO parâmetro, opcional, das operações de Grupo, Comunidade e Flow e das recusas de `ferramentas/permissoes.ts` que conferem Canal ou Contato. O servidor o lê de `plataforma.canais` e `plataforma.contatos` na transação e o navegador não o decide; ausente vale `{ canais: [], contatos: [] }` (a recusa diz "Canal não encontrado."). `state` continua na primeira posição. A Conversa de Grupo e o envio de Flow ficam em `state.conversations` (F14-D-05).
+- `resolverOuCriarContato(state, numero, detalhe, crm)` (`ferramentas/participacoes.ts`, Fase 15, 15-17): o Contato de um número de WhatsApp vem de `crm.contatos` (já resolvido ao sobrevivente se mesclado) ou do `ContatoACriar` do mesmo número em `crm.contatosACriar`, com o id que o servidor gerou; sem nenhum dos dois devolve `{ erro }` ("Contato do participante não resolvido.") e a operação recusa — nunca inventa id nem escreve em `state.contacts`. `numerosAResolver(nome, state, args, crm)` é a fonte única dos números que a operação e a leitura do servidor resolvem; `padroesDoContatoCriado` dá o Proprietário (Canal → Fila → Caixa → Espaço) e a Origem do Contato criado, para o `aoConfirmar`.
+- `nomes?: NomesDasAncoras` (`types/ai.ts`, Fase 15, 15-08): o ÚLTIMO parâmetro, opcional, de `createChatSession`, `configureChatSession` e `ensaiarAgente`; o nome do Negócio, Contato, Empresa ou Conversa que a Âncora cita, por id, lido pelo servidor das tabelas do CRM novo (o navegador não o decide). Ausente vale `{}`: no Chat a Âncora no CRM é recusada ("O registro da Âncora não foi encontrado.") e o ensaio nomeia pelo id. Tarefa, Documento, Espaço, Pasta e Lista seguem lidos de `state`.
+- `funis?: FunisDoEscopo` (`operations/ia/automacoes-catalogo.ts`, Fase 15, 15-39): o último parâmetro, opcional, de `criarAutomacao`, `escopoExiste` e `inoperante` (`derive-ia.ts`); os Funis do Espaço (`id` e `estado`) lidos pelo servidor de `plataforma.funis`. O escopo Funil existe se o Funil está na lista e não está na lixeira (ativo e arquivado valem). Ausente vale `[]`: o Funil é desconhecido, a criação recusa ("O escopo indicado não existe.") e `inoperante` diz "escopo eliminado (Funil)". `state.funnels` não é mais lido nesses arquivos; a tela da IA passa os Funis no 15-21.
 - `recusaDeConvidado`, `recusaDeGovernarAgente`, `recusaDeGovernarHabilidade`, `recusaDeAdministrarAutomacao`, `recusaDeAdministrarIntegracao`, `recusaNaColecao`, `recusaNoDocumento` (`ia/permissoes-ia.ts`): a IA por objeto. Convidado nunca cria nem edita; editar é do dono ou criador do objeto ou de quem administra o Espaço.
 - `mayDecideApproval` (`ai.ts`): o aprovador designado, o dono do Agente (só na Aprovação de Agente) ou um Administrador ou Proprietário ativo.
 - `dono do registro` e `recusa embutida (…)`: não há função de recusa nomeada; a conferência está no corpo da operação e a coluna Observação diz qual é.
@@ -106,48 +181,11 @@ O que cada nome de recusa quer dizer, em uma linha:
 | `resolveTaskComment` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask`; resolver o fio de outra pessoa exige ser Administrador ou Proprietário (`isWorkspaceAdmin`) ou, no fio do Resumo, o aprovador ou revisor da Conferência vigente |
 | `setTaskTags` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
 | `watchTask` | `operations/tasks.ts` | `memberSeesTask`, `taskWriteRefusal` | observar a si mesmo exige ver a Tarefa; pôr outro Membro como Observador exige `mayWriteTask` |
-| `moveDealToStage` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `winDeal` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `loseDeal` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `reopenDeal` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `linkContactToDeal` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `removeStage` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `migrateDealsToFunnel` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `restoreDeal` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `moveDealToFunnel` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `createDeal` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `unlinkContactFromDeal` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `setDealFieldValue` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `sendMessage` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `resolveConversation` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `reopenConversation` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `assignConversation` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `trashConversation` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `moveConversationToContact` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `discardDraft` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `restoreConversation` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `startConversation` | `operations/conversations.ts` | recusa embutida (Membro ativo, não Convidado) | a mesma regra de `recusaDeEscritaNoCrmAntigo`, escrita dentro da operação desde antes da Fase 9 (09-03 não criou variante) |
-| `toggleConversationStar` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `markConversationRead` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `addContactIdentifier` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `transferContactIdentifier` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `mergeContacts` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `endContactCompanyLink` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `trashContact` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `trashCompany` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `restoreMergedCopy` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `importContacts` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `restoreContact` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `restoreCompany` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `markContactsAsDistinct` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `addContactNote` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `createContact` | `operations/contacts.ts` | `mayCreateCrmRecord` |  |
-| `createCompany` | `operations/contacts.ts` | `mayCreateCrmRecord` |  |
-| `linkContactToCompany` | `operations/contacts.ts` | `mayCreateCrmRecord` |  |
-| `addCompanyIdentifier` | `operations/contacts.ts` | `mayCreateCrmRecord` |  |
-| `setContactCatalogValue` | `operations/contacts.ts` | `mayCreateCrmRecord` |  |
-| `updateCompany` | `operations/contacts.ts` | `mayCreateCrmRecord` |  |
-| `addCompanyNote` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `resolveConversation` | `operations/ferramentas/conversa-de-grupo.ts` | `recusaDeEscritaNoCrmAntigo` | a Conversa de grupo na Caixa (F14-D-05); sai com ela |
+| `reopenConversation` | `operations/ferramentas/conversa-de-grupo.ts` | `recusaDeEscritaNoCrmAntigo` | a Conversa de grupo na Caixa (F14-D-05); sai com ela |
+| `assignConversation` | `operations/ferramentas/conversa-de-grupo.ts` | `recusaDeEscritaNoCrmAntigo` | a Conversa de grupo na Caixa (F14-D-05); sai com ela |
+| `trashConversation` | `operations/ferramentas/conversa-de-grupo.ts` | `recusaDeEscritaNoCrmAntigo` | a Conversa de grupo na Caixa (F14-D-05); sai com ela |
+| `toggleConversationStar` | `operations/ferramentas/conversa-de-grupo.ts` | `recusaDeEscritaNoCrmAntigo` | a Conversa de grupo na Caixa (F14-D-05); sai com ela |
 | `decideApproval` | `operations/ai.ts` | `mayDecideApproval` | o aprovador designado, o dono do Agente ou um Administrador ou Proprietário ativo |
 | `decideProcessApproval` | `operations/ai.ts` | `mayDecideApproval` | o aprovador designado ou um Administrador ou Proprietário ativo; o alcance da Tarefa vem da resposta no fio (`addTaskComment`) |
 | `solicitarAprovacao` | `operations/ai.ts` | `taskWriteRefusal` | o ator é conferido ao mover a Tarefa para 'em aprovação' (`changeTaskStatus`, via `mayWriteTaskStatus`), antes de qualquer gravação |
@@ -243,13 +281,12 @@ O que cada nome de recusa quer dizer, em uma linha:
 | `createFolder` | `operations/structure.ts` | `mayBuild` |  |
 | `createList` | `operations/structure.ts` | `mayBuild` |  |
 | `updateContainer` | `operations/structure.ts` | `containerAdminRefusal` |  |
-| `moveContainer` | `operations/structure.ts` | `containerAdminRefusal`, `mayBuild` | administrar o movido e alcançar/criar no destino (`recusaDeMover`, a fonte única das recusas); destino que o ator não alcança devolve "não encontrado" (RN-ESP-15); Pasta com descendente que o ator não alcança é recusada com frase que só conta, sem nome nem id (10-REVIEW MEDIUM-02); estruturas fixas recusadas em 10-18 |
+| `moveContainer` | `operations/structure.ts` | `containerAdminRefusal`, `mayBuild` | administrar o movido e alcançar/criar no destino (`recusaDeMover`, a fonte única das recusas); destino que o ator não alcança devolve "não encontrado" (RN-ESP-15); Pasta com descendente que o ator não alcança é recusada com frase que só conta, sem nome nem id (10-REVIEW MEDIUM-02); estruturas fixas (só as Listas Contas a pagar, Contas a receber e Solicitações de pagamento desde o 15-41; a Pasta "Meus negócios" é uma Pasta comum) recusadas em 10-18 |
 | `reorderContainers` | `operations/structure.ts` | `mayBuild` | Pastas e Listas: alcançar e criar no pai (`recusaDeReordenar`, a mesma frase que desliga Subir/Descer); Espaços: Administrador ou Proprietário (Papel de quem cria Espaço); a ordem é por grupo (D-08) e por fatia (A3): recebe os ids que o Membro vê e deixa os escondidos na vaga; devolve só os ids que o ator alcança (10-REVIEW MEDIUM-03); registra "Ordem alterada" no pai |
 | `archiveContainer` | `operations/structure.ts` | `containerAdminRefusal` |  |
 | `unarchiveContainer` | `operations/structure.ts` | `containerAdminRefusal` |  |
 | `trashContainer` | `operations/structure.ts` | `containerTrashRefusal` |  |
 | `restoreContainer` | `operations/structure.ts` | `containerTrashRefusal` |  |
-| `iniciarConversa` | `operations/iniciar-conversa.ts` | `recusaDeEscritaNoCrmAntigo`, `listWriteRefusal` | composição: `createDeal`, `createTask` e `setContactCatalogValue` conferem (esta última por `mayCreateCrmRecord`); as validações anteriores só leem, e a operação desfaz o que criou se um ato recusar |
 | `adicionarNotaNoAtivo` | `operations/ferramentas/notas.ts` | `recusaDeMembroAtivo` |  |
 | `criarLinkDeCaptacao` | `operations/ferramentas/captacao.ts` | `recusaDeMembroAtivo` |  |
 | `editarLinkDeCaptacao` | `operations/ferramentas/captacao.ts` | `recusaDeMembroAtivo` |  |
@@ -316,14 +353,8 @@ O que cada nome de recusa quer dizer, em uma linha:
 | `restaurarComunidade` | `operations/ferramentas/comunidades.ts` | `recusaDeMembroAtivo` |  |
 | `enviarComunidadeALixeira` | `operations/ferramentas/comunidades.ts` | `recusaDeMembroAtivo` |  |
 | `restaurarComunidadeDaLixeira` | `operations/ferramentas/comunidades.ts` | `recusaDeMembroAtivo` |  |
-| `criarCanal` | `operations/canais.ts` | `recusaDeGerirCanais` |  |
-| `configurarCanal` | `operations/canais.ts` | `recusaDeGerirCanais` |  |
 | `alterarModeloDaLista` | `operations/tarefas-conversacionais.ts` | `containerAdminRefusal` |  |
 | `definirCanaisDaLista` | `operations/tarefas-conversacionais.ts` | `containerAdminRefusal` |  |
-| `criarTarefaConversacional` | `operations/tarefas-conversacionais.ts` | `listWriteRefusal` |  |
-| `trocarCanalDaTarefa` | `operations/tarefas-conversacionais.ts` | `taskWriteRefusal` | via `tarefaConversacional` |
-| `vincularNegocioATarefa` | `operations/tarefas-conversacionais.ts` | `taskWriteRefusal` | via `tarefaConversacional` |
-| `criarNegocioDaTarefa` | `operations/tarefas-conversacionais.ts` | `taskWriteRefusal`, `recusaDeEscritaNoCrmAntigo` | via `tarefaConversacional` e `createDeal` |
 | `ativarAgente` | `operations/ia/agentes.ts` | `recusaDeGovernarAgente` |  |
 | `pausarAgente` | `operations/ia/agentes.ts` | `recusaDeGovernarAgente` |  |
 | `arquivarAgente` | `operations/ia/agentes.ts` | `recusaDeGovernarAgente` |  |
@@ -832,9 +863,188 @@ esconder — a regra mora aqui para os dois lados dizerem a mesma coisa.
 Mesma forma de `operations`: `OperationResult`, sem exceção pela
 fronteira.
 
-**O que não mudou.** `types/crm.ts` (`Contact`, `Company`, `Deal`,
-`Pipeline`…), `operations/{contacts,deals}.ts` e o seed de CRM continuam
-inteiros: Caixa de Entrada, Conversas, Busca global, Lixeira, Notificações
-e `/crm/meus-negocios` ainda leem esse modelo. Os dois convivem até a fase
-de unificação (D-01, D-15); nenhum módulo de `src/crm/` importa o antigo
-nem vice-versa.
+**O modelo antigo saiu (Fase 15), salvo Grupo e Flow.** `types/crm.ts` não tem mais `Contact`, `Company`, `Deal`,
+`Funnel` nem `Channel`; `operations/{contacts,deals,iniciar-conversa,crm-antigo}.ts` foram apagados no 15-32 e o
+`DataState` perdeu as oito coleções no 15-43. O que resta do modelo antigo é só o necessário a Grupo, Comunidade e Flow
+(F14-D-05, até as Sessões 6 e 7): `ConversaDeGrupo` e `operations/ferramentas/conversa-de-grupo.ts`. Busca global,
+Lixeira, Notificações, Caixa, fichas, Início e Painel leem as tabelas por HTTP e entregam ao domínio, como argumento,
+o que ele precisa (`notificacoesDoMembro(state, membro, agora, conversasAtribuidas)` recebe as Conversas atribuídas e
+não resolvidas da api — `{ itens, total }`, e é o `total` que entra no selo). Nenhum módulo de `src/crm/` importa o
+antigo nem vice-versa. A convivência dos dois modelos, prevista até a fase de unificação (D-01, D-15), acabou; o que
+sobra dela em produção é o dado em `plataforma.registros`, que o `migrar:crm-antigo` retira no corte
+(`15-CORTE.md`).
+
+**Gestos da Conversa nova (Fase 14).** `crm/conversas.ts` ganhou as regras
+de dois gestos, para a tela pré-validar e o endpoint aplicar as mesmas.
+`validarMover` (3.2.5) recusa Conversa na lixeira (está parada, INV-CXE-13),
+o mesmo Contato e destino que não é `ativo` — arquivado, na lixeira e
+mesclado não recebem Conversa — com o campo `contatoId`;
+`participantesComContato` reescreve só o Participante do tipo contato que
+apontava para a origem, mantendo `principal`. O Canal e as Mensagens nunca
+mudam (INV-CXE-04). A colisão com a Conversa aberta do destino não é do
+domínio: depende de ler o banco, e fica com o serviço (o índice único só
+cobre aberta e pendente, então mover uma resolvida nunca colide).
+`validarAtribuicao` (3.2.6, parte 1) só recusa a Conversa na lixeira; que
+o Membro seja ativo e o Agente exista neste Espaço também depende do banco.
+`Atribuicao` é o tipo da coluna dupla `atribuido_tipo/atribuido_id`.
+
+
+**Lixeira, restaurar e marcação da Conversa (Fase 14, 14-07).** `Conversa`
+ganhou `naLixeiraEm` (a coluna `na_lixeira_em` da 011: só tem valor com
+`estado = "na_lixeira"`). `validarLixeira` recusa a Conversa que já está na
+lixeira e a que não está `resolvida` (`conversas_lixeira_ck`);
+`validarRestauracao` recusa a Conversa fora da lixeira e o Contato na lixeira
+(frase do modelo antigo: "Restaure o Contato antes"). Contato arquivado ou
+mesclado não impede a restauração. A estrela e a leitura são do Membro, não da
+Conversa: `MarcacaoDaConversa` (`estrela`, `lidaAte`) mora em
+`conversa_marcacoes`, `EdicaoDeMarcacao` traz só os campos que mudam e
+`validarMarcacao` exige ao menos um e `lidaAte` em ISO 8601 com hora. De quem é
+a marcação nunca é campo: é o Membro da sessão. `ConversaNaLista` é a Conversa
+mais `contatoNome` (derivado a cada leitura), `estrela` e `naoLidas`, e
+`FiltroDeConversas` ganhou `atribuidoId`, `filaId`, `comEstrela` e `q` (trecho
+literal do título); na Fase 15 (15-06), `naoLidas` (do Membro da sessão). Na
+Fase 15 (15-11), `ConversaNaLista.ultimaRecebidaEm` é o `criadoEm` da Mensagem
+`recebida` mais recente (ou `null`): a Caixa mede a janela de resposta do Canal
+(RN-CXE-19) com ele, sem uma ida por linha.
+
+**Notas do Contato e a transferência de Identificador (Fase 14, 14-06).**
+`crm/notas.ts` é o módulo novo: `NotaDoContato` (a linha de
+`contato_notas`), `NovaNota` (só `conteudo`: o autor é o Membro da sessão e
+não um campo de quem escreve), `validarNovaNota` (aparada, não vazia, até
+`LIMITES_CRM.textoLongo`, sempre com o campo `conteudo`) e
+`recusaDeNotaNoContato` (o `mesclado` é somente leitura, RN-CON-14, e o da
+lixeira está parado; `arquivado` aceita). D-04: a nota é só texto; os anexos
+e as menções da nota do modelo antigo não vêm para cá.
+`validarTransferenciaDeIdentificador` (`crm/contatos.ts`, 3.2.3, DO-CON-12)
+recusa a origem `mesclado`, o mesmo Contato, o destino `mesclado` (a frase
+manda para o Contato que ficou) ou na lixeira, com o campo `paraContatoId`, e
+a origem que ficaria sem Nome e sem Identificador (INV-CON-01, reusa
+`validarContato` sobre `restantesDaOrigem`). O que depende do banco fica com o
+serviço: se o Identificador é da origem, se o destino existe neste Espaço, o
+teto de Identificadores do destino e qual dos dois fica principal (INV-CON-03).
+A transferência muda só a resolução futura: as Conversas passadas continuam
+com o Contato de origem.
+
+**Consentimento do Contato (Fase 14, 14-08, 3.2.4).** `crm/consentimentos.ts`
+é o módulo novo: `ConsentimentoDoContato` (a linha de
+`contato_consentimentos`), `NovoConsentimento` (sem `registradoPor`: quem
+registra é o Membro da sessão), `validarNovoConsentimento` (vocabulários da 011,
+finalidade preenchida e `em` que não esteja no futuro, com o campo `em`) e as
+duas regras que a tela e a api aplicam iguais. O consentimento é só inserção:
+revogar é registrar um `revogado`, e o vigente é DERIVADO por
+`consentimentoVigente` (o mais recente por `em` da finalidade para o tipo do
+Canal ou para `todos`, e no empate o registrado depois). Quem aplica a recusa é
+o envio de Mensagem: `recusaPorFaltaDeConsentimento` diz se o modelo de
+marketing barra o envio (a conta de `marketingConsentMissing`, sobre as linhas
+novas). O que depende do banco fica com o serviço: se a finalidade existe no
+Catálogo do Espaço e se a Mensagem de evidência é de uma Conversa do Contato.
+
+**Mesclar Contatos no modelo novo (Fase 14, 14-09, 3.2.2).** `crm/mesclagem.ts`
+é o módulo novo: `validarMesclagem` (RN-CON-14) recusa o mesmo Contato e
+qualquer lado na lixeira ou já `mesclado` (por isso o sobrevivente nunca é
+`mesclado`: sem cadeia), e diz em que estado o sobrevivente termina (`ativo` se
+qualquer dos dois era). `conversasQueResolvemNaColisao` (RN-CXE-10) escolhe,
+entre as Conversas abertas ou pendentes dos dois no mesmo Canal, as que viram
+`resolvida`: fica a de Mensagem mais recente (sem Mensagem, `criadoEm`; empate
+pelo id). Move tudo para o sobrevivente: Identificadores, Conversas, Negócios,
+vínculos com Empresa, Endereços (sem principal) e notas; os consentimentos são
+COPIADOS, porque o histórico de cada Contato é só inserção. O banco é com o
+serviço da api. A troca dos Vínculos em `registros` é a mesma função da
+mesclagem antiga: `reapontarContatoNosVinculos` (`operations/vinculos-da-mesclagem.ts`)
+serve à `mergeContacts` e a `mesclarContatoNoEspaco`, e dois Vínculos que ficam
+iguais se fundem, ficando o mais antigo (INV-CON-07). `mesclarContatoNoEspaco`
+está FORA de `OPERACOES`: os dois Contatos chegam em `referencias`, lidos pelo
+servidor, e a operação não os procura em `state.contacts`.
+
+**Canais da Lista conversacional conferidos nas tabelas (Fase 14, 14-12, 3.3.7).**
+`validarCanaisDeAtendimento`, `nomesDosCanais`, `definirCanaisDaLista` e
+`createList` aceitam `canais?: readonly Canal[]` como último argumento
+(`Canal` de `crm/canais`, a linha de `plataforma.canais`). Um id que está
+em `canais` vale pelo Canal da tabela (`estado` `ativo`, tipo de atendimento) e
+o nome na Atividade vem dele; sem `canais`, ou para um id que não está nele, a
+regra recusa o id (o ramo de `state.channels` saiu no 15-33, junto com o CRM antigo).
+Quem preenche `canais` é o servidor, dentro da transação (`lerDoCrm`, em
+`POST /operacoes`): o que o navegador manda nesse argumento é descartado.
+
+**Nomes do CRM novo em lote (Fase 15, 15-10, 3.4.9 e 3.4.10, UCR-08).** `crm/nomes.ts` (sem
+barril, subcaminho `@n1/dominio/crm/nomes`) tem só os tipos e o teto: `AlvoDoCrm` (`tipo` de
+`TIPOS_DE_OBJETO_DO_CRM` e `id`), `NomeDoAlvo` (o alvo com `nome: string | null`) e
+`NOMES_MAXIMO` (200 alvos por chamada). `nome: null` quer dizer "sem nome para mostrar" (id
+desconhecido, de outro Espaço ou tipo que o Papel não lê) sem distinguir a causa. A regra de
+quem pode ler é a de sempre, `podeNoCrm`; a consulta é da api (`POST /crm/nomes`).
+
+**Agregado do Início do CRM novo (Fase 15, 15-18, 3.4.7, UCR-07).** `crm/inicio.ts` (sem barril,
+subcaminho `@n1/dominio/crm/inicio`) tem os tipos do que o Início soma no servidor (`PanoramaDoCrm`,
+`LeadAAtenderDoCrm`, `EstatisticasDoCrm`), os limites (`CONTATOS_RECENTES_DO_PANORAMA` 5, `LIMITE_DE_LEADS`
+50, `QUALIFICACOES_MAXIMAS` 20, `JANELA_MAXIMA_DE_ESTATISTICAS_DIAS` 400) e a conferência de forma da janela
+(`conferirJanelaDeEstatisticas`, `fusoValido`) que a rota e o serviço aplicam igual. Nenhum tipo carrega o id
+do Membro nem o do Espaço: "meu" é o Membro da sessão. Um bloco ou série `null` quer dizer que o Papel não lê
+o recurso dele. A consulta do modelo novo é da api.
+
+**Início e Painel sem o CRM antigo (Fase 15, 15-23, 3.4.7, UCR-07).** `derive-resumo` não lê mais Contato,
+Negócio nem Conversa do store: `qualificacoesDeLead(state)` devolve os ids das Qualificações "Lead" do Catálogo
+(a única parte que a tela ainda lê do store; os Leads saem de `GET /crm/inicio/leads-a-atender`),
+`mensagensNovasDasConversas(itens, total)` soma as linhas de `GET /conversas?naoLidas=true` e diz `parcial` quando o
+`total` passa do que veio, e `estatisticasDoMembro(state, membro, periodo, agora, crm)` recebe as contagens por dia
+(`EstatisticasDoCrm`) e só mantém as Tarefas concluídas do store; sem `crm` (carregando) ou com série `null`, o CRM vale
+zero. A api aceita 400 dias por pedido e o "ano" com o anterior passa de 700: `janelasDeConsultaDoCrm` dá a janela
+atual e a anterior em separado, estáveis o dia inteiro (chave do SWR), e `juntarEstatisticasDoCrm` as une. O dia do
+CRM é um ponto no início do dia civil do fuso do Espaço. `naoLidas` e `ultimaAtividade` seguem, sobre `ConversaDeGrupo`,
+porque a Caixa de Grupo ainda as usa. `widgetReading(state, widget, membro, agora, crm)` recebe
+`LeituraDoCrmParaPainel` (Negócios, Conversas, Contatos, Funis e Etapas das rotas, mais `parcial`): a leitura de
+Widget cuja Fonte é do CRM sai marcada `parcial` quando o total passa do lido, e a Tarefa nunca é parcial. Origem e
+Motivo de Perda são texto livre no Negócio novo e a lista resumida não os traz: essas duas dimensões ficam sem linhas
+até virem na lista.
+
+**Abas e Canal de resposta do fio sobre as tabelas (Fase 15, 15-20, 3.4.2, UCR-05).**
+`crm/canais-de-resposta.ts` (sem barril, subcaminho `@n1/dominio/crm/canais-de-resposta`) leva as
+regras de abas e de Canal de resposta de `derive-conversacional` (D-13, D-14, D-15) para `Canal`,
+`IdentificadorDeContato` e `ConversaNaLista`, que a tela lê por HTTP e entrega como argumento:
+nenhuma função toca `DataState`. `canaisDoFioNasTabelas` (uma aba por Canal ativo, ordem fixa
+tipo/criação/id, `alcancavel: false` para o Canal que o Contato não alcança),
+`canaisDeRespostaNasTabelas` (só `conectada` e alcançável), `canalPadraoDeRespostaNasTabelas` (o Canal
+da última recebida; se não serve, o primeiro do mesmo tipo; senão o primeiro), `canalDaAbaInicialNasTabelas`,
+`canalPadraoDoTipoNasTabelas` e `canaisQueAlcancamNasTabelas`, mais `rotuloDoCanalNasTabelas` e
+`textoDoSeparadorNasTabelas`. O alcance é do TIPO do Canal (`TIPO_DE_IDENTIFICADOR_DO_CANAL`);
+`identificadores` indefinido quer dizer "Contato ainda não lido" e todo Canal alcança. A lista de
+Conversas não traz a última Mensagem de qualquer direção, só `ultimaRecebidaEm`: "a Conversa mais
+recente" é a de maior entre `ultimaRecebidaEm` e `atualizadoEm`, e Conversa na lixeira não conta. As
+funções antigas saíram de `derive-conversacional.ts` no 15-42.
+
+**A mensageria no domínio (Fase 16).** Três módulos novos de `src/crm/` (sem barril) levam para o domínio o que a
+`apps/api` e a tela leem igual, e um acréscimo em `crm/canais.ts`:
+
+- `crm/conversas.ts`, `identificadorDeResposta(identificadores, canal, idDeQuemEscreveu?)` (WR-04, 16-21): para onde a
+  resposta de uma Conversa sai. Devolve o Identificador de quem escreveu quando ele está entre os do tipo do Canal;
+  senão o principal do tipo, senão o primeiro, senão `undefined`. O chamador passa a lista que leu do Contato DA
+  Conversa (o id só escolhe dentro dela); sem o id é a regra de abrir Conversa. O entregador da saída e
+  `identificadorDoCanal` da api usam a mesma função.
+- `crm/recebimento.ts` (`@n1/dominio/crm/recebimento`): `RecebidaDoProvedor` (o evento de mensagem que o provedor
+  entrega: remetente, conteúdo, anexos, `idExterno`, `criadoEm`; sem `workspaceId`, o Espaço vem do Canal) e as duas
+  decisões puras de `receberMensagem`: `destinoDaRecebida` (RN-CXE-09: usa a aberta ou pendente, reabre a última
+  resolvida dentro da janela do Espaço, `JANELA_DE_REABERTURA_PADRAO_HORAS = 72`, ou abre outra; a lixeira nunca
+  reabre) e `contatoDaRecebida` (RN-CON-13: arquivado e na lixeira reativam, o mesclado é recusado).
+- `crm/eventos.ts` (`@n1/dominio/crm/eventos`): `EventoDoCrm` (`mensagem.nova`, `mensagem.status`, `conversa.mudou`;
+  só ids, nunca texto, nome nem telefone) e `EventoParaATela` (sem `workspaceId`), com `lerEventoDoCrm` e
+  `lerEventoParaATela`, que recusam campo a mais, id vazio e id com mais de 64 caracteres: a api (que escreve o
+  NOTIFY e o fluxo SSE) e a web (que lê o fluxo) usam a mesma forma.
+  `BATIDA_DO_FLUXO_MS` (25 s) e `SILENCIO_MAXIMO_DO_FLUXO_MS` (60 s, mais que duas batidas) são o contrato do fluxo
+  entre a api (quem manda o `: batida`) e a web (quem dá a conexão por morta depois de tanto tempo sem nenhum byte).
+- `crm/midia.ts` (`@n1/dominio/crm/midia`): `TIPOS_ACEITOS_NA_MENSAGEM` (17 tipos; só da Mensagem, o Formulário
+  mantém a lista dele), `normalizarTipoDeMidia` (`audio/ogg; codecs=opus` vira `audio/ogg`), `categoriaDaMidia`,
+  `tiposAceitosParaOCanal(sendableMediaTypes)` (o seletor de arquivo da tela e a recusa da api), `tetoDaMidia` (16 MiB
+  áudio e vídeo, 25 MiB o resto) e `ehDocumento`. O anexo da Mensagem ganhou `objectKey`, `tamanhoBytes` e `baixado`;
+  `validarNovaMensagem` aceita texto OU um anexo (no máximo um) e `validarAnexosDoEnvio` recusa a categoria que o
+  Canal não declara. A assinatura do conteúdo é conferida na api, não aqui.
+- `crm/canais.ts`: `AcaoDeConexao` ganhou `conexao_confirmada` (leva a `conectada` com `conexaoSimulada: false`,
+  aceita o Canal que já está conectado e recusa o arquivado) e `conferirNumeroConectado(canal, numeroDoProvedor)`
+  (o número que o provedor informa é o do Canal, tolerando o nono dígito brasileiro; recusa outro número mostrando só
+  os finais). `conectar` (QR) e `conexao_perdida` ficam para a Sessão 4; juntar Contatos com e sem o nono dígito é a
+  4.4.3. O status de entrega só avança: `proximoStatusDeEntrega` (em `crm/mensagens.ts`) nunca deixa `lida` voltar a
+  `entregue`.
+  `proximaConexao` ganhou o terceiro argumento `FatosDaConexao` (CR-01, 16-17): `simular_conexao` recusa o Canal
+  ligado a um provedor real (`ligadoAoProvedor`, `FRASE_DO_CANAL_REAL`) e recusa quando o fato não vem (falha
+  fechada, `FRASE_SEM_FATOS_DA_CONEXAO`); `desconectar` e `conexao_confirmada` o ignoram. `CanalNaFicha` é o `Canal`
+  mais `ligadoAoProvedor` (só na leitura da ficha, não é coluna) e `podeSimularConexao(canal)` é a mesma regra para a
+  tela.
+

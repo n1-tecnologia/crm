@@ -13,6 +13,20 @@
  * `conversas` (08-06) é o sexto: a Conversa relacional, aberta com a primeira
  * Mensagem numa transação só. `mensagens` (08-12) é o sétimo: o fio da Conversa
  * e o envio humano; a `recebida` não tem rota, só o caminho interno do serviço.
+ * `notas` (14-06) e `consentimentos` (14-08) são sub-recursos do Contato: o
+ * histórico de consentimento é só inserção e a recusa de modelo de marketing
+ * sem consentimento mora em `ServicoDeMensagens.enviar`. `mesclagem` (14-09) é o
+ * gesto que junta dois Contatos nas duas bases, `POST /contatos/:id/mesclar`.
+ * `sucessao` (14-10) é só a prévia, `GET /membros/:id/sucessao-no-crm`: a passagem
+ * ao Sucessor mora em `POST /operacoes/removeMember`. `tarefasConversacionais`
+ * (14-13) é o gesto que cria a Tarefa em `registros` e abre a Conversa nas
+ * tabelas, `POST /tarefas-conversacionais`, e a leitura em lote do cartão.
+ * `atividades` (15-37) é só leitura, `GET /atividades`: a linha do tempo do CRM
+ * novo, por Espaço e Papel; quem grava é cada gesto, na transação dele (15-04).
+ * `nomes` (15-10) é só leitura, `POST /crm/nomes`: o nome de até 200 ids do CRM novo
+ * numa chamada, para as telas que só têm o id (a IA, Contas a receber).
+ * `inicio` (15-18) é só leitura, `GET /crm/inicio/{panorama,leads-a-atender,estatisticas}`: os
+ * números do Início somados no banco, sempre do Espaço e do Membro da sessão.
  */
 
 import type { FastifyInstance } from "fastify";
@@ -20,20 +34,36 @@ import type { Pool } from "pg";
 import { pool } from "../../persistencia/conexao";
 import { recusarSuspensoNaEscrita } from "../../plugins/autenticacao";
 import { criarAcessoAoCrmPg, type AcessoAoCrm } from "../../servicos/crm/acesso";
+import { criarServicoDeAtividades, type ServicoDeAtividades } from "../../servicos/crm/atividades";
 import { criarServicoDeCanais, type ServicoDeCanais } from "../../servicos/crm/canais";
 import { criarServicoDeContatos, type ServicoDeContatos } from "../../servicos/crm/contatos";
+import { criarServicoDeConsentimentos, type ServicoDeConsentimentos } from "../../servicos/crm/consentimentos";
 import { criarServicoDeConversas, type ServicoDeConversas } from "../../servicos/crm/conversas";
 import { criarServicoDeEmpresas, type ServicoDeEmpresas } from "../../servicos/crm/empresas";
 import { criarServicoDeFunis, type ServicoDeFunis } from "../../servicos/crm/funis";
+import { criarServicoDoInicio, type ServicoDoInicio } from "../../servicos/crm/inicio";
 import { criarServicoDeMensagens, type ServicoDeMensagens } from "../../servicos/crm/mensagens";
+import { criarServicoDeMesclagem, type ServicoDeMesclagem } from "../../servicos/crm/mesclagem";
 import { criarServicoDeNegocios, type ServicoDeNegocios } from "../../servicos/crm/negocios";
+import { criarServicoDeNomes, type ServicoDeNomes } from "../../servicos/crm/nomes";
+import { criarServicoDeNotas, type ServicoDeNotas } from "../../servicos/crm/notas";
+import { criarServicoDeSucessao, type ServicoDeSucessao } from "../../servicos/crm/sucessao";
+import { criarServicoDeTarefasConversacionais, type ServicoDeTarefasConversacionais } from "../../servicos/crm/tarefas-conversacionais";
+import { rotasDeAtividades } from "./atividades";
 import { rotasDeCanais } from "./canais";
+import { rotasDeConsentimentos } from "./consentimentos";
 import { rotasDeContatos } from "./contatos";
 import { rotasDeConversas } from "./conversas";
 import { rotasDeEmpresas } from "./empresas";
 import { rotasDeFunis } from "./funis";
+import { rotasDoInicio } from "./inicio";
 import { rotasDeMensagens } from "./mensagens";
+import { rotasDeMesclagem } from "./mesclagem";
 import { rotasDeNegocios } from "./negocios";
+import { rotasDeNomes } from "./nomes";
+import { rotasDeNotas } from "./notas";
+import { rotasDeSucessao } from "./sucessao";
+import { rotasDeTarefasConversacionais } from "./tarefas-conversacionais";
 
 export interface OpcoesDeCrm {
   /** Padrão: o `pool()` do processo. Só é chamado quando uma requisição chega, nunca na montagem. */
@@ -52,6 +82,22 @@ export interface OpcoesDeCrm {
   readonly conversas?: ServicoDeConversas;
   /** Injeção só para teste: troca o serviço real de Mensagens por um falso, sem banco. */
   readonly mensagens?: ServicoDeMensagens;
+  /** Injeção só para teste: troca o serviço real de Notas do Contato por um falso, sem banco. */
+  readonly notas?: ServicoDeNotas;
+  /** Injeção só para teste: troca o serviço real de Consentimentos do Contato por um falso, sem banco. */
+  readonly consentimentos?: ServicoDeConsentimentos;
+  /** Injeção só para teste: troca o serviço real de mesclagem de Contatos por um falso, sem banco. */
+  readonly mesclagem?: ServicoDeMesclagem;
+  /** Injeção só para teste: troca o serviço real da prévia de sucessão por um falso, sem banco. */
+  readonly sucessao?: ServicoDeSucessao;
+  /** Injeção só para teste: troca o serviço real da Tarefa conversacional por um falso, sem banco. */
+  readonly tarefasConversacionais?: ServicoDeTarefasConversacionais;
+  /** Injeção só para teste: troca o serviço real de leitura das Atividades por um falso, sem banco. */
+  readonly atividades?: ServicoDeAtividades;
+  /** Injeção só para teste: troca o serviço real de nomes em lote por um falso, sem banco. */
+  readonly nomes?: ServicoDeNomes;
+  /** Injeção só para teste: troca o serviço real do agregado do Início por um falso, sem banco. */
+  readonly inicio?: ServicoDoInicio;
   /** Padrão: lê Papel e Membro de `plataforma.registros`. Injeção para teste sem banco. */
   readonly acesso?: AcessoAoCrm;
 }
@@ -76,4 +122,20 @@ export async function rotasDeCrm(app: FastifyInstance, opcoes: OpcoesDeCrm = {})
   await app.register(rotasDeConversas, { servico: conversas });
   const mensagens = opcoes.mensagens ?? criarServicoDeMensagens({ pool: obterPool, acesso });
   await app.register(rotasDeMensagens, { servico: mensagens });
+  const notas = opcoes.notas ?? criarServicoDeNotas({ pool: obterPool, acesso });
+  await app.register(rotasDeNotas, { servico: notas });
+  const consentimentos = opcoes.consentimentos ?? criarServicoDeConsentimentos({ pool: obterPool, acesso });
+  await app.register(rotasDeConsentimentos, { servico: consentimentos });
+  const mesclagem = opcoes.mesclagem ?? criarServicoDeMesclagem({ pool: obterPool, acesso });
+  await app.register(rotasDeMesclagem, { servico: mesclagem });
+  const sucessao = opcoes.sucessao ?? criarServicoDeSucessao({ pool: obterPool });
+  await app.register(rotasDeSucessao, { servico: sucessao });
+  const tarefasConversacionais = opcoes.tarefasConversacionais ?? criarServicoDeTarefasConversacionais({ pool: obterPool, acesso });
+  await app.register(rotasDeTarefasConversacionais, { servico: tarefasConversacionais });
+  const atividades = opcoes.atividades ?? criarServicoDeAtividades({ pool: obterPool, acesso });
+  await app.register(rotasDeAtividades, { servico: atividades });
+  const nomes = opcoes.nomes ?? criarServicoDeNomes({ pool: obterPool, acesso });
+  await app.register(rotasDeNomes, { servico: nomes });
+  const inicio = opcoes.inicio ?? criarServicoDoInicio({ pool: obterPool, acesso });
+  await app.register(rotasDoInicio, { servico: inicio });
 }

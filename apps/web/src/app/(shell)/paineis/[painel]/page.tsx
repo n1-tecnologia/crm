@@ -11,6 +11,13 @@
  *
  * RN-PAI-13 — nada é convertido entre moedas: uma linha por moeda, rotulada.
  *
+ * 15-23 (3.4.7, UCR-07) — Negócios, Conversas, Contatos e Funis do CRM saem das rotas
+ * (`useNegocios`, `useConversas`, `useContatos`, `useFunis`, até `LIMITES_CRM.paginaMaxima`
+ * cada) e `widgetReading` os recebe por argumento. É a ponte até a Sessão 20 (20.3), quando o
+ * servidor soma os Widgets: enquanto isso, quando o `total` passa do que foi lido, o Widget diz
+ * "Parcial: primeiros 200" em vez de apresentar um número que parece total (T-15-57).
+ * Enquanto a lista de um alvo carrega ou se recusa, o Widget dele diz isso (nunca um zero).
+ *
  * A diagramação separa o que se lê de relance do que se lê com calma: os
  * Widgets de um número só viram ladrilhos numa faixa no alto (como os
  * indicadores do Financeiro), e os de série viram gráficos numa grade abaixo,
@@ -20,8 +27,14 @@
 import { use, useState } from "react";
 import { Coins, Hash, Lock } from "lucide-react";
 import { useData, useSession } from "@/dados/store";
-import { widgetReading, type WidgetReading } from "@n1/dominio/derive";
+import { LIMITES_CRM } from "@n1/dominio/crm/comum";
+import { widgetReading, type LeituraDoCrmParaPainel, type WidgetReading } from "@n1/dominio/derive";
 import type { Widget } from "@n1/dominio/types";
+import { ErroDeApi } from "@/dados/crm/cliente-crm";
+import { useContatos } from "@/dados/crm/contatos";
+import { useConversas } from "@/dados/crm/conversas";
+import { useEtapasDosFunis, useFunis } from "@/dados/crm/funis";
+import { useNegocios } from "@/dados/crm/negocios";
 import { CampoDeLanterna } from "@/design/lanterna";
 import { useContagem } from "@/design/movimento";
 import { Selo } from "@/features/estrutura/icone-de-tipo";
@@ -49,6 +62,22 @@ export default function PainelPage({ params }: { params: Promise<{ painel: strin
   const [now] = useState(() => new Date());
   const record = state.panels.find((p) => p.id === painel);
 
+  // O CRM do Painel (15-23): só se lê o que algum Widget usa. Os hooks vêm antes de qualquer retorno.
+  const alvos = new Set(record?.widgets.map((widget) => widget.dataSource?.target));
+  const precisaDeNegocios = alvos.has("deal");
+  const negocios = useNegocios({ limite: LIMITES_CRM.paginaMaxima }, { pausado: !precisaDeNegocios });
+  const conversas = useConversas({ limite: LIMITES_CRM.paginaMaxima }, { pausado: !alvos.has("conversation") });
+  const contatos = useContatos({ limite: LIMITES_CRM.paginaMaxima }, { pausado: !alvos.has("contact") });
+  const funis = useFunis({ limite: LIMITES_CRM.paginaMaxima }, { pausado: !precisaDeNegocios });
+  // As Etapas dão nome à barra "por Etapa": só dos Funis que algum Widget lê dessa forma.
+  const porEtapa = (record?.widgets ?? []).filter(
+    (widget) => widget.dataSource?.target === "deal" && [...widget.dimensions, ...widget.fixedFilters].some((item) => item.attribute === "stageId"),
+  );
+  const funisDasEtapas = porEtapa.flatMap((widget) =>
+    widget.dataSource?.scopeType === "funnel" ? widget.dataSource.scopeIds : (funis.data?.itens.map((item) => item.funil.id) ?? []),
+  );
+  const etapas = useEtapasDosFunis(funisDasEtapas, { pausado: porEtapa.length === 0 });
+
   if (!record) {
     return (
       <div className="flex h-full flex-col">
@@ -66,7 +95,29 @@ export default function PainelPage({ params }: { params: Promise<{ painel: strin
   const anchor = record.anchor;
 
   // Cada Widget lido uma vez; a leitura decide a peça (ladrilho ou gráfico).
-  const leituras = record.widgets.map((widget) => ({ widget, reading: widgetReading(state, widget, memberId, now) }));
+  const lista = {
+    deal: { busca: negocios, itens: negocios.data?.itens ?? [], total: negocios.data?.total ?? 0 },
+    conversation: { busca: conversas, itens: conversas.data?.itens ?? [], total: conversas.data?.total ?? 0 },
+    contact: { busca: contatos, itens: contatos.data?.itens ?? [], total: contatos.data?.total ?? 0 },
+  } as const;
+  const leituras = record.widgets.map((widget) => {
+    const alvo = widget.dataSource?.target;
+    const doCrm = alvo === "deal" || alvo === "conversation" || alvo === "contact" ? lista[alvo] : undefined;
+    // Sem a lista (carregando ou recusada) o Widget não mostra zero: zero e "ainda não sei" são respostas diferentes.
+    if (doCrm?.busca.error) return { widget, reading: leituraDeFalha(doCrm.busca.error) };
+    const semEtapas = porEtapa.includes(widget) && etapas.isLoading;
+    if (doCrm && (doCrm.busca.isLoading || semEtapas)) return { widget, reading: { kind: "texto", content: "Lendo os dados do CRM…" } satisfies WidgetReading };
+    const crm: LeituraDoCrmParaPainel = {
+      negocios: lista.deal.itens,
+      conversas: lista.conversation.itens,
+      contatos: lista.contact.itens,
+      funis: (funis.data?.itens ?? []).map((item) => item.funil),
+      etapas: etapas.data ?? [],
+      // "Parcial" é do alvo do Widget: Contatos a mais não mancham um Widget de Negócios.
+      parcial: doCrm !== undefined && doCrm.total > doCrm.itens.length,
+    };
+    return { widget, reading: widgetReading(state, widget, memberId, now, crm) };
+  });
   const ladrilhos = leituras.filter(({ widget, reading }) => widget.viewType === "numero" || reading.kind === "numero" || reading.kind === "moeda");
   const graficos = leituras.filter((item) => !ladrilhos.includes(item));
   const tipoAncora = anchor?.type ?? "workspace";
@@ -134,6 +185,22 @@ export default function PainelPage({ params }: { params: Promise<{ painel: strin
         ) : null}
       </CorpoDeTela>
     </div>
+  );
+}
+
+/** O Papel que não lê o recurso é "sem acesso" (T-15-56); qualquer outra falha é dita, não escondida. */
+function leituraDeFalha(erro: Error): WidgetReading {
+  if (erro instanceof ErroDeApi && erro.status === 403) return { kind: "semAcesso" };
+  return { kind: "texto", content: "Não foi possível ler os dados do CRM para este Widget. Tente de novo em instantes." };
+}
+
+/** A marca de leitura parcial (T-15-57): o número vale só para o que foi lido. */
+function NotaDeParcial({ reading }: { readonly reading: WidgetReading }) {
+  if (!("parcial" in reading) || !reading.parcial) return null;
+  return (
+    <span className="app-meta app-numero block" style={{ color: "var(--aviso)" }}>
+      Parcial: primeiros {LIMITES_CRM.paginaMaxima}
+    </span>
   );
 }
 
@@ -269,6 +336,7 @@ function Ladrilho({
         {"label" in reading ? reading.label : ROTULO_DE_VISTA[widget.viewType]}
         {filtros ? ` · ${filtros}` : ""}
       </span>
+      <NotaDeParcial reading={reading} />
     </div>
   );
 }
@@ -351,6 +419,7 @@ function CorpoDoGrafico({ widget, reading, formatMoney, formatNumber }: { readon
           Mostrando {reading.shown} de {reading.total}.
         </p>
       ) : null}
+      <NotaDeParcial reading={reading} />
     </>
   );
 }

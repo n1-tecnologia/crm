@@ -3,13 +3,14 @@
  * serviço devolve `{ ok: false, status, ... }` e a rota o traduz em HTTP.
  *
  * 400 = forma (zod, `setErrorHandler`), 403 = Papel, 404 = não existe NESTE
- * Espaço, 409 = regra ou integridade.
+ * Espaço, 409 = regra ou integridade, 422 = o pedido é bem formado mas o arquivo
+ * anexado não serve (tipo, tamanho, Conversa ou Canal — 16-09).
  */
 
 import type { BloqueiosCrm } from "@n1/dominio/crm/comum";
 
 export interface Recusa {
-  readonly status: 400 | 403 | 404 | 409;
+  readonly status: 400 | 403 | 404 | 409 | 422;
   readonly error: string;
   readonly codigo?: string;
   readonly campo?: string;

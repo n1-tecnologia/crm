@@ -43,6 +43,7 @@ import {
 import { conhecimentoAcessivel, disponibilidadeDaConcessao, disponibilidadeDoAgente, versaoCorrenteDaHabilidade, versaoCorrenteDoAgente } from "@n1/dominio/derive-ia";
 import type { AgentExecution, CollectionGrant, SkillGrant } from "@n1/dominio/types";
 import { useAvisos, useNomeDoAtor } from "@/features/shell/ficha";
+import { useConversasDoAgente } from "./conversas-do-agente";
 import { AUTONOMY_LABEL, EFFECT_CLASS_LABEL, EXECUTION_ORIGIN_LABEL, EXECUTION_STATE_LABEL, LIFECYCLE_LABEL } from "@/features/shell/format";
 import { marcarSeMuda, useNavegar } from "@/features/shell/navegacao";
 import { useRecente } from "@/features/shell/recente";
@@ -113,6 +114,8 @@ export function AgenteCompleto({ agentId }: { readonly agentId: string }) {
   const [ferramentaTocada, setFerramentaTocada] = useState<{ readonly id: string; readonly acao: "permitir" | "retirar" } | null>(null);
 
   const record = state.agents.find((a) => a.id === agentId);
+  // As Conversas atribuídas vivem em plataforma.conversas: o total vem da api, não do store (15-21).
+  const conversasAtribuidas = useConversasDoAgente(record?.id);
   if (!record) {
     return (
       <div className="flex h-full flex-col">
@@ -170,8 +173,7 @@ export function AgenteCompleto({ agentId }: { readonly agentId: string }) {
   const versoes = [...record.versions].sort((a, b) => b.number - a.number);
   const activity = state.activity.filter((a) => a.objectId === record.id);
   const tarefasAtribuidas = state.tasks.filter((t) => t.assignees.some((a) => a.kind === "agent" && a.id === record.id)).length;
-  const conversasAtribuidas = state.conversations.filter((c) => c.assignee?.kind === "agent" && c.assignee.id === record.id).length;
-  const liberacao = `${tarefasAtribuidas} Tarefa(s) e ${conversasAtribuidas} Conversa(s) ficam sem este Responsável no ato (RN-AGE-20)`;
+  const liberacao = `${tarefasAtribuidas} Tarefa(s) e ${conversasAtribuidas ?? "as"} Conversa(s) ficam sem este Responsável no ato (RN-AGE-20)`;
 
   const fechar = () => setDialogo(null);
   const ativar = () => report(run((data, me) => ativarAgente(data, me, record.id)), `${record.name} ativado.`);

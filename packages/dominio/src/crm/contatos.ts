@@ -12,11 +12,21 @@
 import { fail, ok, type OperationResult } from "../state";
 import { normalizarIdentificadorDeContato } from "./normalizacao";
 import type { CivilDate } from "../types/primitives";
-import type { BloqueiosCrm, CamposAdicionais, Endereco, EstadoCrm, ModoDeCriacao } from "./comum";
+import { ESTADOS_CRM, type BloqueiosCrm, type CamposAdicionais, type Endereco, type EstadoCrm, type ModoDeCriacao } from "./comum";
 
 /** Os tipos de Identificador de Contato (007:110). `telefone` é discável; `whatsapp` é a identidade que um Canal resolve. */
 export const TIPOS_IDENTIFICADOR_CONTATO = ["telefone", "email", "whatsapp", "instagram"] as const;
 export type TipoIdentificadorContato = (typeof TIPOS_IDENTIFICADOR_CONTATO)[number];
+
+/**
+ * O ciclo de vida do Contato: o de todo registro do CRM mais `mesclado` (011).
+ * `mesclado` é terminal e somente leitura (RN-CON-14): o Contato absorvido fica
+ * apontando o sobrevivente por `mescladoEmId`, e o sobrevivente nunca é `mesclado`
+ * (sem cadeia). Só o Contato tem este estado, por isso `ESTADOS_CRM` não muda: ele
+ * alimenta o filtro de lista de todos os recursos, e uma lista nunca traz `mesclado`.
+ */
+export const ESTADOS_DO_CONTATO = [...ESTADOS_CRM, "mesclado"] as const;
+export type EstadoDoContato = EstadoCrm | "mesclado";
 
 export interface Contato {
   readonly id: string;
@@ -32,11 +42,27 @@ export interface Contato {
   readonly origem: string | null;
   readonly qualificacao: string | null;
   readonly modoCriacao: ModoDeCriacao;
-  readonly estado: EstadoCrm;
+  readonly estado: EstadoDoContato;
+  /** O sobrevivente, quando `estado` é `mesclado` (RN-CON-14); `null` em qualquer outro estado. */
+  readonly mescladoEmId: string | null;
+  /** Quando a mesclagem aconteceu (ISO 8601); anda junto com `mescladoEmId`. */
+  readonly mescladoEm: string | null;
   readonly proprietarioId: string;
   readonly criadoPor: string;
   readonly criadoEm: string;
   readonly atualizadoEm: string;
+}
+
+/**
+ * Um Contato que uma operação decidiu criar: o id é gerado pelo servidor antes
+ * da operação e o `aoConfirmar` faz o INSERT no mesmo commit. A forma é a mesma
+ * do `ContatoACriar` de `apps/api/src/rotas/gesto-no-crm/tipos.ts` (a
+ * compatibilidade é estrutural: o domínio não importa a api).
+ */
+export interface ContatoACriar {
+  readonly id: string;
+  readonly nome: string;
+  readonly whatsapp: string;
 }
 
 export interface IdentificadorDeContato {
@@ -216,4 +242,33 @@ export function fraseDeContatoBloqueado(bloqueios: BloqueiosCrm): string {
 /** RN-CON-11: o Identificador já é de outro Contato do Espaço. */
 export function fraseDeIdentificadorEmUso(tipo: TipoIdentificadorContato, valor: string, nomeDoDetentor: string): string {
   return `${ROTULO_DO_TIPO_DE_IDENTIFICADOR[tipo]} ${valor} já pertence ao Contato ${nomeDoDetentor}. Abra esse Contato ou use outro valor.`;
+}
+
+/**
+ * DO-CON-12: transferir um Identificador de um Contato para outro. Só a resolução futura
+ * muda de dono: as Conversas e as Mensagens passadas ficam com a origem. A regra recusa:
+ *   - a origem `mesclado` (RN-CON-14: somente leitura);
+ *   - o mesmo Contato como destino;
+ *   - o destino `mesclado` (a frase manda para o Contato que ficou) ou na lixeira;
+ *   - a origem que ficaria sem Nome e sem Identificador (INV-CON-01, `validarContato`).
+ * O destino `arquivado` recebe, como já recebe Negócio. `field` é `paraContatoId` nas recusas
+ * do destino, para a tela marcar o campo; a de INV-CON-01 traz o `field` de `validarContato`.
+ */
+export function validarTransferenciaDeIdentificador(entrada: {
+  readonly origem: Pick<Contato, "id" | "estado" | "nome" | "sobrenome">;
+  readonly destino: Pick<Contato, "id" | "estado">;
+  readonly restantesDaOrigem: readonly Pick<IdentificadorDeContato, "tipo" | "valor">[];
+}): OperationResult<void> {
+  const { origem, destino, restantesDaOrigem } = entrada;
+  if (origem.estado === "mesclado") {
+    return fail("Este Contato foi mesclado e agora é somente leitura. Abra o Contato que ficou.");
+  }
+  if (destino.id === origem.id) return fail("Escolha outro Contato: o Identificador já é deste.", "paraContatoId");
+  if (destino.estado === "mesclado") {
+    return fail("Este Contato foi mesclado: transfira para o Contato que ficou.", "paraContatoId");
+  }
+  if (destino.estado === "na_lixeira") {
+    return fail("O Contato de destino está na lixeira. Restaure-o ou escolha outro.", "paraContatoId");
+  }
+  return validarContato({ nome: origem.nome, identificadores: restantesDaOrigem });
 }

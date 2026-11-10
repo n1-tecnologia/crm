@@ -24,7 +24,6 @@ function medicao(extra: Partial<MedicaoLida> = {}): MedicaoLida {
     inicioMs: 1,
     travaMs: 2,
     hidratarMs: 10,
-    canaisMs: 1,
     operacaoMs: 1,
     atualizaMs: 2,
     gravarMs: 3,
@@ -114,10 +113,10 @@ describe("resumirGesto", () => {
   });
 
   it("foraDasEtapasMs = totalMs - (soma das etapas de executar + recorteMs), sem contar atualizaMs duas vezes", () => {
-    // etapas de executar (sem atualizaMs, que já está dentro de travaMs): 1+1+2+hidratar+1+1+3+1+1 = 11+hidratar; recorte 2.
-    // amostra 1: 30 - (21 + 2) = 7; amostra 2: 40 - (31 + 2) = 7; amostra 3: 50 - (41 + 2) = 7.
+    // etapas de executar (sem atualizaMs, que já está dentro de travaMs): 1+1+2+hidratar+1+3+1+1 = 10+hidratar; recorte 2.
+    // amostra 1: 30 - (20 + 2) = 8; amostra 2: 40 - (30 + 2) = 8; amostra 3: 50 - (40 + 2) = 8.
     const resumo = resumirGesto("criar Lista", "createList", amostras);
-    expect(resumo.foraDasEtapasMs).toEqual({ mediana: 7, pior: 7 });
+    expect(resumo.foraDasEtapasMs).toEqual({ mediana: 8, pior: 8 });
   });
 
   it("regimes vazio sem o campo, e o que as linhas trazem quando trazem", () => {
@@ -144,13 +143,12 @@ describe("ETAPAS_DA_GRAVACAO e LIMITE_DO_HIDRATAR_MS", () => {
     expect(LIMITE_DO_HIDRATAR_MS).toBe(300);
   });
 
-  it("lista as dez etapas de executar, depois recorteMs e totalMs", () => {
+  it("lista as nove etapas de executar, depois recorteMs e totalMs", () => {
     expect(ETAPAS_DA_GRAVACAO).toEqual([
       "conexaoMs",
       "inicioMs",
       "travaMs",
       "hidratarMs",
-      "canaisMs",
       "operacaoMs",
       "atualizaMs",
       "gravarMs",

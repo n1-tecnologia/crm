@@ -16,9 +16,10 @@ import type {
   ChatSession,
   Id,
   Model,
+  NomesDasAncoras,
   Skill,
 } from "../types";
-import { contactDisplayName, effectiveListConfig, memberSeesTask } from "../derive";
+import { effectiveListConfig, memberSeesTask } from "../derive";
 import { agenteEfetivoDaSessao, recusaDeTrocarModelo } from "../derive-ia";
 import { memberActor, nextId, recordActivity, systemActor } from "./activity";
 import { addTaskComment, changeTaskStatus } from "./tasks";
@@ -29,6 +30,7 @@ import { impressaoDeLancamento, lancamentoSemCodigo } from "./financeiro-base";
 import { TEXTOS_DA_CONFERENCIA } from "./financeiro-textos";
 import { nomeDeAgenteEmUso } from "./ia/agentes";
 import { nomeDeAutomacaoColide } from "./ia/automacoes-editor";
+import { nomeLidoDoCrm } from "./ia/nomes-das-ancoras";
 import { validarAutomacao } from "./ia/automacoes-validacao";
 import { recusaDeAdministrarAutomacao, recusaDeGovernarAgente } from "./ia/permissoes-ia";
 
@@ -686,6 +688,12 @@ export function createChatSession(
     /** A Habilidade escolhida para a Sessão. */
     readonly skillId?: Id;
   },
+  /**
+   * O nome dos registros do CRM novo que a Âncora cita (Negócio, Contato, Empresa, Conversa),
+   * lido pelo servidor das tabelas. Ausente vale `{}`: o servidor SEMPRE a preenche; sem ela
+   * (a web, até as telas da IA a mandarem) a Âncora no CRM é recusada.
+   */
+  nomes: NomesDasAncoras = {},
 ): OperationResult<ChatSession> {
   const member = state.members.find((m) => m.id === actingMemberId);
   if (!member || member.state !== "ativo") {
@@ -726,7 +734,7 @@ export function createChatSession(
     if (input.anchor.type === "task" && !memberSeesTask(state, actingMemberId, input.anchor.id)) {
       return fail("O registro da Âncora não foi encontrado.", "ancora");
     }
-    const name = anchorName(state, input.anchor.type, input.anchor.id);
+    const name = anchorName(state, input.anchor.type, input.anchor.id, nomes);
     if (name === undefined) return fail("O registro da Âncora não foi encontrado.", "ancora");
     anchor = { type: input.anchor.type, id: input.anchor.id, nameAtTheTime: name };
   }
@@ -781,6 +789,8 @@ export function configureChatSession(
     readonly mainAgentId?: Id | null;
     readonly anchor?: { readonly type: ChatAnchor["type"]; readonly id: Id } | null;
   },
+  /** Como em `createChatSession`: o nome dos registros do CRM novo que a Âncora cita; ausente vale `{}`. */
+  nomes: NomesDasAncoras = {},
 ): OperationResult<ChatSession> {
   const session = state.chatSessions.find((s) => s.id === sessionId);
   if (!session) return fail("Sessão não encontrada.");
@@ -827,7 +837,7 @@ export function configureChatSession(
       if (input.anchor.type === "task" && !memberSeesTask(state, actingMemberId, input.anchor.id)) {
         return fail("O registro da Âncora não foi encontrado.", "ancora");
       }
-      const name = anchorName(state, input.anchor.type, input.anchor.id);
+      const name = anchorName(state, input.anchor.type, input.anchor.id, nomes);
       if (name === undefined) return fail("O registro da Âncora não foi encontrado.", "ancora");
       ancora = { type: input.anchor.type, id: input.anchor.id, nameAtTheTime: name };
     }
@@ -981,20 +991,19 @@ export function sendChatMessage(
   return ok(message, message.id);
 }
 
-function anchorName(state: DataState, type: ChatAnchor["type"], id: Id): string | undefined {
+/**
+ * O nome da Âncora. Negócio, Contato, Empresa e Conversa vivem nas tabelas do CRM novo
+ * (Fase 15, 3.4.9): o nome vem de `nomes`, que o servidor leu; os demais tipos seguem no `state`.
+ */
+function anchorName(state: DataState, type: ChatAnchor["type"], id: Id, nomes: NomesDasAncoras): string | undefined {
   switch (type) {
     case "task":
       return state.tasks.find((t) => t.id === id)?.title;
     case "deal":
-      return state.deals.find((d) => d.id === id)?.title;
-    case "contact": {
-      const contact = state.contacts.find((c) => c.id === id);
-      return contact ? contactDisplayName(contact) : undefined;
-    }
+    case "contact":
     case "company":
-      return state.companies.find((c) => c.id === id)?.legalName;
     case "conversation":
-      return state.conversations.find((c) => c.id === id)?.title;
+      return nomeLidoDoCrm(nomes, id);
     case "knowledgeDocument":
       return state.documents.find((d) => d.id === id)?.title;
     case "space":

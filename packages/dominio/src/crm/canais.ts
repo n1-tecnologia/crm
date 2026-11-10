@@ -22,7 +22,7 @@
 import { fail, ok, type OperationResult } from "../state";
 import { FORMA_DO_IDENTIFICADOR, identificadorCanonico } from "../operations/canais";
 import { PROVEDORES, PROVEDORES_DE_CANAL, type TipoComProvedor } from "../provedores-de-canal";
-import type { ProvedorDeCanal } from "../types/crm";
+import type { ProvedorDeCanal } from "./capacidades";
 import { LIMITES_CRM } from "./comum";
 
 export const CONEXOES_DO_CANAL = ["conectada", "desconectada", "com_erro"] as const;
@@ -125,20 +125,69 @@ export function validarEdicaoDeCanal(edicao: EdicaoDeCanal): OperationResult<Edi
  * conecta depois. Sem provedor real, a conexão é simulada e MARCADA como
  * simulada (D-08) — `conexaoSimulada` só vale com `conectada`, e desconectar
  * apaga a marca.
+ *
+ * `conexao_confirmada` (16-13, D-16-05) é a conexão de verdade: o provedor
+ * confirmou a instância aberta e o número conferiu. Leva a `conectada` com
+ * `conexaoSimulada: false` e, ao contrário de `simular_conexao`, aceita o Canal
+ * que já está `conectada` (rodar o comando de novo troca o segredo do webhook e
+ * tira a marca de simulada). `conectar` (QR) e `conexao_perdida`
+ * (`CONNECTION_UPDATE`) ficam para a Sessão 4.
+ *
+ * `simular_conexao` (CR-01, 16-17) só vale para o Canal que NUNCA foi ligado a um
+ * provedor real (D-16-03: a demonstração da Caixa em Canal simulado). O Canal
+ * ligado (`FatosDaConexao.ligadoAoProvedor`) não volta a simulado: a saída dele
+ * cairia no provedor de teste e a entrada da Evolution seria descartada. Reconectar
+ * o Canal real é `canal:ligar-evolution` (a Sessão 4 troca pelo "Conectar" com QR).
  */
-export type AcaoDeConexao = "simular_conexao" | "desconectar";
+export type AcaoDeConexao = "simular_conexao" | "desconectar" | "conexao_confirmada";
+
+/**
+ * O que o domínio não sabe sozinho e quem decide a transição precisa trazer
+ * (CR-01, 16-17). Obrigatório em `simular_conexao`; ignorado nas outras ações.
+ */
+export interface FatosDaConexao {
+  /** O Canal tem credencial ativa do próprio provedor no cofre (o que `canal:ligar-evolution` guarda). */
+  readonly ligadoAoProvedor: boolean;
+}
+
+/**
+ * O Canal como a ficha o lê (`GET /canais/:id`): o `Canal` mais o fato da ligação ao provedor. Não é coluna de
+ * `plataforma.canais`; a lista e as escritas seguem devolvendo `Canal`.
+ */
+export interface CanalNaFicha extends Canal {
+  /** O Canal tem credencial ativa do próprio provedor no cofre; vem só na leitura da ficha, `GET /canais/:id`, e não é coluna de `plataforma.canais`. */
+  readonly ligadoAoProvedor: boolean;
+}
+
+export const FRASE_DO_CANAL_REAL =
+  "Este Canal já foi ligado a um provedor real e não volta a ser simulado. Para reconectá-lo, ligue-o de novo ao provedor.";
+
+export const FRASE_SEM_FATOS_DA_CONEXAO =
+  "Não foi possível conferir se o Canal está ligado a um provedor. Recarregue e tente de novo.";
 
 export function proximaConexao(
   canal: Pick<Canal, "conexao" | "estado">,
   acao: AcaoDeConexao,
+  fatos?: FatosDaConexao,
 ): OperationResult<{ readonly conexao: ConexaoDoCanal; readonly conexaoSimulada: boolean }> {
+  if (acao === "conexao_confirmada") {
+    if (canal.estado === "arquivado") return fail("Um Canal arquivado não se conecta.");
+    return ok({ conexao: "conectada", conexaoSimulada: false });
+  }
   if (acao === "simular_conexao") {
     if (canal.estado === "arquivado") return fail("Um Canal arquivado não se conecta.");
     if (canal.conexao === "conectada") return fail("O Canal já está conectado.");
+    if (fatos === undefined) return fail(FRASE_SEM_FATOS_DA_CONEXAO);
+    if (fatos.ligadoAoProvedor) return fail(FRASE_DO_CANAL_REAL);
     return ok({ conexao: "conectada", conexaoSimulada: true });
   }
   if (canal.conexao === "desconectada") return fail("O Canal já está desconectado.");
   return ok({ conexao: "desconectada", conexaoSimulada: false });
+}
+
+/** A mesma regra de `simular_conexao`, para a tela decidir se oferece o botão. */
+export function podeSimularConexao(canal: Pick<CanalNaFicha, "conexao" | "estado" | "ligadoAoProvedor">): boolean {
+  return proximaConexao(canal, "simular_conexao", { ligadoAoProvedor: canal.ligadoAoProvedor }).ok;
 }
 
 /**
@@ -149,4 +198,37 @@ export function proximaConexao(
 export function validarArquivamento(canal: Pick<Canal, "estado">): OperationResult<void> {
   if (canal.estado === "arquivado") return fail("O Canal já está arquivado.");
   return ok(undefined);
+}
+
+/** Só os dígitos do número que o provedor informa (`5511987654321@s.whatsapp.net`, `5511987654321:12@s.whatsapp.net`, `+55 (11) 98765-4321`). */
+function digitosDoNumero(bruto: string): string {
+  return (bruto.split("@")[0] ?? "").split(":")[0]!.replace(/\D/g, "");
+}
+
+/**
+ * Brasil: o WhatsApp antigo guarda o celular sem o nono dígito (`55` + DDD + 8 dígitos) e o novo com ele
+ * (`55` + DDD + `9` + 8). Tira o `9` depois do DDD para os dois cadastros serem o mesmo número.
+ */
+function semONonoDigito(digitos: string): string {
+  return digitos.length === 13 && digitos.startsWith("55") && digitos[4] === "9" ? digitos.slice(0, 4) + digitos.slice(5) : digitos;
+}
+
+function finalDe(digitos: string): string {
+  return digitos.slice(-4);
+}
+
+/**
+ * O número que o provedor diz estar conectado é o do Canal (16-13, D-16-05): antes de marcar `conectada` de
+ * verdade, uma instância ligada a OUTRO número é recusada. Tolera o nono dígito brasileiro só para não recusar
+ * o número certo; juntar Contatos com e sem o 9 é a 4.4.3 (Sessão 4), não esta função. A frase mostra só o final.
+ */
+export function conferirNumeroConectado(
+  canal: Pick<Canal, "identificadorExterno">,
+  numeroDoProvedor: string,
+): OperationResult<void> {
+  const doProvedor = digitosDoNumero(numeroDoProvedor);
+  const doCanal = digitosDoNumero(canal.identificadorExterno);
+  if (doProvedor === "") return fail("O provedor não informou o número conectado na instância.");
+  if (semONonoDigito(doProvedor) === semONonoDigito(doCanal)) return ok(undefined);
+  return fail(`O número conectado na instância (final ${finalDe(doProvedor)}) não é o deste Canal (final ${finalDe(doCanal)}).`);
 }

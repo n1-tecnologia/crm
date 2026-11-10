@@ -47,6 +47,7 @@ import { PainelDeAnexos } from "@/features/tarefa/anexos";
 import { useId, useRef, useState, type ReactNode } from "react";
 import {
   ArrowRight,
+  BadgeCheck,
   Briefcase,
   Building2,
   CalendarDays,
@@ -82,13 +83,26 @@ import { DescricaoDaTarefa } from "@/features/estrutura/descricao-da-tarefa";
 import { valorDaLinhaDeTempo } from "@/features/estrutura/tempo";
 import { financeProfileOf, valorDaConta } from "@/features/estrutura/financeiro/lens";
 import { CHANNEL_ICON, ConversationThread } from "@/features/crm/conversation-thread";
-import { ContactAvatar } from "@/features/crm/contact-card";
-import { marcarSeMuda, useNavegar } from "@/features/shell/navegacao";
-import { useData, useIdsNaoConfirmados, useRun, useSession } from "@/dados/store";
+import { SeloDoProvedor } from "@/features/crm/selo-do-provedor";
+import { nomeDoAtribuido, ROTULO_DA_SITUACAO, rotuloDaQualificacao, RostoDoContato } from "@/features/estrutura/cartao-conversacional";
 import {
-  actorLabel,
+  criarNegocioDaTarefa,
+  trocarCanalDaTarefa,
+  useConversaAbertaDoPar,
+  useResumoDaTarefa,
+  vincularNegocioATarefa,
+} from "@/dados/crm/tarefas-conversacionais";
+import { LIMITES_CRM } from "@n1/dominio/crm/comum";
+import { ErroDeApi } from "@/dados/crm/cliente-crm";
+import { useCanais } from "@/dados/crm/canais";
+import { useContato } from "@/dados/crm/contatos";
+import { useFunis } from "@/dados/crm/funis";
+import { useNegocios } from "@/dados/crm/negocios";
+import { nomeDe, useNomesDoCrm } from "@/dados/crm/nomes";
+import { marcarSeMuda, useNavegar } from "@/features/shell/navegacao";
+import { useData, useIdsNaoConfirmados, useRehidratar, useRun, useSession } from "@/dados/store";
+import {
   checklistProgress,
-  contactDisplayName,
   containerAdminRefusal,
   effectiveListConfig,
   effectiveLifecycleOfTask,
@@ -96,7 +110,6 @@ import {
   isOverdue,
   memberReachesContainer,
   memberSeesTask,
-  principalCompanyId,
   spawnedOccurrenceOf,
   statusDefinition,
   subtaskProgress,
@@ -107,29 +120,22 @@ import {
   tempoRegistrado,
 } from "@n1/dominio/derive";
 import {
-  canalDaTarefa,
-  contatoDaTarefa,
-  conversaDaTarefa,
+  canaisDaListaQueAlcancamNasTabelas,
   listaConversacional,
-  negocioDaTarefa,
-  canaisDaListaQueAlcancam,
+  vinculosDoCrmDaTarefa,
 } from "@n1/dominio/derive-conversacional";
 import {
-  CHANNEL_CAPABILITIES,
   addChecklist,
   addChecklistItem,
   assignTask,
   changeTaskStatus,
   createTask,
-  criarNegocioDaTarefa,
   removeChecklist,
   removeChecklistItem,
   setChecklistItemDone,
   trashTask,
-  trocarCanalDaTarefa,
   unassignTask,
   updateTask,
-  vincularNegocioATarefa,
   contaSemCliente,
   contaSemResumo,
   guestFieldWriter,
@@ -141,7 +147,6 @@ import {
 import {
   ACTOR_KIND_LABEL,
   CHANNEL_TYPE_LABEL,
-  CONVERSATION_STATE_LABEL,
   OBJECT_TYPE_LABEL,
   PRIORITY_LABEL,
 } from "@/features/shell/format";
@@ -166,6 +171,7 @@ import {
   SidePanel,
   StateSeal,
   StatusPicker,
+  TextArea,
   TextInput,
   Toast,
   cn,
@@ -182,6 +188,9 @@ const FAIXA_DE_AVISO = {
 } as const;
 
 /** O aviso de regra dentro de um Painel: a mesma família da faixa, em caixa. */
+/** O que a ficha mostra no lugar do nome de um Vínculo para o qual `POST /crm/nomes` respondeu `null` (T-15-61). */
+const NOME_INDISPONIVEL = "Registro indisponível";
+
 const AVISO_EM_CAIXA = {
   background: "var(--aviso-lavado)",
   color: "var(--aviso)",
@@ -198,6 +207,7 @@ export function TarefaCompleta({
   const state = useData((data) => data);
   const fmt = useFormat();
   const run = useRun();
+  const rehidratar = useRehidratar();
   // D-15: a Subtarefa que o servidor ainda não confirmou aparece sem link.
   const naoConfirmados = useIdsNaoConfirmados();
   const { memberId } = useSession();
@@ -261,6 +271,13 @@ export function TarefaCompleta({
   const [tituloDoNegocio, setTituloDoNegocio] = useState("");
   const [valorDoNegocio, setValorDoNegocio] = useState("");
   const [erroDoNegocio, setErroDoNegocio] = useState<string | null>(null);
+  // 14-16: os três gestos falam com a api; cada um espera a resposta antes de re-hidratar (A5).
+  const [criandoNegocioNaApi, setCriandoNegocioNaApi] = useState(false);
+  /** O Canal escolhido no seletor, ainda por confirmar: trocar pode pedir a primeira Mensagem (D-07). */
+  const [canalNovo, setCanalNovo] = useState<string | null>(null);
+  const [mensagemDoCanal, setMensagemDoCanal] = useState("");
+  const [erroDoCanal, setErroDoCanal] = useState<{ readonly texto: string; readonly campo: string | undefined } | null>(null);
+  const [trocandoCanal, setTrocandoCanal] = useState(false);
   const [navegar] = useNavegar();
   // Os outros parâmetros ficam: no popup, `?tarefa=` é o que o mantém aberto.
   const openConversion = (checklistId: string, itemId: string) => {
@@ -274,6 +291,33 @@ export function TarefaCompleta({
     router.replace(next.size > 0 ? `${pathname}?${next}` : pathname, { scroll: false });
   };
 
+  // 14-15 (3.3.3): o que a ficha MOSTRA do CRM (Contato, Canal, Conversa, Negócio) vem do resumo da
+  // api. Dentro do popup da Lista ele sai da resposta única dela; aberta sozinha, a ficha faz a própria
+  // chamada. Uma Lista que não é conversacional não pergunta nada. O hook fica antes do retorno antecipado.
+  const listaDaTarefa = state.tasks.find((t) => t.id === tarefa)?.listId;
+  const resumo = useResumoDaTarefa(tarefa, { pausado: listaDaTarefa === undefined || !listaConversacional(state, listaDaTarefa) });
+  // 15-25 (T-15-61): os nomes dos Vínculos para Negócio, Contato e Conversa vêm de `POST /crm/nomes`, numa chamada só;
+  // `null` da api é "Registro indisponível" (sem registro ou sem permissão, a resposta não distingue). O hook fica antes do retorno antecipado.
+  const alvosDosVinculos = state.links
+    .filter((l) => l.fromId === tarefa || l.toId === tarefa)
+    .flatMap((l) => {
+      const outroTipo = l.fromId === tarefa ? l.toType : l.fromType;
+      const outroId = l.fromId === tarefa ? l.toId : l.fromId;
+      return outroTipo === "deal" || outroTipo === "contact" || outroTipo === "conversation" ? [{ tipo: outroTipo, id: outroId }] : [];
+    });
+  const nomesDosVinculos = useNomesDoCrm(alvosDosVinculos);
+  // 14-16: o que os gestos de escrita oferecem (Canais, Negócios, Funis) vem das tabelas pela api, pelo Contato
+  // do resumo (o sobrevivente, se foi mesclado). Só uma Tarefa conversacional com Contato pergunta; os Funis, só com o diálogo aberto.
+  const contatoIdDoResumo = listaDaTarefa !== undefined && listaConversacional(state, listaDaTarefa) ? resumo?.contato?.id : undefined;
+  const detalheDoContato = useContato(contatoIdDoResumo);
+  const canaisDasTabelas = useCanais({ estado: "ativo", limite: LIMITES_CRM.paginaMaxima }, { pausado: contatoIdDoResumo === undefined });
+  const negociosDoContato = useNegocios(
+    { contatoId: contatoIdDoResumo ?? "", situacao: "aberto", limite: LIMITES_CRM.paginaMaxima },
+    { pausado: contatoIdDoResumo === undefined },
+  );
+  const funisDasTabelas = useFunis({ estado: "ativo", limite: LIMITES_CRM.paginaMaxima }, { pausado: !criandoNegocio });
+  // D-07: trocar para um Canal em que o Contato não tem Conversa aberta pede a primeira Mensagem.
+  const conversaDoCanalNovo = useConversaAbertaDoPar(contatoIdDoResumo, canalNovo ?? undefined, { pausado: canalNovo === null });
   // B38a — o que o Membro não alcança não existe para ele: a mesma tela de "não encontrada".
   const task = state.tasks.find(
     (t) => t.id === tarefa && memberSeesTask(state, memberId, t.id),
@@ -333,13 +377,38 @@ export function TarefaCompleta({
    * Contato, a Conversa (e por ela o Canal) e o Negócio, se houver. Uma
    * Tarefa conversacional SEM Contato cai no layout de sempre com um aviso —
    * o fio não tem com quem ser.
+   *
+   * 14-15: a seção "CRM" e o aviso leem o RESUMO da api (`resumo`); a Conversa
+   * é o id do Vínculo. 15-25 (3.4.2): o fio de Mensagens e o layout de três
+   * colunas também: o Contato é o do resumo (o sobrevivente, se foi mesclado) e,
+   * enquanto o resumo não chega, o do Vínculo; o Canal do fio é o do resumo. Nada
+   * disto olha o CRM antigo do estado (Contatos, Conversas, Canais): os
+   * ids são os do CRM novo e quem confere se existem é a api. Os três gestos de
+   * escrita (trocar o Canal, ligar o Negócio, criar o Negócio) falam com a api
+   * (14-16) e decidem pelo resumo. Nenhuma exibição cai para a leitura antiga
+   * quando o resumo vem vazio (D-01).
    */
   const conversacional = listaConversacional(state, task.listId);
-  const contato = conversacional ? contatoDaTarefa(state, task) : undefined;
-  const conversa = contato ? conversaDaTarefa(state, task) : undefined;
-  const canal = contato ? canalDaTarefa(state, task) : undefined;
-  const negocio = contato ? negocioDaTarefa(state, task) : undefined;
-  const fichaConversacional = contato !== undefined;
+  const contatoDoResumo = resumo?.contato ?? undefined;
+  const canalDoResumo = resumo?.canal ?? undefined;
+  const negocioDoResumo = resumo?.negocio ?? undefined;
+  // Fase 15 (D-15-05): a Empresa, a qualificação (rótulo do Catálogo) e a Conversa (estado e Atribuído) vêm do mesmo resumo.
+  // A temperatura do Contato não volta (D-15-06).
+  const empresaDoResumo = resumo?.empresa ?? undefined;
+  const qualificacaoDoResumo = rotuloDaQualificacao(state, resumo?.qualificacaoId ?? null);
+  const conversaDoResumo = resumo?.conversa ?? undefined;
+  const nomeDoAtribuidoDaConversa = conversaDoResumo?.atribuido ? nomeDoAtribuido(state, conversaDoResumo.atribuido) : undefined;
+  const semFunil = funisDasTabelas.data !== undefined && funisDasTabelas.data.itens.length === 0;
+  const vinculosDoCrm = conversacional ? vinculosDoCrmDaTarefa(state, task) : undefined;
+  const conversaId = vinculosDoCrm?.conversaId;
+  /*
+    O Contato do fio. Com o resumo na mão, vale a palavra dele: `contato: null` é
+    um Contato que a api não conhece neste Espaço, e a ficha cai no layout de
+    sempre com o aviso. Sem o resumo (a chegar, ou a api fora) o fio segue o
+    Vínculo e dá a própria resposta.
+  */
+  const contatoIdDoFio = vinculosDoCrm === undefined ? undefined : resumo !== undefined ? resumo.contato?.id : vinculosDoCrm.contatoId;
+  const fichaConversacional = contatoIdDoFio !== undefined;
 
   const blockReason = terminalStatusBlockReason(state, task);
   // O que impede sair do Status atual, dito na tela e não só no hover dos chips.
@@ -521,9 +590,9 @@ export function TarefaCompleta({
               {
                 label: "Abrir na Caixa de Entrada",
                 onSelect: () => {
-                  if (conversa) navegar(`/crm/caixa-de-entrada/${conversa.id}`);
+                  if (conversaId) navegar(`/crm/caixa-de-entrada/${conversaId}`);
                 },
-                ...(conversa ? {} : { disabledReason: "Esta Tarefa ainda não tem Conversa." }),
+                ...(conversaId ? {} : { disabledReason: "Esta Tarefa ainda não tem Conversa." }),
               },
               {
                 label: "Criar Negócio a partir desta Tarefa",
@@ -536,11 +605,13 @@ export function TarefaCompleta({
                 },
                 ...(somenteLeitura
                   ? { disabledReason: somenteLeitura }
-                  : !contato
-                    ? { disabledReason: "Esta Tarefa não tem Contato vinculado." }
-                    : negocio
-                      ? { disabledReason: "Esta Tarefa já tem Negócio vinculado." }
-                      : {}),
+                  : resumo === undefined
+                    ? { disabledReason: "Lendo o Contato e o Negócio desta Tarefa…" }
+                    : !contatoDoResumo
+                      ? { disabledReason: "Esta Tarefa não tem Contato vinculado." }
+                      : negocioDoResumo
+                        ? { disabledReason: "Esta Tarefa já tem Negócio vinculado." }
+                        : {}),
               },
             ]
           : []),
@@ -692,66 +763,142 @@ export function TarefaCompleta({
           onCancel={() => setConfirmandoStatus(null)}
         />
       ) : null}
-      {/* C35 — o Negócio nasce do Contato da Tarefa, na 1ª Etapa do Funil, já vinculado a ela. */}
-      {contato ? (
+      {/* C35 — o Negócio nasce do Contato da Tarefa, na 1ª Etapa do Funil, já vinculado a ela (14-16: `POST .../negocio/novo`). */}
+      {contatoDoResumo ? (
         <ConfirmDialog
           open={criandoNegocio}
           title="Criar Negócio a partir desta Tarefa"
-          description={`O Negócio nasce com ${contactDisplayName(contato)} na primeira Etapa do Funil escolhido e fica vinculado a esta Tarefa.`}
+          description={`O Negócio nasce com ${contatoDoResumo.nome} na primeira Etapa do Funil escolhido e fica vinculado a esta Tarefa.`}
           confirmLabel="Criar Negócio"
           wide
-          {...(funilDoNegocio === "" ? { confirmDisabledReason: "Escolha o Funil." } : {})}
+          {...(criandoNegocioNaApi
+            ? { confirmDisabledReason: "Criando…" }
+            : semFunil
+              ? { confirmDisabledReason: "Crie um Funil primeiro." }
+              : funilDoNegocio === ""
+                ? { confirmDisabledReason: "Escolha o Funil." }
+                : {})}
+          confirmCarregando={criandoNegocioNaApi}
           onConfirm={() => {
-            const result = run((data, me) =>
-              criarNegocioDaTarefa(data, me, task.id, {
-                funnelId: funilDoNegocio,
-                ...(tituloDoNegocio.trim() ? { title: tituloDoNegocio.trim() } : {}),
-                ...(valorDoNegocio.trim() ? { value: { amount: Number(valorDoNegocio), currency: "BRL" } } : {}),
-              }),
-            );
-            if (!result.ok) {
-              setErroDoNegocio(result.error);
-              return;
-            }
-            setCriandoNegocio(false);
-            report(result, `Negócio criado: ${result.value.deal.title}.`);
+            setErroDoNegocio(null);
+            setCriandoNegocioNaApi(true);
+            void criarNegocioDaTarefa(task.id, {
+              funilId: funilDoNegocio,
+              ...(tituloDoNegocio.trim() ? { titulo: tituloDoNegocio.trim() } : {}),
+              ...(valorDoNegocio.trim() ? { valor: valorDoNegocio.trim() } : {}),
+            })
+              // A5: o `GET /estado` traz o Vínculo novo; se ele falhar o Negócio já existe e a revisão do Espaço alcança o store depois.
+              .then(async ({ negocio }) => {
+                await rehidratar().catch(() => undefined);
+                setCriandoNegocio(false);
+                report({ ok: true }, `Negócio criado: ${negocio.titulo}.`);
+              })
+              .catch((falha: unknown) => setErroDoNegocio(falha instanceof ErroDeApi ? falha.message : "Não foi possível criar o Negócio. Tente de novo."))
+              .finally(() => setCriandoNegocioNaApi(false));
           }}
           onCancel={() => setCriandoNegocio(false)}
         >
           <div className="grid gap-4">
-            {(() => {
-              const funis = state.funnels.filter((f) => f.lifecycle === "ativo");
-              const funil = funis.find((f) => f.id === funilDoNegocio);
-              const primeiraEtapa = funil ? [...funil.stages].sort((a, b) => a.order - b.order)[0] : undefined;
-              return (
-                <Field
-                  label="Funil"
-                  required
-                  {...(primeiraEtapa ? { hint: `O Negócio nasce na Etapa ${primeiraEtapa.name}.` } : {})}
-                >
-                  {(id) => (
-                    <Select
-                      id={id}
-                      value={funilDoNegocio}
-                      onChange={setFunilDoNegocio}
-                      placeholder="Escolha o Funil"
-                      options={funis.map((f) => ({ value: f.id, label: f.name }))}
-                    />
-                  )}
-                </Field>
-              );
-            })()}
+            {semFunil ? (
+              // D-15-13: um Espaço novo nasce sem Funil; o seletor vazio não diz o que fazer.
+              <p role="status" className="app-base rounded-[var(--r-controle)] px-3 py-2" style={AVISO_EM_CAIXA}>
+                Este Espaço ainda não tem Funil, e o Negócio nasce na primeira Etapa de um.{" "}
+                <Link href="/crm/funis" onNavigate={() => marcarSeMuda("/crm/funis")} className="underline">
+                  Crie seu primeiro Funil
+                </Link>{" "}
+                e volte para criar o Negócio.
+              </p>
+            ) : (
+              <Field label="Funil" required hint="O Negócio nasce na primeira Etapa do Funil.">
+                {(id) => (
+                  <Select
+                    id={id}
+                    value={funilDoNegocio}
+                    onChange={setFunilDoNegocio}
+                    placeholder={funisDasTabelas.data === undefined ? "Carregando os Funis…" : "Escolha o Funil"}
+                    options={(funisDasTabelas.data?.itens ?? []).map((f) => ({ value: f.funil.id, label: f.funil.nome }))}
+                  />
+                )}
+              </Field>
+            )}
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Título" hint="Vazio, fica o título da Tarefa.">
                 {(id) => <TextInput id={id} value={tituloDoNegocio} onChange={setTituloDoNegocio} placeholder={task.title} />}
               </Field>
-              <Field label="Valor em reais" hint="Opcional.">
+              <Field label="Valor em reais" hint="Opcional. Com ponto nos centavos, como 1234.50.">
                 {(id) => <TextInput id={id} value={valorDoNegocio} onChange={setValorDoNegocio} type="number" />}
               </Field>
             </div>
             {erroDoNegocio ? (
               <p role="alert" className="app-base" style={{ color: "var(--erro)" }}>
                 {erroDoNegocio}
+              </p>
+            ) : null}
+          </div>
+        </ConfirmDialog>
+      ) : null}
+      {/* 14-16 (3.3.5): trocar o Canal confirma aqui, porque pode pedir a primeira Mensagem (D-07). */}
+      {contatoDoResumo && canalNovo !== null ? (
+        <ConfirmDialog
+          open
+          title="Trocar o Canal da Tarefa"
+          description={`A Tarefa passa a conversar com ${contatoDoResumo.nome} por ${canaisDasTabelas.data?.itens.find((c) => c.id === canalNovo)?.nome ?? "outro Canal"}.`}
+          confirmLabel="Trocar o Canal"
+          wide
+          {...(trocandoCanal
+            ? { confirmDisabledReason: "Trocando…" }
+            : conversaDoCanalNovo.conversa === undefined && conversaDoCanalNovo.erro === undefined
+              ? { confirmDisabledReason: "Conferindo a conversa deste Contato neste Canal…" }
+              : (conversaDoCanalNovo.conversa === null || conversaDoCanalNovo.erro !== undefined) && mensagemDoCanal.trim() === ""
+                ? { confirmDisabledReason: "Escreva a primeira Mensagem." }
+                : {})}
+          confirmCarregando={trocandoCanal}
+          onConfirm={() => {
+            const pedeMensagem = conversaDoCanalNovo.conversa === null || conversaDoCanalNovo.erro !== undefined;
+            setErroDoCanal(null);
+            setTrocandoCanal(true);
+            void trocarCanalDaTarefa(task.id, {
+              canalId: canalNovo,
+              // O campo só aparece sem Conversa aberta no Canal novo; com ela o corpo não leva a Mensagem.
+              ...(pedeMensagem && mensagemDoCanal.trim() ? { mensagem: { conteudo: mensagemDoCanal.trim() } } : {}),
+            })
+              // A5: o `GET /estado` traz o Vínculo novo; se ele falhar a troca já valeu e a revisão do Espaço alcança o store depois.
+              .then(async ({ mudou }) => {
+                await rehidratar().catch(() => undefined);
+                setCanalNovo(null);
+                setMensagemDoCanal("");
+                // O fio segue o novo Canal em vez de ficar na aba anterior.
+                setCanalDoFio(null);
+                report({ ok: true }, mudou ? "Canal alterado." : "A Tarefa já conversava por este Canal.");
+              })
+              .catch((falha: unknown) =>
+                setErroDoCanal({
+                  texto: falha instanceof ErroDeApi ? falha.message : "Não foi possível trocar o Canal. Tente de novo.",
+                  campo: falha instanceof ErroDeApi ? falha.campo : undefined,
+                }),
+              )
+              .finally(() => setTrocandoCanal(false));
+          }}
+          onCancel={() => {
+            setCanalNovo(null);
+            setMensagemDoCanal("");
+            setErroDoCanal(null);
+          }}
+        >
+          <div className="grid gap-4">
+            {conversaDoCanalNovo.conversa === null || conversaDoCanalNovo.erro !== undefined ? (
+              <Field
+                label="Primeira Mensagem"
+                required
+                hint="Este Contato não tem conversa aberta neste Canal: a conversa nasce com esta Mensagem."
+                {...(erroDoCanal?.campo === "mensagem" ? { error: erroDoCanal.texto } : {})}
+              >
+                {(id) => <TextArea id={id} value={mensagemDoCanal} onChange={setMensagemDoCanal} rows={3} required placeholder="O que você quer dizer ao Contato" />}
+              </Field>
+            ) : null}
+            {erroDoCanal && (erroDoCanal.campo !== "mensagem" || conversaDoCanalNovo.conversa !== null) ? (
+              <p role="alert" className="app-base" style={{ color: "var(--erro)" }}>
+                {erroDoCanal.texto}
               </p>
             ) : null}
           </div>
@@ -1165,7 +1312,7 @@ export function TarefaCompleta({
           </div>
 
           {/* ───────────────────────── o CRM: com quem, por onde, sobre o quê ── */}
-          {contato ? (
+          {contatoDoResumo ? (
             <section className="mt-5">
               <ReguaDeSecao rotulo="CRM" />
               <div className="grid gap-x-8 gap-y-0.5 @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -1174,13 +1321,7 @@ export function TarefaCompleta({
                     icone={UserRound}
                     rotulo="Contato"
                     controle={(() => {
-                      // O Identificador que o Canal da Tarefa resolve; sem Canal, o principal.
-                      const tipos = canal ? CHANNEL_CAPABILITIES[canal.channelType].resolvesIdentifierTypes : undefined;
-                      const candidatos = tipos ? contato.identifiers.filter((i) => tipos.includes(i.type)) : contato.identifiers;
-                      const identificador = (candidatos.find((i) => i.principal) ?? candidatos[0])?.displayValue;
-                      const qualificacao = state.catalog.find((c) => c.id === contato.qualificationId);
-                      const temperatura = state.catalog.find((c) => c.id === contato.temperatureId);
-                      const href = `/crm/contatos/${contato.id}`;
+                      const href = `/crm/contatos/${contatoDoResumo.id}`;
                       return (
                         <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
                           <Link
@@ -1189,34 +1330,50 @@ export function TarefaCompleta({
                             className="app-base flex min-w-0 items-center gap-2 hover:underline"
                             style={{ color: "var(--texto)" }}
                           >
-                            <ContactAvatar contact={contato} />
-                            <span className="truncate">{contactDisplayName(contato)}</span>
-                            {identificador ? <span className="app-meta truncate">{identificador}</span> : null}
+                            <RostoDoContato nome={contatoDoResumo.nome} tamanho="normal" />
+                            <span className="truncate">{contatoDoResumo.nome}</span>
                           </Link>
-                          {qualificacao ? <Pilula tom="neutro">{qualificacao.name}</Pilula> : null}
-                          {temperatura ? (
-                            <Pilula {...(temperatura.color ? { cor: temperatura.color } : { tom: "neutro" })}>
-                              {temperatura.name}
-                            </Pilula>
-                          ) : null}
                         </span>
                       );
                     })()}
                   />
+                  {empresaDoResumo ? (
+                    <LinhaDeProp
+                      icone={Building2}
+                      rotulo="Empresa"
+                      controle={(() => {
+                        const href = `/crm/empresas/${empresaDoResumo.id}`;
+                        return (
+                          <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                            <Link
+                              href={href}
+                              onNavigate={() => marcarSeMuda(href)}
+                              className="app-base min-w-0 truncate hover:underline"
+                              style={{ color: "var(--texto)" }}
+                            >
+                              {empresaDoResumo.nome}
+                            </Link>
+                          </span>
+                        );
+                      })()}
+                    />
+                  ) : null}
+                  {qualificacaoDoResumo ? <LinhaDeProp icone={BadgeCheck} rotulo="Qualificação" valor={qualificacaoDoResumo} /> : null}
                   <LinhaDeProp
                     icone={Radio}
                     rotulo="Canal"
                     valor={
-                      canal
+                      canalDoResumo
                         ? (() => {
-                            const IconeDoCanal = CHANNEL_ICON[canal.channelType];
+                            const IconeDoCanal = CHANNEL_ICON[canalDoResumo.tipo];
                             return (
                               <span className="flex items-center gap-2">
                                 <Pilula tom="neutro" className="shrink-0 gap-1.5">
                                   <IconeDoCanal className="size-[var(--icone-xs)] shrink-0" aria-hidden="true" />
-                                  {CHANNEL_TYPE_LABEL[canal.channelType]}
+                                  {CHANNEL_TYPE_LABEL[canalDoResumo.tipo]}
                                 </Pilula>
-                                <span className="truncate">{canal.name}</span>
+                                <span className="truncate">{canalDoResumo.nome}</span>
+                                <SeloDoProvedor canal={canalDoResumo} />
                               </span>
                             );
                           })()
@@ -1228,27 +1385,32 @@ export function TarefaCompleta({
                       <span className="block w-64">
                         <Select
                           id="canal-da-tarefa"
-                          value={canal?.id ?? ""}
-                          onChange={(channelId) => {
-                            const result = run((data, me) => trocarCanalDaTarefa(data, me, task.id, channelId));
-                            report(result, "Canal alterado.");
-                            // O fio segue o novo Canal em vez de ficar na aba anterior.
-                            if (result.ok) setCanalDoFio(null);
+                          value={canalDoResumo?.id ?? ""}
+                          onChange={(canalId) => {
+                            // O seletor só escolhe: a troca confirma no diálogo, que pede a primeira Mensagem quando precisa (D-07).
+                            setErroDoCanal(null);
+                            setMensagemDoCanal("");
+                            setCanalNovo(canalId);
                           }}
-                          placeholder="Escolher o Canal"
+                          placeholder={canaisDasTabelas.data === undefined ? "Carregando os Canais…" : "Escolher o Canal"}
                           options={(() => {
-                            // C36 — os canais de atendimento da Lista; o atual, se a Lista
+                            // C36 — os canais de atendimento da Lista que alcançam o Contato; o atual, se a Lista
                             // deixou de atender por ele, fica à vista mas não se escolhe.
-                            const daLista = canaisDaListaQueAlcancam(state, task.listId, contato);
-                            const atualFora = canal && !daLista.some((ch) => ch.id === canal.id) ? [canal] : [];
-                            return [...atualFora, ...daLista].map((ch) => ({
-                              value: ch.id,
-                              label: ch.name,
-                              detail: CHANNEL_TYPE_LABEL[ch.channelType] ?? ch.channelType,
-                              ...(atualFora.includes(ch)
+                            const todos = canaisDasTabelas.data?.itens ?? [];
+                            const lista = state.lists.find((l) => l.id === task.listId);
+                            const daLista = detalheDoContato.data
+                              ? canaisDaListaQueAlcancamNasTabelas(lista, todos, detalheDoContato.data.identificadores)
+                              : [];
+                            const atual = canalDoResumo ? todos.find((c) => c.id === canalDoResumo.id) : undefined;
+                            const atualFora = atual && !daLista.some((c) => c.id === atual.id) ? [atual] : [];
+                            return [...atualFora, ...daLista].map((c) => ({
+                              value: c.id,
+                              label: c.nome,
+                              detail: CHANNEL_TYPE_LABEL[c.tipo] ?? c.tipo,
+                              ...(atualFora.includes(c)
                                 ? { disabledReason: "Esta Lista não atende mais por este Canal." }
-                                : ch.connection === "desconectada"
-                                  ? { disabledReason: `O Canal ${ch.name} está desconectado: escolha outro Canal ou reconecte-o.` }
+                                : c.conexao === "desconectada"
+                                  ? { disabledReason: `O Canal ${c.nome} está desconectado: escolha outro Canal ou reconecte-o.` }
                                   : {}),
                             }));
                           })()}
@@ -1259,97 +1421,66 @@ export function TarefaCompleta({
                   <LinhaDeProp
                     icone={MessageSquare}
                     rotulo="Conversa"
-                    {...(conversa
+                    {...(conversaId
                       ? {
                           controle: (() => {
-                            const href = `/crm/caixa-de-entrada/${conversa.id}`;
+                            const href = `/crm/caixa-de-entrada/${conversaId}`;
                             return (
-                              <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                                <Pilula
-                                  tom={conversa.state === "aberta" ? "sucesso" : conversa.state === "pendente" ? "aviso" : "neutro"}
-                                  comPonto={conversa.state === "aberta"}
-                                >
-                                  {CONVERSATION_STATE_LABEL[conversa.state] ?? conversa.state}
-                                </Pilula>
-                                <span className="app-base truncate" style={{ color: "var(--texto)" }}>
-                                  {conversa.assignee ? `atribuída a ${actorLabel(state, conversa.assignee)}` : "sem Atribuído"}
-                                </span>
-                                <Link
-                                  href={href}
-                                  onNavigate={() => marcarSeMuda(href)}
-                                  className="app-sm shrink-0 underline"
-                                  style={{ color: "var(--texto-1)" }}
-                                >
-                                  Abrir na Caixa de Entrada
-                                </Link>
-                              </span>
+                              <Link
+                                href={href}
+                                onNavigate={() => marcarSeMuda(href)}
+                                className="app-sm shrink-0 underline"
+                                style={{ color: "var(--texto-1)" }}
+                              >
+                                Abrir na Caixa de Entrada
+                              </Link>
                             );
                           })(),
                         }
                       : { valor: "sem Conversa" })}
                   />
+                  {conversaDoResumo ? (
+                    <>
+                      <LinhaDeProp icone={CircleDot} rotulo="Estado da Conversa" valor={ROTULO_DA_SITUACAO[conversaDoResumo.situacao]} />
+                      <LinhaDeProp
+                        icone={UserRound}
+                        rotulo="Atribuído"
+                        valor={conversaDoResumo.atribuido === null ? "Sem Atribuído" : (nomeDoAtribuidoDaConversa ?? "Atribuído indisponível")}
+                      />
+                    </>
+                  ) : null}
                 </div>
 
                 <div className="grid min-w-0 content-start gap-0.5">
                   {(() => {
-                    const empresaId = principalCompanyId(state, contato.id);
-                    const empresa = state.companies.find((c) => c.id === empresaId);
-                    const href = `/crm/empresas/${empresa?.id ?? ""}`;
-                    return (
-                      <LinhaDeProp
-                        icone={Building2}
-                        rotulo="Empresa"
-                        {...(empresa
-                          ? {
-                              controle: (
-                                <Link
-                                  href={href}
-                                  onNavigate={() => marcarSeMuda(href)}
-                                  className="app-base min-w-0 truncate hover:underline"
-                                  style={{ color: "var(--texto)" }}
-                                >
-                                  {empresa.tradeName}
-                                </Link>
-                              ),
-                            }
-                          : { valor: "—" })}
-                      />
-                    );
-                  })()}
-                  {(() => {
-                    const funilDe = (funnelId: string, stageId: string) => {
-                      const funil = state.funnels.find((f) => f.id === funnelId);
-                      const etapa = funil?.stages.find((s) => s.id === stageId);
-                      return `${funil?.name ?? "—"} › ${etapa?.name ?? "—"}`;
-                    };
-                    // Os Negócios abertos do Contato — e o vinculado, mesmo já fechado, para a opção não sumir.
-                    const abertos = state.deals.filter(
-                      (d) => d.lifecycle === "ativo" && d.situation === "aberto" && d.contactLinks.some((l) => l.contactId === contato.id),
-                    );
+                    // Os Negócios abertos do Contato, das tabelas — e o vinculado, mesmo já fechado, para a opção não sumir.
+                    const abertos = negociosDoContato.data?.itens ?? [];
                     const opcoes = [
                       { value: "", label: "Sem Negócio" },
-                      ...(negocio && !abertos.some((d) => d.id === negocio.id) ? [negocio] : []).concat(abertos).map((d) => ({
-                        value: d.id,
-                        label: d.title,
-                        detail: funilDe(d.funnelId, d.stageId),
-                      })),
+                      ...(negocioDoResumo && !abertos.some((n) => n.id === negocioDoResumo.id)
+                        ? [{ value: negocioDoResumo.id, label: negocioDoResumo.titulo }]
+                        : []),
+                      ...abertos.map((n) => ({ value: n.id, label: n.titulo })),
                     ];
                     const seletor = (
                       <Select
                         id="negocio-da-tarefa"
-                        value={negocio?.id ?? ""}
-                        onChange={(dealId) => {
-                          report(
-                            run((data, me) => vincularNegocioATarefa(data, me, task.id, dealId || null)),
-                            dealId ? "Negócio vinculado." : "Negócio desvinculado.",
-                          );
+                        value={negocioDoResumo?.id ?? ""}
+                        onChange={(negocioId) => {
                           setEditandoNegocio(false);
+                          // A5: o `GET /estado` traz o Vínculo novo. A recusa da api (Negócio de outro Contato…) aparece no aviso da ficha.
+                          void vincularNegocioATarefa(task.id, negocioId || null)
+                            .then(async () => {
+                              await rehidratar().catch(() => undefined);
+                              report({ ok: true }, negocioId ? "Negócio vinculado." : "Negócio desvinculado.");
+                            })
+                            .catch((falha: unknown) => report({ ok: false, error: falha instanceof ErroDeApi ? falha.message : "Não foi possível alterar o Negócio. Tente de novo." }, ""));
                         }}
                         placeholder="Sem Negócio"
                         options={opcoes}
                       />
                     );
-                    if (!negocio) {
+                    if (!negocioDoResumo) {
                       return (
                         <LinhaDeProp
                           icone={Briefcase}
@@ -1361,7 +1492,7 @@ export function TarefaCompleta({
                         />
                       );
                     }
-                    const href = `/crm/negocios/${negocio.id}`;
+                    const href = `/crm/negocios/${negocioDoResumo.id}`;
                     return (
                       <LinhaDeProp
                         icone={Briefcase}
@@ -1389,9 +1520,9 @@ export function TarefaCompleta({
                                 className="app-base min-w-0 truncate hover:underline"
                                 style={{ color: "var(--texto)" }}
                               >
-                                {negocio.title}
+                                {negocioDoResumo.titulo}
                               </Link>
-                              <span className="app-meta truncate">{funilDe(negocio.funnelId, negocio.stageId)}</span>
+                              {negocioDoResumo.etapa ? <span className="app-meta truncate">{negocioDoResumo.etapa}</span> : null}
                               <span className="ml-auto shrink-0">
                                 <Button
                                   variant="ghost"
@@ -1416,7 +1547,7 @@ export function TarefaCompleta({
 
           {/* Os avisos de regra que acompanham o Status. */}
           <div className="mt-2 grid gap-2">
-                {conversacional && !contato ? (
+                {conversacional && resumo !== undefined && resumo.contato === null ? (
                   <p
                     role="status"
                     className="app-base mt-2 rounded-[var(--r-controle)] px-3 py-2"
@@ -1998,17 +2129,18 @@ export function TarefaCompleta({
                       link.fromId === task.id ? link.toType : link.fromType;
                     const otherId =
                       link.fromId === task.id ? link.toId : link.fromId;
-                    const label =
-                      otherType === "deal"
-                        ? state.deals.find((d) => d.id === otherId)?.title
-                        : otherType === "contact"
-                          ? state.contacts.find((c) => c.id === otherId)
-                              ?.firstName
-                          : otherType === "conversation"
-                            ? state.conversations.find(
-                                (c) => c.id === otherId,
-                              )?.title
-                            : undefined;
+                    /*
+                      O nome vem de `POST /crm/nomes` (15-25). `null` é "Registro
+                      indisponível": o registro não existe neste Espaço ou o Papel
+                      não o lê, e a tela não diz qual das duas (T-15-61). Outros
+                      tipos de Vínculo (Tarefa, Documento…) não têm nome aqui.
+                    */
+                    const ehDoCrm = otherType === "deal" || otherType === "contact" || otherType === "conversation";
+                    const nomeDaApi = ehDoCrm ? nomeDe(nomesDosVinculos, otherType, otherId) : undefined;
+                    // Com nome há atalho para o registro; "Carregando…" e "Registro indisponível" não o têm.
+                    const label = !ehDoCrm
+                      ? undefined
+                      : (nomeDaApi ?? (nomeDaApi === undefined && nomesDosVinculos.carregando ? "Carregando…" : NOME_INDISPONIVEL));
                     const href =
                       otherType === "deal"
                         ? `/crm/negocios/${otherId}`
@@ -2033,14 +2165,16 @@ export function TarefaCompleta({
                           <span style={{ color: "var(--texto-3)" }}>
                             registro não encontrado
                           </span>
-                        ) : (
+                        ) : typeof nomeDaApi === "string" ? (
                           label
+                        ) : (
+                          <span style={{ color: "var(--texto-3)" }}>{label}</span>
                         )}
                       </span>
                     );
                     return (
                       <li key={link.id}>
-                        {label !== undefined && href ? (
+                        {typeof nomeDaApi === "string" && href ? (
                           <Link href={href} className="item-solto">
                             {conteudo}
                           </Link>
@@ -2087,8 +2221,8 @@ export function TarefaCompleta({
         {/*
           Na ficha conversacional o trilho leva as DUAS regiões: abaixo de @4xl
           elas empilham sob a ficha — o trilho tem a altura do seu conteúdo
-          (o fio de Mensagens com `--conversa-empilhada-min`, o Rascunho da IA
-          recolhido numa linha, o compositor inteiro) e a ficha fica com o
+          (o fio de Mensagens com `--conversa-empilhada-min` e o compositor
+          inteiro) e a ficha fica com o
           resto; a Atividade nasce recolhida e, recolhida, nem ocupa faixa: o
           botão que a abre mora no cabeçalho da Conversa. De @4xl o trilho é a
           segunda coluna, conversa em cima e Atividade recolhida embaixo; de
@@ -2103,7 +2237,7 @@ export function TarefaCompleta({
               : "contents",
           )}
         >
-        {fichaConversacional && contato ? (
+        {contatoIdDoFio !== undefined ? (
           <section
             aria-label="Conversa"
             className="flex min-h-0 w-full flex-1 flex-col border-[var(--linha)] border-t @4xl:border-t-0 @4xl:border-l @6xl:w-[24rem] @6xl:flex-none"
@@ -2133,8 +2267,10 @@ export function TarefaCompleta({
             {/* Nas colunas, rola só se as partes fixas do fio (abas, Rascunho, compositor) não couberem; empilhada, nada aqui rola — só o fio. */}
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto @max-4xl:overflow-visible">
               <ConversationThread
-                contact={contato}
-                canalSelecionado={canalDoFio ?? canal?.id ?? null}
+                {...(conversaId ? { conversaId } : {})}
+                contatoId={contatoIdDoFio}
+                tarefaId={task.id}
+                canalSelecionado={canalDoFio ?? canalDoResumo?.id ?? null}
                 onCanalChange={setCanalDoFio}
                 flush
               />

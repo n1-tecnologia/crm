@@ -75,7 +75,7 @@ Coerente com o documento 14, seção 4; repetida aqui pelo lado da IA.
 | Responsabilidade | Proprietário (Membro) — tudo. | Sem Proprietário (DO-CXE-02); Atribuído 0..1 (Membro ou Agente); Fila. |
 | Visibilidade | Privada; `ver` só por compartilhamento explícito do Proprietário. | Visível a quem tem `ver` na Conversa (Fila, Papel, concessão). |
 | Estado | `ativo`, `arquivado`, `na lixeira` (A4.1). | `aberta`, `pendente`, `resolvida` (A4.5). |
-| Destino na remoção do Membro | Não sucedida; vai à lixeira com o `removido` e é eliminada por prazo, salvo reconvite (B28; B87). | Sobrevive; Atribuído liberado (B28). |
+| Destino na remoção do Membro | Não sucedida; vai à lixeira com o `removido` e é eliminada por prazo, salvo reconvite (B28; B87). | Sobrevive; Atribuído passa ao Sucessor (B28-a). |
 | Efeito externo | Nenhum por si. Pode produzir Rascunho para uma Conversa ancorada; enviar é ato na Conversa (DO-CXE-15). | É o próprio efeito externo: Mensagens chegam ao Contato. |
 | Relação entre elas | Sessão pode ser **ancorada** a uma Conversa (lê com as permissões do Membro). | A Conversa não conhece Sessões (referência inversa). |
 

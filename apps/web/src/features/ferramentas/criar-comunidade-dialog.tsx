@@ -13,6 +13,7 @@ import { CONFIGURACOES_PADRAO_DA_COMUNIDADE, criarComunidade, recusaDoCanal } fr
 import type { ConfiguracoesDaComunidade } from "@n1/dominio/types";
 import { ConfirmDialog, Field, Select, TextArea, TextInput } from "@/features/shell/ui";
 import { CaixaDeConfiguracoes } from "./caixa-de-configuracoes";
+import { useCanaisDasFerramentas, useCrmDasFerramentas } from "./crm-das-ferramentas";
 import { CONFIGURACAO_DA_COMUNIDADE_LABEL } from "./rotulos";
 
 export function CriarComunidadeDialog({ open, onClose, onCreated }: { readonly open: boolean; readonly onClose: () => void; readonly onCreated: (comunidadeId: string) => void }) {
@@ -25,13 +26,18 @@ const ICONE = { somenteAdministradoresAdicionamGrupos: Layers, somenteAdministra
 function Formulario({ onClose, onCreated }: { readonly onClose: () => void; readonly onCreated: (comunidadeId: string) => void }) {
   const state = useData((data) => data);
   const run = useRun();
-  const canais = state.channels.filter((c) => c.channelType === "whatsapp" && c.lifecycle === "ativo");
+  // O Canal vem de GET /canais (3.4.8), não do store.
+  const canaisDoCrm = useCanaisDasFerramentas();
+  const canais = canaisDoCrm.canaisDeWhatsApp;
+  const crm = useCrmDasFerramentas(canaisDoCrm);
   const [nome, setNome] = useState("");
   const [descricao, setDescricao] = useState("");
-  const [canalId, setCanalId] = useState(canais.find((c) => c.connection === "conectada")?.id ?? "");
+  const [canalEscolhido, setCanalEscolhido] = useState<string | null>(null);
+  const canalId = canalEscolhido ?? canais.find((c) => c.conexao === "conectada")?.id ?? "";
+  const setCanalId = setCanalEscolhido;
   const [configuracoes, setConfiguracoes] = useState<ConfiguracoesDaComunidade>(CONFIGURACOES_PADRAO_DA_COMUNIDADE);
   const [erro, setErro] = useState<string | null>(null);
-  const recusaCanal = recusaDoCanal(state, canalId || undefined, "comunidades");
+  const recusaCanal = recusaDoCanal(state, canalId || undefined, "comunidades", crm);
   const motivo = !nome.trim() ? "Dê um nome à Comunidade." : recusaCanal;
 
   return (
@@ -43,7 +49,7 @@ function Formulario({ onClose, onCreated }: { readonly onClose: () => void; read
       wide
       {...(motivo ? { confirmDisabledReason: motivo } : {})}
       onConfirm={() => {
-        const r = run((data, me) => criarComunidade(data, me, { nome, descricao, canalId, configuracoes }));
+        const r = run((data, me) => criarComunidade(data, me, { nome, descricao, canalId, configuracoes }, crm));
         if (!r.ok) {
           setErro(r.error);
           return;
@@ -65,8 +71,8 @@ function Formulario({ onClose, onCreated }: { readonly onClose: () => void; read
                 onChange={setCanalId}
                 placeholder="Escolher o Canal"
                 options={canais.map((c) => {
-                  const r = recusaDoCanal(state, c.id, "comunidades");
-                  return { value: c.id, label: c.name, detail: c.connection === "conectada" ? "conectado" : c.connection, ...(r ? { disabledReason: r } : {}) };
+                  const r = recusaDoCanal(state, c.id, "comunidades", crm);
+                  return { value: c.id, label: c.nome, detail: c.conexao === "conectada" ? "conectado" : c.conexao, ...(r ? { disabledReason: r } : {}) };
                 })}
               />
             )}

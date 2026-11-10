@@ -16,8 +16,9 @@
  *       não do par provedor+conta).
  *   (c) Membro não conecta nem simula (B35): 403.
  *   (d) "Simular conexão" leva os dois a `conectada`, marcada como simulada (D-08).
- *   (e) `GET /estado` traz os dois Canais relacionais ao lado dos do seed
- *       (D-11), e `plataforma.registros` não ganha linha de `channels` (D-12).
+ *   (e) o Canal vem só por `GET /canais`: `GET /estado` não o traz
+ *       (a ponte de D-11 saiu no 15-33), e `plataforma.registros`
+ *       não ganha linha de `channels` (D-12).
  *   (f) o mesmo Contato abre uma Conversa em cada Canal; a 2ª no mesmo Canal é
  *       recusada (CONVERSA_JA_ABERTA).
  *   (g) o oficial recusa texto livre fora da janela de 24 h (409
@@ -26,7 +27,7 @@
  *   (h) depois de "Desconectar", a Mensagem `enviada` nasce `pendente` (B69).
  *   (i) um Membro de OUTRO Espaço recebe 404 e lista vazia (T-08-50).
  *
- * Números: nenhum colide com o seed (`chn_wpp` usa `+5511987654321`).
+ * Números: nenhum colide com o seed.
  *
  * Rode com `TZ=America/Sao_Paulo` (Pitfall 5) e `DATABASE_URL` local:
  *
@@ -36,11 +37,11 @@
 
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { buildSeed } from "@n1/dominio/seed";
+import { colecaoPelaChave } from "@n1/dominio/testes/crm-de-teste";
 import { buildApp } from "../app";
 import { encerrar, pool } from "../persistencia/conexao";
 import { semear } from "../persistencia/repositorio";
-import { criarAcessoAoCrmPg } from "../servicos/crm/acesso";
-import { criarServicoDeMensagens } from "../servicos/crm/mensagens";
+import { criarServicoDeRecebimento } from "../servicos/crm/recebimento";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearMembro } from "../testes/banco-crm";
 
 /** Token → quem é a sessão. O `sub` é o Usuário; o `membroId` é a linha de `members` que `semearMembro` grava. */
@@ -98,7 +99,7 @@ interface CanalHttp {
 
 interface ConversaCriada {
   conversa: { id: string };
-  primeiraMensagem: { statusEntrega: string | null };
+  primeiraMensagem: { id: string; statusEntrega: string | null };
 }
 
 interface MensagemHttp {
@@ -131,6 +132,15 @@ describeComBanco("Fase 8 ponta a ponta: dois WhatsApps lado a lado, pelo HTTP, c
     return Number(r.rows[0]?.n ?? 0);
   }
 
+  /** Os ids das Mensagens com linha `mensagem.enviar.v1` na fila de saída do Espaço (16-04), na ordem de criação. */
+  async function filaDeSaida(workspaceId: string): Promise<string[]> {
+    const r = await pool().query<{ aggregate_id: string }>(
+      "select aggregate_id from plataforma.integration_outbox where workspace_id = $1 and event_type = 'mensagem.enviar.v1' order by created_at, id",
+      [workspaceId],
+    );
+    return r.rows.map((l) => l.aggregate_id);
+  }
+
   let canaisDoSeed: number;
   let comercialId: string;
   let suporteId: string;
@@ -142,6 +152,7 @@ describeComBanco("Fase 8 ponta a ponta: dois WhatsApps lado a lado, pelo HTTP, c
     await prepararBancoCrm();
     const cliente = await pool().connect();
     try {
+      // O seed não cria Canal (15-31): `plataforma.registros` nasce sem `channels`, e os Canais deste fluxo são os da tabela.
       await semear(cliente, espacoA, buildSeed());
     } finally {
       cliente.release();
@@ -153,13 +164,15 @@ describeComBanco("Fase 8 ponta a ponta: dois WhatsApps lado a lado, pelo HTTP, c
   });
 
   afterAll(async () => {
+    // `integration_outbox` não tem FK para o Espaço: as linhas de `mensagem.enviar.v1` saem por aqui.
+    await pool().query("delete from plataforma.integration_outbox where workspace_id = any($1::text[])", [[espacoA, espacoB]]);
     await limparEspaco(espacoA);
     await limparEspaco(espacoB);
     await encerrar();
   });
 
   it("(a) o Administrador conecta Comercial (oficial) e Suporte (não oficial) com números distintos; ambos nascem desconectados", async () => {
-    expect(canaisDoSeed).toBeGreaterThan(0);
+    expect(canaisDoSeed).toBe(0);
 
     const comercial = await chamar("POST", "/canais", ADMIN, {
       provedor: "whatsapp-cloud",
@@ -212,31 +225,20 @@ describeComBanco("Fase 8 ponta a ponta: dois WhatsApps lado a lado, pelo HTTP, c
     }
   });
 
-  it("(e) GET /estado traz os dois Canais relacionais ao lado do seed e plataforma.registros não ganha `channels` (D-11, D-12)", async () => {
+  it("(e) o Canal vem só por GET /canais: GET /estado não o traz e plataforma.registros não ganha `channels` (15-33)", async () => {
     const r = await chamar("GET", "/estado", ADMIN);
     expect(r.status).toBe(200);
-    const estado = (r.corpo as unknown as { data: { channels: Array<Record<string, unknown>> } }).data;
-    const porNome = (nome: string) => estado.channels.find((c) => c.name === nome);
+    const estado = (r.corpo as unknown as { data: Record<string, unknown> }).data;
 
-    expect(porNome("Comercial")).toMatchObject({
-      id: comercialId,
-      relational: true,
-      provider: "whatsapp-cloud",
-      connection: "conectada",
-      simulatedConnection: true,
-    });
-    expect(porNome("Suporte")).toMatchObject({
-      id: suporteId,
-      relational: true,
-      provider: "whatsapp-nao-oficial",
-      connection: "conectada",
-      simulatedConnection: true,
-    });
-    const seed = estado.channels.find((c) => c.id === "chn_wpp");
-    expect(seed).toBeDefined();
-    expect(seed?.relational).toBeUndefined();
-
+    // A ponte que projetava `plataforma.canais` no estado saiu e o seed não cria Canal: a coleção está vazia (lida pela chave).
+    expect(colecaoPelaChave(estado, "channels")).toEqual([]);
     expect(await canaisNoRegistro(espacoA)).toBe(canaisDoSeed);
+
+    const lista = await chamar("GET", "/canais", ADMIN);
+    expect(lista.status).toBe(200);
+    const porNome = (nome: string) => (lista.corpo.itens as Array<Record<string, unknown>>).find((c) => c.nome === nome);
+    expect(porNome("Comercial")).toMatchObject({ id: comercialId, provedor: "whatsapp-cloud", conexao: "conectada", conexaoSimulada: true });
+    expect(porNome("Suporte")).toMatchObject({ id: suporteId, provedor: "whatsapp-nao-oficial", conexao: "conectada", conexaoSimulada: true });
   });
 
   it("(f) o mesmo Contato abre uma Conversa em cada Canal; a 2ª no mesmo Canal é recusada", async () => {
@@ -254,7 +256,8 @@ describeComBanco("Fase 8 ponta a ponta: dois WhatsApps lado a lado, pelo HTTP, c
     });
     expect(noComercial.status).toBe(201);
     const cc = dados<ConversaCriada>(noComercial.corpo);
-    expect(cc.primeiraMensagem.statusEntrega).toBe("enviada");
+    expect(cc.primeiraMensagem.statusEntrega).toBe("pendente");
+    expect(await filaDeSaida(espacoA)).toEqual([cc.primeiraMensagem.id]);
     conversaComercialId = cc.conversa.id;
 
     const noSuporte = await chamar("POST", "/conversas", MEMBRO, {
@@ -264,7 +267,8 @@ describeComBanco("Fase 8 ponta a ponta: dois WhatsApps lado a lado, pelo HTTP, c
     });
     expect(noSuporte.status).toBe(201);
     const cs = dados<ConversaCriada>(noSuporte.corpo);
-    expect(cs.primeiraMensagem.statusEntrega).toBe("enviada");
+    expect(cs.primeiraMensagem.statusEntrega).toBe("pendente");
+    expect(await filaDeSaida(espacoA)).toHaveLength(2);
     conversaSuporteId = cs.conversa.id;
     expect(conversaSuporteId).not.toBe(conversaComercialId);
 
@@ -278,20 +282,22 @@ describeComBanco("Fase 8 ponta a ponta: dois WhatsApps lado a lado, pelo HTTP, c
   });
 
   it("(g) fora da janela de 24 h o oficial recusa texto livre e o não oficial envia (D-02); a carga bruta nunca sai (A9)", async () => {
-    const servico = criarServicoDeMensagens({ pool, acesso: criarAcessoAoCrmPg(pool) });
+    const recebimento = criarServicoDeRecebimento({ pool });
     const haTrintaHoras = new Date(Date.now() - 30 * 60 * 60 * 1000).toISOString();
-    for (const [conversaId, idExterno] of [
-      [conversaComercialId, "wamid.comercial.1"],
-      [conversaSuporteId, "wamid.suporte.1"],
+    for (const [canalId, conversaId, idExterno] of [
+      [comercialId, conversaComercialId, "wamid.comercial.1"],
+      [suporteId, conversaSuporteId, "wamid.suporte.1"],
     ] as const) {
-      const recebida = await servico.registrarRecebida(espacoA, {
-        conversaId,
+      // 3.6.2: a recebida entra por `receberMensagem`, que acha o Contato pelo WhatsApp e cai na Conversa aberta do par.
+      const recebida = await recebimento.receberMensagem(espacoA, canalId, {
         idExterno,
         criadoEm: haTrintaHoras,
+        remetente: { tipo: "whatsapp", valor: WHATSAPP_DA_ANA },
         conteudo: "Oi, preciso de ajuda.",
         cargaBruta: { segredo: "payload cru do provedor", telefone: WHATSAPP_DA_ANA },
       });
       expect(recebida.ok).toBe(true);
+      if (recebida.ok) expect(recebida.valor.conversa.id).toBe(conversaId);
     }
 
     const oficial = await chamar("POST", "/mensagens", MEMBRO, {
@@ -308,7 +314,9 @@ describeComBanco("Fase 8 ponta a ponta: dois WhatsApps lado a lado, pelo HTTP, c
       conteudo: "Texto livre, sem janela.",
     });
     expect(naoOficial.status).toBe(201);
-    expect(dados<MensagemHttp>(naoOficial.corpo).statusEntrega).toBe("enviada");
+    // 3.7.1: nasce pendente e entra na fila; só o provedor a passa a `enviada`.
+    expect(dados<MensagemHttp>(naoOficial.corpo).statusEntrega).toBe("pendente");
+    expect(await filaDeSaida(espacoA)).toHaveLength(3);
 
     const fio = await chamar("GET", `/mensagens?conversaId=${conversaSuporteId}`, MEMBRO);
     expect(fio.status).toBe(200);
@@ -331,6 +339,8 @@ describeComBanco("Fase 8 ponta a ponta: dois WhatsApps lado a lado, pelo HTTP, c
     });
     expect(enviada.status).toBe(201);
     expect(dados<MensagemHttp>(enviada.corpo).statusEntrega).toBe("pendente");
+    // Canal fora do ar: a Mensagem é guardada e nenhuma linha nova entra na fila (nada é descartado nem enfileirado).
+    expect(await filaDeSaida(espacoA)).toHaveLength(3);
   });
 
   it("(i) um Membro de OUTRO Espaço recebe 404 no Canal, na Conversa e na Mensagem, e lista vazia (T-08-50)", async () => {

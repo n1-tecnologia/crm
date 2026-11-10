@@ -89,3 +89,17 @@ export async function chamarCrm<T>(
 export function invalidarCrm(prefixo: string): Promise<unknown> {
   return mutate((chave) => typeof chave === "string" && chave.startsWith(prefixo));
 }
+
+/**
+ * Como `invalidarCrm`, mas também revalida a chave array cujo primeiro item começa pelo prefixo — as chaves SWR
+ * que levam parâmetros em array (`["/tarefas-conversacionais/resumo", ...assinaturas]`). Função à parte, não uma
+ * mudança de `invalidarCrm`: os chamadores de hoje não passam a revalidar chave array sem querer. Quem usa é o
+ * tempo real (`dados/tempo-real.ts`, 16-08).
+ */
+export function invalidarCrmComArrays(prefixo: string): Promise<unknown> {
+  return mutate(
+    (chave) =>
+      (typeof chave === "string" && chave.startsWith(prefixo)) ||
+      (Array.isArray(chave) && typeof chave[0] === "string" && chave[0].startsWith(prefixo)),
+  );
+}

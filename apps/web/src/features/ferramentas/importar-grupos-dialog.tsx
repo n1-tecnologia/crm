@@ -12,6 +12,7 @@ import { useData, useRun } from "@/dados/store";
 import { GRUPOS_NO_PROVEDOR, importarGruposDoCanal, recusaDoCanal } from "@n1/dominio/operations";
 import type { Report } from "@/features/shell/ficha";
 import { ConfirmDialog, Field, Select } from "@/features/shell/ui";
+import { crmParaSimular, montarCrmDasFerramentas, useCanaisDasFerramentas } from "./crm-das-ferramentas";
 
 export function ImportarGruposDialog({ open, onClose, report }: { readonly open: boolean; readonly onClose: () => void; readonly report: Report }) {
   if (!open) return null;
@@ -21,17 +22,23 @@ export function ImportarGruposDialog({ open, onClose, report }: { readonly open:
 function Formulario({ onClose, report }: { readonly onClose: () => void; readonly report: Report }) {
   const state = useData((data) => data);
   const run = useRun();
-  const canais = state.channels.filter((c) => c.channelType === "whatsapp" && c.lifecycle === "ativo");
-  const [canalId, setCanalId] = useState(canais.find((c) => c.connection === "conectada")?.id ?? "");
+  // O Canal vem de GET /canais (3.4.8), não do store.
+  const canaisDoCrm = useCanaisDasFerramentas();
+  const canais = canaisDoCrm.canaisDeWhatsApp;
+  const [canalEscolhido, setCanalEscolhido] = useState<string | null>(null);
+  const canalId = canalEscolhido ?? canais.find((c) => c.conexao === "conectada")?.id ?? "";
   const [erro, setErro] = useState<string | null>(null);
   const canal = canais.find((c) => c.id === canalId);
-  const recusa = recusaDoCanal(state, canalId || undefined, "gruposAdministraveis");
-  const noProvedor = canal ? (GRUPOS_NO_PROVEDOR[canal.externalId] ?? []) : [];
+  const crm = montarCrmDasFerramentas(canaisDoCrm);
+  const recusa = recusaDoCanal(state, canalId || undefined, "gruposAdministraveis", crm);
+  const noProvedor = canal ? (GRUPOS_NO_PROVEDOR[canal.identificadorExterno] ?? []) : [];
   const existentes = new Set(state.grupos.map((g) => g.identificadorExterno));
   const novos = noProvedor.filter((g) => !existentes.has(g.jid));
 
   const confirmar = () => {
-    const r = run((data, me) => importarGruposDoCanal(data, me, canalId));
+    // O servidor acha (ou cria) o Contato de cada Participante e descarta este `crm`; localmente, os
+    // números ainda sem Contato ganham um Contato só da execução otimista (RN-GRP-10).
+    const r = run((data, me) => importarGruposDoCanal(data, me, canalId, crmParaSimular("importarGruposDoCanal", data, [canalId], canaisDoCrm)));
     if (!r.ok) {
       setErro(r.error);
       return;
@@ -56,11 +63,11 @@ function Formulario({ onClose, report }: { readonly onClose: () => void; readonl
             <Select
               id={id}
               value={canalId}
-              onChange={setCanalId}
+              onChange={setCanalEscolhido}
               placeholder="Escolher o Canal"
               options={canais.map((c) => {
-                const r = recusaDoCanal(state, c.id, "gruposAdministraveis");
-                return { value: c.id, label: c.name, detail: `${(GRUPOS_NO_PROVEDOR[c.externalId] ?? []).length} no provedor`, ...(r ? { disabledReason: r } : {}) };
+                const r = recusaDoCanal(state, c.id, "gruposAdministraveis", crm);
+                return { value: c.id, label: c.nome, detail: `${(GRUPOS_NO_PROVEDOR[c.identificadorExterno] ?? []).length} no provedor`, ...(r ? { disabledReason: r } : {}) };
               })}
             />
           )}

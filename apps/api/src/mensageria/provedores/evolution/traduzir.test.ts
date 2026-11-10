@@ -1,0 +1,154 @@
+/**
+ * O tradutor do `MESSAGES_UPSERT` da Evolution contra os exemplos sintéticos (16-12, Task 3, MSG-06). Função pura: sem
+ * banco, sem rede. Os exemplos (`exemplos/*.json`) seguem a forma de `prepareMessage@2.3.7` com números fictícios.
+ */
+
+import { describe, expect, it } from "vitest";
+import type { EventoDoProvedor } from "../../provedor";
+import audio from "./exemplos/audio.json";
+import documento from "./exemplos/documento.json";
+import figurinha from "./exemplos/figurinha.json";
+import ignorados from "./exemplos/ignorados.json";
+import imagem from "./exemplos/imagem.json";
+import texto from "./exemplos/texto.json";
+import video from "./exemplos/video.json";
+import { semApikey, traduzirChamadaDaEvolution } from "./traduzir";
+
+const INSTANCIA = "inst-teste";
+
+function umaMensagem(corpo: unknown): Extract<EventoDoProvedor, { tipo: "mensagem" }> {
+  const eventos = traduzirChamadaDaEvolution(corpo, INSTANCIA);
+  expect(eventos).toHaveLength(1);
+  const evento = eventos[0]!;
+  expect(evento.tipo).toBe("mensagem");
+  if (evento.tipo !== "mensagem") throw new Error("esperava uma mensagem");
+  return evento;
+}
+
+describe("traduzirChamadaDaEvolution: o que vira Mensagem", () => {
+  it("texto: o número em E.164, o nome do pushName, o id da Evolution e o instante de messageTimestamp em ISO", () => {
+    const evento = umaMensagem(texto);
+    expect(evento).toMatchObject({
+      idExterno: "3EB0A1B2C3D4E5F60001",
+      conteudo: "oi",
+      remetente: { tipo: "whatsapp", valor: "+5511987654321", nomeExibido: "Ana Teste" },
+      criadoEm: "2024-11-09T11:00:00.000Z",
+    });
+    expect(evento.anexos).toBeUndefined();
+  });
+
+  it("texto longo (extendedTextMessage) também entra", () => {
+    const corpo = { ...texto, data: { ...texto.data, message: { extendedTextMessage: { text: "olha https://exemplo.test" } }, messageType: "extendedTextMessage" } };
+    expect(umaMensagem(corpo).conteudo).toBe("olha https://exemplo.test");
+  });
+
+  it("imagem: a legenda é o conteúdo e o anexo leva o tipo, o nome e a referência com o message do webhook", () => {
+    const evento = umaMensagem(imagem);
+    expect(evento.conteudo).toBe("olha esta foto");
+    expect(evento.anexos).toHaveLength(1);
+    expect(evento.anexos![0]).toMatchObject({ tipoDeMidia: "image/jpeg", nome: "imagem-3EB0A1B2C3D4E5F60002.jpg" });
+    expect(JSON.parse(evento.anexos![0]!.referenciaNoProvedor)).toEqual({ key: imagem.data.key, message: imagem.data.message });
+  });
+
+  it("áudio de voz: o tipo vem com o parâmetro do WhatsApp (a normalização é de quem guarda) e não há conteúdo", () => {
+    const evento = umaMensagem(audio);
+    expect(evento.conteudo).toBeUndefined();
+    expect(evento.anexos![0]).toMatchObject({ tipoDeMidia: "audio/ogg; codecs=opus", nome: "audio-3EB0A1B2C3D4E5F60003.ogg" });
+  });
+
+  it("vídeo: a legenda é o conteúdo", () => {
+    const evento = umaMensagem(video);
+    expect(evento.conteudo).toBe("veja este video");
+    expect(evento.anexos![0]).toMatchObject({ tipoDeMidia: "video/mp4", nome: "video-3EB0A1B2C3D4E5F60004.mp4" });
+  });
+
+  it("documento: o nome do arquivo é o fileName do remetente", () => {
+    const evento = umaMensagem(documento);
+    expect(evento.conteudo).toBeUndefined();
+    expect(evento.anexos![0]).toMatchObject({ tipoDeMidia: "application/pdf", nome: "contrato.pdf" });
+  });
+
+  it("documento com legenda embrulhado (documentWithCaptionMessage) também entra", () => {
+    const interna = documento.data.message.documentMessage;
+    const corpo = {
+      ...documento,
+      data: { ...documento.data, message: { documentWithCaptionMessage: { message: { documentMessage: { ...interna, caption: "segue o contrato" } } } }, messageType: "documentWithCaptionMessage" },
+    };
+    const evento = umaMensagem(corpo);
+    expect(evento.conteudo).toBe("segue o contrato");
+    expect(evento.anexos![0]).toMatchObject({ tipoDeMidia: "application/pdf", nome: "contrato.pdf" });
+  });
+
+  it("figurinha entra como image/webp", () => {
+    const evento = umaMensagem(figurinha);
+    expect(evento.anexos![0]).toMatchObject({ tipoDeMidia: "image/webp", nome: "figurinha-3EB0A1B2C3D4E5F60006.webp" });
+  });
+
+  it("o nome do arquivo do remetente não leva separador de caminho nem caractere de controle", () => {
+    const interna = documento.data.message.documentMessage;
+    const corpo = { ...documento, data: { ...documento.data, message: { documentMessage: { ...interna, fileName: "../../etc/pass\u0000wd.pdf" } } } };
+    const nome = umaMensagem(corpo).anexos![0]!.nome;
+    expect(nome).not.toMatch(/[\\/\u0000-\u001f]/);
+    expect(nome.endsWith(".pdf")).toBe(true);
+  });
+
+  it("pushName nulo: sem nomeExibido (quem recebe usa o número)", () => {
+    const corpo = { ...texto, data: { ...texto.data, pushName: null } };
+    expect(umaMensagem(corpo).remetente).toEqual({ tipo: "whatsapp", valor: "+5511987654321" });
+  });
+
+  it("o instante vem só de messageTimestamp: o date_time local do corpo nunca é lido", () => {
+    const corpo = { ...texto, date_time: "1999-01-01T00:00:00.000Z" };
+    expect(umaMensagem(corpo).criadoEm).toBe("2024-11-09T11:00:00.000Z");
+  });
+
+  it("a cargaBruta não tem apikey em lugar nenhum, mesmo quando a Evolution a expõe", () => {
+    const corpo = { ...texto, apikey: "tok-da-instancia-9f3a", data: { ...texto.data, apikey: "outra-chave-7c1d" } };
+    const evento = umaMensagem(corpo);
+    expect(JSON.stringify(evento.cargaBruta)).not.toContain("apikey");
+    expect(JSON.stringify(evento)).not.toContain("tok-da-instancia-9f3a");
+    expect(JSON.stringify(evento)).not.toContain("outra-chave-7c1d");
+  });
+});
+
+describe("traduzirChamadaDaEvolution: o que é ignorado, com o motivo", () => {
+  for (const caso of ignorados) {
+    it(`${caso.caso}`, () => {
+      const eventos = traduzirChamadaDaEvolution(caso.corpo, INSTANCIA);
+      expect(eventos).toHaveLength(1);
+      const evento = eventos[0]!;
+      if (caso.motivo === null) {
+        expect(evento).toMatchObject({ tipo: "mensagem", remetente: { valor: caso.numero } });
+      } else {
+        expect(evento).toMatchObject({ tipo: "ignorado", motivo: caso.motivo });
+      }
+    });
+  }
+
+  it("event diferente de messages.upsert, ou instance de outro Canal, não vira evento nenhum", () => {
+    expect(traduzirChamadaDaEvolution({ ...texto, event: "connection.update" }, INSTANCIA)).toEqual([]);
+    expect(traduzirChamadaDaEvolution({ ...texto, instance: "outra" }, INSTANCIA)).toEqual([]);
+  });
+
+  it("corpo que não é objeto ou sem data.key nunca lança", () => {
+    for (const corpo of [null, undefined, "texto", 42, [], {}]) {
+      expect(traduzirChamadaDaEvolution(corpo, INSTANCIA)).toEqual([]);
+    }
+    expect(traduzirChamadaDaEvolution({ event: "messages.upsert", instance: INSTANCIA, data: {} }, INSTANCIA)).toEqual([{ tipo: "ignorado", motivo: "formato_invalido" }]);
+  });
+
+  it("JID com lixo antes do @s.whatsapp.net não vira número", () => {
+    const corpo = { ...texto, data: { ...texto.data, key: { ...texto.data.key, remoteJid: "abc@s.whatsapp.net" } } };
+    expect(traduzirChamadaDaEvolution(corpo, INSTANCIA)).toEqual([{ tipo: "ignorado", motivo: "sem_numero", idExterno: texto.data.key.id }]);
+  });
+});
+
+describe("semApikey", () => {
+  it("tira a apikey de qualquer nível e deixa o resto igual, sem mexer no original", () => {
+    const original = { a: 1, apikey: "x", data: { b: [{ apikey: "y", c: 2 }] } };
+    expect(semApikey(original)).toEqual({ a: 1, data: { b: [{ c: 2 }] } });
+    expect(original.apikey).toBe("x");
+    expect(semApikey("texto")).toBe("texto");
+    expect(semApikey(null)).toBeNull();
+  });
+});

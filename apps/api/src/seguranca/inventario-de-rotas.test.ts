@@ -53,6 +53,7 @@ const ROTAS_PUBLICAS: readonly (RotaDeclarada & { readonly motivo: string })[] =
   { metodo: "POST", url: "/webhooks/meta/whatsapp", motivo: "evento do WhatsApp oficial; a confiança é a assinatura HMAC do corpo" },
   { metodo: "GET", url: "/webhooks/meta/instagram", motivo: "verificação do webhook da Meta; a confiança é o token de verificação" },
   { metodo: "POST", url: "/webhooks/meta/instagram", motivo: "evento do Instagram; a confiança é a assinatura HMAC do corpo" },
+  { metodo: "POST", url: "/webhooks/mensageria/:canalId", motivo: "chamada do provedor de mensageria; a confiança é o segredo do Canal no cabeçalho x-n1-webhook-segredo (D-16-03, D-16-06)" },
 ];
 
 /** `/saude` nasce síncrona dentro de `buildApp`, antes de qualquer hook externo poder ouvi-la. */
@@ -62,7 +63,7 @@ const DECLARADAS_ANTES_DO_GANCHO: readonly string[] = ["GET /saude"];
 const PREFIXO_DE_SERVICO = "/v1/integrations";
 
 /** Preenche o `:parametro` da url: `:nome` precisa ser uma operação do registro; o resto aceita qualquer texto. */
-const PARAMETRO_DE_TESTE: Readonly<Record<string, string>> = { nome: "trashContact" };
+const PARAMETRO_DE_TESTE: Readonly<Record<string, string>> = { nome: "toggleConversationStar" };
 const PARAMETRO_PADRAO = "x";
 
 /**

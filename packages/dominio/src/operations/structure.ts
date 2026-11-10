@@ -8,7 +8,8 @@
  */
 
 import { concessaoValeParaMembro, containerAdminRefusal, containerPath, definesAspect, effectiveLifecycleOfContainer, effectiveListConfig, irmaosOrdenados, memberReachesContainer } from "../derive";
-import { ehEstruturaFixa, PASTA_MEUS_NEGOCIOS_ID } from "../estruturas-fixas";
+import { ehEstruturaFixa } from "../estruturas-fixas";
+import type { Canal } from "../crm/canais";
 import { fail, ok, type DataState, type OperationResult } from "../state";
 import type { EffectiveListConfig, Folder, Id, Lifecycle, List, ModeloDeTarefa, PaiDeConteiner, Provenance, Space, StatusCategory, StatusSet, Task, Template } from "../types";
 
@@ -318,6 +319,12 @@ export function createList(
     /** C36 — por onde a Lista conversacional atende; ela exige ao menos um. */
     readonly canaisDeAtendimento?: readonly Id[];
   },
+  /**
+   * 3.3.7 — os Canais de `plataforma.canais` que o servidor leu na transação
+   * (`lerDoCrm`); com eles, um Canal da tabela vale em `canaisDeAtendimento`
+   * sem depender do estado. Ver `validarCanaisDeAtendimento`.
+   */
+  canais?: readonly Canal[],
 ): OperationResult<List> {
   const refusal = mayBuild(state, actingMemberId, { type: input.parentType, id: input.parentId });
   if (refusal) return fail(refusal);
@@ -346,11 +353,11 @@ export function createList(
   // C36 — a conversacional nasce dizendo por onde atende; a operacional não
   // tem o que dizer.
   const modelo = input.modeloDeTarefa ?? "operacional";
-  let canais: readonly Id[] | undefined;
+  let idsDosCanais: readonly Id[] | undefined;
   if (modelo === "conversacional") {
-    const validos = validarCanaisDeAtendimento(state, input.canaisDeAtendimento);
+    const validos = validarCanaisDeAtendimento(state, input.canaisDeAtendimento, canais);
     if (typeof validos === "string") return fail(validos, "canais");
-    canais = validos.ids;
+    idsDosCanais = validos.ids;
   } else if (input.canaisDeAtendimento && input.canaisDeAtendimento.length > 0) {
     return fail(CANAIS_SO_NA_CONVERSACIONAL, "canais");
   }
@@ -366,7 +373,7 @@ export function createList(
     order: proximaOrdem(siblings),
     isPrivate: input.isPrivate ?? false,
     modeloDeTarefa: modelo,
-    ...(canais ? { canaisDeAtendimento: canais } : {}),
+    ...(idsDosCanais ? { canaisDeAtendimento: idsDosCanais } : {}),
     // Nasce herdando: o ajuste é ato posterior, nas configurações do contêiner.
     modes: {},
     ...(template ? { provenance: provenanceOf(template) } : {}),
@@ -409,14 +416,17 @@ export function createList(
     detail:
       parentName(state, input.parentType, input.parentId) +
       (list.modeloDeTarefa === "conversacional" ? " · Modelo conversacional: cada Tarefa nasce de um Contato" : "") +
-      (canais ? ` · Atende por ${nomesDosCanais(state, canais)}` : ""),
+      (idsDosCanais ? ` · Atende por ${nomesDosCanais(state, idsDosCanais, canais)}` : ""),
   });
   return ok(list);
 }
 
-/** Os nomes dos Canais, na ordem dada, para o Registro de Atividade. */
-export function nomesDosCanais(state: DataState, ids: readonly Id[]): string {
-  return ids.map((id) => state.channels.find((c) => c.id === id)?.name ?? id).join(", ");
+/**
+ * Os nomes dos Canais, na ordem dada, para o Registro de Atividade. 3.3.7: o nome vem de `canais` (as
+ * tabelas, lidas pelo servidor); um id que ela não tem aparece como o próprio id.
+ */
+export function nomesDosCanais(_state: DataState, ids: readonly Id[], canais?: readonly Canal[]): string {
+  return ids.map((id) => canais?.find((c) => c.id === id)?.nome ?? id).join(", ");
 }
 
 /**
@@ -753,9 +763,6 @@ function recusarMover(state: DataState, actingMemberId: Id, tipo: "folder" | "li
   }
   // Q2/A7 — o conjunto fechado das estruturas que o código endereça por id; só o movido e o destino são nomeados.
   if (ehEstruturaFixa(tipo, id)) return { mensagem: `${ROTULO[tipo].nome} ${movido.name} é uma estrutura fixa e não muda de lugar.` };
-  if (containerPath(state, destino.parentType, destino.parentId).some((n) => n.type === "folder" && n.id === PASTA_MEUS_NEGOCIOS_ID)) {
-    return { mensagem: "A Pasta Meus negócios não recebe Pastas nem Listas." };
-  }
   // Profundidade (RN-SUB-11, RN-SUB-02): a estrutura tem no máximo dois níveis de Pasta.
   if (tipo === "folder" && destino.parentType === "folder") {
     if (state.folders.some((f) => f.parentType === "folder" && f.parentId === id)) {

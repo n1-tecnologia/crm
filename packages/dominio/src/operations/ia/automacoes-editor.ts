@@ -27,7 +27,7 @@ import { rascunhoDaAutomacao, versaoVigenteDaAutomacao } from "../../derive-ia";
 import { OBJECT_TYPE_LABEL } from "../../rotulos";
 import { memberActor, nextId, recordActivity } from "../activity";
 import { blockedAbove } from "../configuration";
-import { CONTROLES, escopoExiste, eventoDoCatalogo } from "./automacoes-catalogo";
+import { CONTROLES, escopoExiste, eventoDoCatalogo, type FunisDoEscopo } from "./automacoes-catalogo";
 import { recusaDoEvento } from "./automacoes-validacao";
 import { recusaDeAdministrarAutomacao, recusaDeConvidado, recusaDeMembroAtivo } from "./permissoes-ia";
 
@@ -191,13 +191,16 @@ export interface CriarAutomacaoInput {
   readonly trigger?: AutomationTrigger;
 }
 
-/** 19, 12.1 — nasce `rascunho`, Versão 1 `rascunho`, Criador e Proprietário = o Membro, escopo fixado (RN-AUT-02). Um Convidado nunca cria. */
-export function criarAutomacao(state: DataState, actingMemberId: Id, input: CriarAutomacaoInput): OperationResult<Automation> {
+/**
+ * 19, 12.1 — nasce `rascunho`, Versão 1 `rascunho`, Criador e Proprietário = o Membro, escopo fixado (RN-AUT-02). Um Convidado nunca cria.
+ * `funis` (último, opcional) são os Funis do Espaço lidos de `plataforma.funis` pelo servidor, para conferir o escopo Funil; ausente, o Funil é desconhecido.
+ */
+export function criarAutomacao(state: DataState, actingMemberId: Id, input: CriarAutomacaoInput, funis?: FunisDoEscopo): OperationResult<Automation> {
   const convidado = recusaDeConvidado(state, actingMemberId, "cria Automação");
   if (convidado) return fail(convidado);
   const name = input.name.trim();
   if (!name) return fail("Dê um nome à Automação.", "nome");
-  if (!escopoExiste(state, input.scopeType, input.scopeId)) return fail("O escopo indicado não existe.", "escopo");
+  if (!escopoExiste(state, input.scopeType, input.scopeId, funis)) return fail("O escopo indicado não existe.", "escopo");
   // D-16, 2.6.5 item 4 — um Espaço ou Pasta acima pode ter bloqueado as Automações abaixo dele.
   if (input.scopeType === "folder" || input.scopeType === "list") {
     const bloqueio = blockedAbove(state, input.scopeType, input.scopeId, "automations");

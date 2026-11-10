@@ -65,6 +65,11 @@ describe("esquemas/planejamento — a forma dos args de planning.ts", () => {
           },
         ],
       ],
+      // D-15-07: o `canais` que o navegador manda só para a execução local (o servidor o descarta).
+      [
+        "instantiateListTemplate",
+        ["tpl_1", { name: "L", parentType: "space", parentId: "spc_1", modeloDeTarefa: "conversacional", canaisDeAtendimento: ["can_1"] }, [{ id: "can_1", nome: "Loja", tipo: "whatsapp", estado: "ativo" }]],
+      ],
       ["renameTemplate", ["tpl_1", { name: "x" }]],
       ["setTemplateArchived", ["tpl_1", true]],
     ];

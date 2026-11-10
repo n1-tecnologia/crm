@@ -52,6 +52,16 @@ export const GRUPOS_NO_PROVEDOR: Record<string, readonly GrupoNoProvedor[]> = {
   ],
 };
 
+/**
+ * Os Grupos que o provedor mostra para o Canal e que o Espaço de Trabalho ainda não espelhou. Fonte única
+ * de `importarGruposDoCanal` e de `numerosAResolver`: a operação e a leitura do servidor enxergam os
+ * mesmos Participantes.
+ */
+export function gruposNovosDoProvedor(state: DataState, canal: { readonly identificadorExterno: string }): readonly GrupoNoProvedor[] {
+  const existentes = new Set(state.grupos.map((g) => g.identificadorExterno));
+  return (GRUPOS_NO_PROVEDOR[canal.identificadorExterno] ?? []).filter((g) => !existentes.has(g.jid));
+}
+
 let sequencia = 0;
 
 /**

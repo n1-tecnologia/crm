@@ -9,8 +9,29 @@ import { containerAdminRefusal, effectiveListConfig, memberReachesContainer, mem
 import type { DataState } from "../state";
 import type { Task } from "../types";
 import { runScheduledAutomations } from "./automations";
-import { CP, CR, clienteDe, contaSemCliente, createReceivableSeries, parcelaDuplicada } from "./financeiro";
+import { CP, CR, clienteDe, contaSemCliente, createReceivableSeries, parcelaDuplicada, type ClientesLidos } from "./financeiro";
 import { addTaskComment, changeTaskStatus, createTask, setTaskFieldValue, statusOptionRefusal, trashTask } from "./tasks";
+
+/**
+ * Os Contatos do demo que estes testes usam como cliente: o seed não cria mais Contato (15-31), mas as Contas a
+ * receber do seed guardam os ids `cnt_cr_*` por Vínculo. O nome e o dono de cada um vêm do demo.
+ */
+const CLIENTES_DO_DEMO: ReadonlyArray<readonly [id: string, nome: string, sobrenome: string, dono: string]> = [
+  ["cnt_cr_helena", "Helena", "Vasconcelos", CR.comercialId],
+  ["cnt_cr_ricardo", "Ricardo", "Tavares", CR.comercialId],
+  ["cnt_cr_camila", "Camila", "Duarte", "mem_rafael"],
+  ["cnt_cr_otavio", "Otávio", "Ramires", "mem_rafael"],
+  ["cnt_1", "Ana", "Ribeiro", "mem_julia"],
+  ["cnt_2", "Marina", "Alves", "mem_rafael"],
+  ["cnt_3", "Paulo", "Cardoso", "mem_thiago"],
+  ["cnt_4", "Renata", "Moreira", "mem_julia"],
+];
+
+/** Os clientes como o servidor os leria das tabelas (Fase 15, 3.4.10). */
+const clientesDoSeed = (_s: DataState): ClientesLidos => ({
+  contatos: CLIENTES_DO_DEMO.map(([id, nome, sobrenome, dono]) => ({ id, nome: `${nome} ${sobrenome}`, estado: "ativo" as const, proprietarioId: dono })),
+  empresas: [],
+});
 
 let state: DataState;
 beforeEach(() => {
@@ -94,16 +115,27 @@ describe("Processo Contas a receber", () => {
     expect(campo(cancelada, F.situacao)).toBe(CR.situacoes.emDia);
   });
 
+  it("R4/R5 sem o que o servidor leu dos clientes: o comentário diz \"o cliente\" e não menciona o dono (nada é lido do estado)", () => {
+    const t = conta("tsk_cr_gab_2");
+    expect(runScheduledAutomations(state, CP.financeiroId, CR.listId, hoje).ok).toBe(true);
+    expect(t.comments.at(-1)?.content).toMatch(/sem recebimento: o cliente entrou em cobrança/);
+    const depois = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + 31);
+    expect(runScheduledAutomations(state, CP.financeiroId, CR.listId, depois).ok).toBe(true);
+    expect(t.comments.at(-1)?.mentions.map((m) => m.id) ?? []).not.toContain(CR.comercialId);
+  });
+
   it("R2/R4/R6: D+1 leva a pendente + em cobrança; D+30 menciona o dono do cliente; descartar em cobrança vira inadimplente", () => {
     const t = conta("tsk_cr_gab_2"); // venceu ontem, para receber
-    const r = runScheduledAutomations(state, CP.financeiroId, CR.listId, hoje);
+    // O nome e o dono do cliente chegam por `OpcoesDaAgenda.clientes` (o que o servidor leu de `plataforma.contatos`).
+    const opcoes = { clientes: clientesDoSeed(state) };
+    const r = runScheduledAutomations(state, CP.financeiroId, CR.listId, hoje, opcoes);
     expect(r.ok).toBe(true);
     expect(t.statusId).toBe(S.pendente);
     expect(campo(t, F.situacao)).toBe(CR.situacoes.emCobranca);
     expect(t.comments.at(-1)?.content).toMatch(/Helena Vasconcelos entrou em cobrança/);
     // R4 ainda não: só a D+30. Simulando o relógio 31 dias à frente.
     const depois = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + 31);
-    expect(runScheduledAutomations(state, CP.financeiroId, CR.listId, depois).ok).toBe(true);
+    expect(runScheduledAutomations(state, CP.financeiroId, CR.listId, depois, opcoes).ok).toBe(true);
     const aviso = t.comments.at(-1);
     expect(aviso?.content).toMatch(/há 30 dias em cobrança/);
     expect(aviso?.mentions.map((m) => m.id)).toContain(CR.comercialId);
@@ -115,7 +147,7 @@ describe("Processo Contas a receber", () => {
   it("R1: a série nasce de uma vez, vinculada ao cliente, com o Financeiro; RN-CR-07 recusa a segunda série; recusa no meio desfaz tudo", () => {
     const ativas = () => state.tasks.filter((t) => t.lifecycle === "ativo").length;
     const antes = ativas();
-    const r = createReceivableSeries(state, CP.financeiroId, { contactId: "cnt_2", centroDeCusto: "Tria Tech", empresa: "Tria Company", valorEntrada: 5000, vencimentoEntrada: em(1), valorParcela: 2500, parcelas: 3, primeiroVencimento: "2026-01-31" });
+    const r = createReceivableSeries(state, CP.financeiroId, { contactId: "cnt_2", centroDeCusto: "Tria Tech", empresa: "Tria Company", valorEntrada: 5000, vencimentoEntrada: em(1), valorParcela: 2500, parcelas: 3, primeiroVencimento: "2026-01-31" }, clientesDoSeed(state));
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.value.map((t) => t.title)).toEqual(["Entrada – Marina Alves", "1ª Parcela – Marina Alves", "2ª Parcela – Marina Alves", "3ª Parcela – Marina Alves"]);
@@ -124,11 +156,11 @@ describe("Processo Contas a receber", () => {
     expect(campo(r.value[2] ?? r.value[0]!, F.numeroParcela)).toBe(2);
     expect(memberSeesTask(state, "mem_rafael", r.value[0]?.id ?? "")).toBe(true); // Marina é do Rafael
     expect(contaSemCliente(state, r.value[1]!)).toBe(false);
-    const dobrada = createReceivableSeries(state, CP.financeiroId, { contactId: "cnt_2", centroDeCusto: "Tria Tech", valorParcela: 1, parcelas: 1, primeiroVencimento: em(5) });
+    const dobrada = createReceivableSeries(state, CP.financeiroId, { contactId: "cnt_2", centroDeCusto: "Tria Tech", valorParcela: 1, parcelas: 1, primeiroVencimento: em(5) }, clientesDoSeed(state));
     expect(dobrada.ok).toBe(false);
     if (!dobrada.ok) expect(dobrada.error).toMatch(/já tem a 1ª Parcela nesta Lista\. Descarte a série antiga/);
     // Sem alcance à Lista: nada nasce.
-    const semAlcance = createReceivableSeries(state, "mem_julia", { contactId: "cnt_1", centroDeCusto: "Tria Tech", valorParcela: 1, parcelas: 2, primeiroVencimento: em(5) });
+    const semAlcance = createReceivableSeries(state, "mem_julia", { contactId: "cnt_1", centroDeCusto: "Tria Tech", valorParcela: 1, parcelas: 2, primeiroVencimento: em(5) }, clientesDoSeed(state));
     expect(semAlcance.ok).toBe(false);
     expect(ativas()).toBe(antes + 4);
     // Recusa no meio (o limite de Tarefas por Lista cai na 2ª conta): a 1ª já
@@ -136,14 +168,14 @@ describe("Processo Contas a receber", () => {
     const linksAntes = state.links.length;
     const grantsAntes = state.grants.length;
     Object.assign(state.workspace, { limits: { ...state.workspace.limits, tasksPerList: state.tasks.filter((t) => t.listId === CR.listId && t.lifecycle === "ativo" && !t.parentTaskId).length + 1 } });
-    const meio = createReceivableSeries(state, CP.financeiroId, { contactId: "cnt_3", centroDeCusto: "Tria Tech", valorParcela: 10, parcelas: 2, primeiroVencimento: em(5) });
+    const meio = createReceivableSeries(state, CP.financeiroId, { contactId: "cnt_3", centroDeCusto: "Tria Tech", valorParcela: 10, parcelas: 2, primeiroVencimento: em(5) }, clientesDoSeed(state));
     expect(meio.ok).toBe(false);
     if (!meio.ok) expect(meio.error).toMatch(/Limite/);
     expect(ativas()).toBe(antes + 4);
     expect(state.links.length).toBe(linksAntes);
     expect(state.grants.length).toBe(grantsAntes);
     // Data inválida não vira fevereiro do ano seguinte.
-    expect(createReceivableSeries(state, CP.financeiroId, { contactId: "cnt_4", centroDeCusto: "Tria Tech", valorParcela: 10, parcelas: 1, primeiroVencimento: "2026-13-45" }).ok).toBe(false);
+    expect(createReceivableSeries(state, CP.financeiroId, { contactId: "cnt_4", centroDeCusto: "Tria Tech", valorParcela: 10, parcelas: 1, primeiroVencimento: "2026-13-45" }, clientesDoSeed(state)).ok).toBe(false);
   });
 
   it("RN-CR-02 e RN-CR-07 como avisos: conta criada à mão sem cliente; parcela repetida", () => {
@@ -157,5 +189,55 @@ describe("Processo Contas a receber", () => {
     state.links.push({ ...state.links.find((l) => l.fromId === gab2.id)!, id: "lnk_teste", fromId: solta.value.id });
     expect(setTaskFieldValue(state, CP.financeiroId, solta.value.id, F.numeroParcela, 2).ok).toBe(true);
     expect(parcelaDuplicada(state, solta.value)?.id).toBe(gab2.id);
+  });
+});
+
+describe("Cliente da conta vindo das tabelas do CRM (Fase 15, 3.4.10, UCR-08)", () => {
+  // Um Contato que só existe em `plataforma.contatos`: o estado do seed nem sabe dele.
+  const NOVO = "11111111-1111-4111-8111-111111111111";
+  const clienteDaTabela = (over: Partial<{ id: string; nome: string; estado: string; proprietarioId: string }> = {}) => ({
+    contatos: [{ id: NOVO, nome: "Ana Lima", estado: "ativo", proprietarioId: "mem_rafael", ...over }],
+    empresas: [],
+  });
+  const entrada = { contactId: NOVO, centroDeCusto: "Tria Tech", valorEntrada: 1000, vencimentoEntrada: em(1), valorParcela: 500, parcelas: 2, primeiroVencimento: em(30) };
+
+  it("clienteDe devolve só a referência do Vínculo cliente (tipo e id), sem nome nem dono", () => {
+    expect(clienteDe(state, conta("tsk_cr_gab_2"))).toEqual({ tipo: "contact", id: "cnt_cr_helena" });
+  });
+
+  it("a série nasce para um Contato que só está na tabela: o Vínculo cliente leva o id dele e o título, o nome lido", () => {
+    expect(state.links.some((l) => l.toId === NOVO)).toBe(false);
+    const r = createReceivableSeries(state, CP.financeiroId, entrada, clienteDaTabela());
+    expect(r.ok, r.ok ? "" : r.error).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.map((t) => t.title)).toEqual(["Entrada – Ana Lima", "1ª Parcela – Ana Lima", "2ª Parcela – Ana Lima"]);
+    expect(r.value.every((t) => clienteDe(state, t)?.id === NOVO)).toBe(true);
+    expect(state.links.filter((l) => l.toId === NOVO).map((l) => [l.toType, l.role])).toEqual([["contact", "cliente"], ["contact", "cliente"], ["contact", "cliente"]]);
+    // O dono do cliente (lido da tabela) vê e comenta as contas dele.
+    expect(memberSeesTask(state, "mem_rafael", r.value[0]?.id ?? "")).toBe(true);
+  });
+
+  it("cliente na lixeira, arquivado ou ausente do que o servidor leu: \"Cliente não encontrado.\" e nada nasce", () => {
+    const antes = state.tasks.length;
+    for (const clientes of [clienteDaTabela({ estado: "na_lixeira" }), clienteDaTabela({ estado: "arquivado" }), { contatos: [], empresas: [] }]) {
+      const r = createReceivableSeries(state, CP.financeiroId, entrada, clientes);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.error).toBe("Cliente não encontrado.");
+    }
+    expect(state.tasks.length).toBe(antes);
+  });
+
+  it("um Contato que o servidor não leu já não vale como cliente: só o que ele leu", () => {
+    const r = createReceivableSeries(state, CP.financeiroId, { ...entrada, contactId: "cnt_2" }, { contatos: [], empresas: [] });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toBe("Cliente não encontrado.");
+  });
+
+  it("criar a mesma série duas vezes segue a regra de hoje (RN-CR-07): a segunda é recusada", () => {
+    const primeira = createReceivableSeries(state, CP.financeiroId, entrada, clienteDaTabela());
+    expect(primeira.ok).toBe(true);
+    const segunda = createReceivableSeries(state, CP.financeiroId, { ...entrada, valorEntrada: undefined, vencimentoEntrada: undefined }, clienteDaTabela());
+    expect(segunda.ok).toBe(false);
+    if (!segunda.ok) expect(segunda.error).toBe("Ana Lima já tem a 1ª Parcela nesta Lista. Descarte a série antiga antes de criar outra.");
   });
 });

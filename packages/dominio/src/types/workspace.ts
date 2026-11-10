@@ -237,8 +237,6 @@ export interface Workspace {
   readonly limits: ImposedLimits;
   /** B33 — instantiated with the workspace, always `ativo`. */
   readonly defaultAgentId: Id;
-  /** B60 — exactly one, always `ativo`, never private. */
-  defaultFunnelId: Id;
   defaultSpaceTemplateId?: Id;
   suspensions: Suspension[];
   closedAt?: Instant;

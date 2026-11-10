@@ -16,8 +16,11 @@
 
 import type { Pool, PoolClient } from "pg";
 import type { Pagina } from "@n1/dominio/crm/comum";
+import { nomeDeExibicaoDoContato } from "@n1/dominio/crm/contatos";
 import type {
+  Atribuicao,
   Conversa,
+  ConversaNaLista,
   EstadoDaConversa,
   FiltroDeConversas,
   ParticipanteDaConversa,
@@ -26,13 +29,17 @@ import type {
 
 /** O que o serviço decide gravar: o resto (situação, estado, datas) é default da 008. */
 export interface LinhaNovaDeConversa {
+  /** Quem precisa do id antes de inserir (a Tarefa conversacional, 14-13) o escolhe; ausente, o default do banco gera. */
+  readonly id?: string;
   readonly canalId: string;
   readonly contatoId: string;
   readonly titulo: string;
   readonly filaId: string | null;
-  readonly atribuido: { readonly tipo: "membro"; readonly id: string };
+  /** `null` quando ninguém atende ainda: a Conversa que o provedor abre (3.6.2) nasce sem atribuído. */
+  readonly atribuido: { readonly tipo: "membro"; readonly id: string } | null;
   readonly participantes: readonly ParticipanteDaConversa[];
-  readonly criadoPor: { readonly tipo: "member"; readonly id: string };
+  /** `integration` é a Conversa aberta pelo recebimento (o Canal como Integração). */
+  readonly criadoPor: { readonly tipo: "member" | "integration"; readonly id: string };
 }
 
 export interface RepositorioDeConversas {
@@ -41,14 +48,46 @@ export interface RepositorioDeConversas {
   obter(workspaceId: string, id: string, opcoes?: { readonly travar?: boolean }): Promise<Conversa | undefined>;
   /** A Conversa `aberta` ou `pendente` e `ativa` do par (INV-CXE-03), se houver. */
   abertaDoPar(workspaceId: string, contatoId: string, canalId: string): Promise<Conversa | undefined>;
-  listar(workspaceId: string, filtro: FiltroDeConversas): Promise<Pagina<Conversa>>;
+  /**
+   * A lista da Caixa. `membroId` é o Membro da sessão: a estrela e o `naoLidas`
+   * são DELE (`conversa_marcacoes`), e `comEstrela` filtra por elas.
+   */
+  listar(workspaceId: string, filtro: FiltroDeConversas, membroId: string): Promise<Pagina<ConversaNaLista>>;
   /** `resolvida` fecha o Adiamento; `aberta` conta uma reabertura. Outra situação não é gravada por aqui. */
   definirSituacao(workspaceId: string, id: string, situacao: SituacaoDaConversa): Promise<Conversa | undefined>;
+  /** Só o Contato e a lista de Participantes mudam: o Canal e as Mensagens ficam (INV-CXE-04). */
+  trocarContato(
+    workspaceId: string,
+    id: string,
+    contatoId: string,
+    participantes: readonly ParticipanteDaConversa[],
+  ): Promise<Conversa | undefined>;
+  /** As duas colunas da atribuição andam juntas (`conversas_atribuido_ck`): nulas quando `null`. */
+  definirAtribuicao(workspaceId: string, id: string, atribuido: Atribuicao): Promise<Conversa | undefined>;
+  /** `estado` e `na_lixeira_em` andam juntos (`conversas_na_lixeira_em_ck`); quem chama confere que a Conversa está resolvida. */
+  enviarParaLixeira(workspaceId: string, id: string): Promise<Conversa | undefined>;
+  restaurar(workspaceId: string, id: string): Promise<Conversa | undefined>;
 }
 
 const COLUNAS_CONVERSA = `id, canal_id, contato_id, titulo, titulo_editado, situacao, estado, fila_id,
   atribuido_tipo, atribuido_id, adiada_ate, adiamento_motivo, participantes, resolvida_em, reaberta_em,
-  reaberturas, criado_por_tipo, criado_por_id, criado_em, atualizado_em`;
+  reaberturas, criado_por_tipo, criado_por_id, criado_em, atualizado_em, na_lixeira_em`;
+
+/** As mesmas colunas com o alias `c`, para a consulta que junta Contato e marcação. */
+const COLUNAS_DA_LISTA = COLUNAS_CONVERSA.split(",")
+  .map((coluna) => `c.${coluna.trim()}`)
+  .join(", ");
+
+interface LinhaDaListaDeConversas extends LinhaDoBancoDeConversa {
+  readonly estrela: boolean;
+  readonly contato_achado: string | null;
+  readonly contato_nome: string | null;
+  readonly contato_sobrenome: string | null;
+  readonly email_principal: string | null;
+  readonly telefone_principal: string | null;
+  readonly nao_lidas: number;
+  readonly ultima_recebida_em: Date | null;
+}
 
 export interface LinhaDoBancoDeConversa {
   readonly id: string;
@@ -71,6 +110,7 @@ export interface LinhaDoBancoDeConversa {
   readonly criado_por_id: string;
   readonly criado_em: Date;
   readonly atualizado_em: Date;
+  readonly na_lixeira_em: Date | null;
 }
 
 const iso = (data: Date | null): string | null => (data === null ? null : data.toISOString());
@@ -85,6 +125,7 @@ export function linhaParaConversa(linha: LinhaDoBancoDeConversa): Conversa {
     tituloEditado: linha.titulo_editado,
     situacao: linha.situacao,
     estado: linha.estado,
+    naLixeiraEm: iso(linha.na_lixeira_em),
     filaId: linha.fila_id,
     atribuido:
       linha.atribuido_tipo === null || linha.atribuido_id === null
@@ -105,11 +146,13 @@ export function linhaParaConversa(linha: LinhaDoBancoDeConversa): Conversa {
 export function criarRepositorioDeConversasPg(cliente: Pool | PoolClient): RepositorioDeConversas {
   return {
     async inserir(workspaceId, linha) {
+      // O `id` só entra quando vem: sem ele a coluna fica fora do `insert` e o default da 008 decide.
+      const comId = linha.id !== undefined;
       const { rows } = await cliente.query<LinhaDoBancoDeConversa>(
         `insert into plataforma.conversas
            (workspace_id, canal_id, contato_id, titulo, fila_id, atribuido_tipo, atribuido_id,
-            participantes, criado_por_tipo, criado_por_id)
-         values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10)
+            participantes, criado_por_tipo, criado_por_id${comId ? ", id" : ""})
+         values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10${comId ? ", $11" : ""})
          returning ${COLUNAS_CONVERSA}`,
         [
           workspaceId,
@@ -117,11 +160,12 @@ export function criarRepositorioDeConversasPg(cliente: Pool | PoolClient): Repos
           linha.contatoId,
           linha.titulo,
           linha.filaId,
-          linha.atribuido.tipo,
-          linha.atribuido.id,
+          linha.atribuido?.tipo ?? null,
+          linha.atribuido?.id ?? null,
           JSON.stringify(linha.participantes),
           linha.criadoPor.tipo,
           linha.criadoPor.id,
+          ...(comId ? [linha.id] : []),
         ],
       );
       return linhaParaConversa(rows[0]!);
@@ -147,29 +191,81 @@ export function criarRepositorioDeConversasPg(cliente: Pool | PoolClient): Repos
       return rows[0] ? linhaParaConversa(rows[0]) : undefined;
     },
 
-    async listar(workspaceId, filtro) {
+    async listar(workspaceId, filtro, membroId) {
       // Os fragmentos de WHERE são constantes; todo valor do cliente vai como $n.
-      const condicoes = ["workspace_id = $1", "estado = $2"];
-      const valores: unknown[] = [workspaceId, filtro.estado];
+      const condicoes = ["c.workspace_id = $1", "c.estado = $2"];
+      const valores: unknown[] = [workspaceId, filtro.estado, membroId];
       const somar = (fragmento: (n: number) => string, valor: unknown) => {
         valores.push(valor);
         condicoes.push(fragmento(valores.length));
       };
-      if (filtro.canalId !== undefined) somar((n) => `canal_id = $${n}`, filtro.canalId);
-      if (filtro.contatoId !== undefined) somar((n) => `contato_id = $${n}`, filtro.contatoId);
-      if (filtro.situacao !== undefined) somar((n) => `situacao = $${n}`, filtro.situacao);
+      if (filtro.canalId !== undefined) somar((n) => `c.canal_id = $${n}`, filtro.canalId);
+      if (filtro.contatoId !== undefined) somar((n) => `c.contato_id = $${n}`, filtro.contatoId);
+      if (filtro.situacao !== undefined) somar((n) => `c.situacao = $${n}`, filtro.situacao);
+      if (filtro.atribuidoId !== undefined) somar((n) => `c.atribuido_id = $${n}`, filtro.atribuidoId);
+      if (filtro.filaId !== undefined) somar((n) => `c.fila_id = $${n}`, filtro.filaId);
+      if (filtro.comEstrela !== undefined) somar((n) => `coalesce(mc.estrela, false) = $${n}`, filtro.comEstrela);
+      // `naoLidas` é do Membro da sessão ($3, via `mc`): o mesmo critério do `nao_lidas` da lista, agora no WHERE.
+      // Fragmento constante, sem valor do cliente no texto (T-15-19).
+      if (filtro.naoLidas !== undefined) {
+        condicoes.push(
+          `${filtro.naoLidas ? "exists" : "not exists"} (select 1 from plataforma.mensagens m
+              where m.workspace_id = c.workspace_id and m.conversa_id = c.id
+                and m.direcao = 'recebida'
+                and m.criado_em > coalesce(mc.lida_ate, '-infinity'::timestamptz))`,
+        );
+      }
+      // Busca literal: `position` não tem curinga, então `%` e `_` do cliente valem só por si.
+      if (filtro.q !== undefined) somar((n) => `position(lower($${n}) in lower(c.titulo)) > 0`, filtro.q);
       const onde = condicoes.join(" and ");
+      const deMarcacao = `left join plataforma.conversa_marcacoes mc
+             on mc.workspace_id = c.workspace_id and mc.conversa_id = c.id and mc.membro_id = $3`;
 
-      const total = await cliente.query<{ total: number }>(`select count(*)::int as total from plataforma.conversas where ${onde}`, valores);
-      const pagina = await cliente.query<LinhaDoBancoDeConversa>(
-        `select ${COLUNAS_CONVERSA}
-           from plataforma.conversas
+      const total = await cliente.query<{ total: number }>(
+        `select count(*)::int as total from plataforma.conversas c ${deMarcacao} where ${onde}`,
+        valores,
+      );
+      const pagina = await cliente.query<LinhaDaListaDeConversas>(
+        `select ${COLUNAS_DA_LISTA},
+                coalesce(mc.estrela, false) as estrela,
+                ct.id as contato_achado, ct.nome as contato_nome, ct.sobrenome as contato_sobrenome,
+                (select i.valor from plataforma.contato_identificadores i
+                  where i.workspace_id = c.workspace_id and i.contato_id = c.contato_id
+                    and i.principal and i.tipo = 'email') as email_principal,
+                (select i.valor from plataforma.contato_identificadores i
+                  where i.workspace_id = c.workspace_id and i.contato_id = c.contato_id
+                    and i.principal and i.tipo = 'telefone') as telefone_principal,
+                (select count(*)::int from plataforma.mensagens m
+                  where m.workspace_id = c.workspace_id and m.conversa_id = c.id
+                    and m.direcao = 'recebida'
+                    and m.criado_em > coalesce(mc.lida_ate, '-infinity'::timestamptz)) as nao_lidas,
+                (select max(m.criado_em) from plataforma.mensagens m
+                  where m.workspace_id = c.workspace_id and m.conversa_id = c.id
+                    and m.direcao = 'recebida') as ultima_recebida_em
+           from plataforma.conversas c
+           ${deMarcacao}
+           left join plataforma.contatos ct on ct.workspace_id = c.workspace_id and ct.id = c.contato_id
           where ${onde}
-          order by atualizado_em desc, id
+          order by c.atualizado_em desc, c.id
           limit $${valores.length + 1} offset $${valores.length + 2}`,
         [...valores, filtro.limite, filtro.deslocamento],
       );
-      return { total: total.rows[0]?.total ?? 0, itens: pagina.rows.map(linhaParaConversa) };
+      return {
+        total: total.rows[0]?.total ?? 0,
+        itens: pagina.rows.map((linha) => ({
+          ...linhaParaConversa(linha),
+          contatoNome:
+            linha.contato_achado === null
+              ? null
+              : nomeDeExibicaoDoContato(
+                  { nome: linha.contato_nome, sobrenome: linha.contato_sobrenome },
+                  linha.email_principal ?? linha.telefone_principal,
+                ),
+          estrela: linha.estrela,
+          naoLidas: linha.nao_lidas,
+          ultimaRecebidaEm: iso(linha.ultima_recebida_em),
+        })),
+      };
     },
 
     async definirSituacao(workspaceId, id, situacao) {
@@ -184,6 +280,50 @@ export function criarRepositorioDeConversasPg(cliente: Pool | PoolClient): Repos
               where workspace_id = $1 and id = $2
               returning ${COLUNAS_CONVERSA}`;
       const { rows } = await cliente.query<LinhaDoBancoDeConversa>(sql, situacao === "resolvida" ? [workspaceId, id] : [workspaceId, id, situacao]);
+      return rows[0] ? linhaParaConversa(rows[0]) : undefined;
+    },
+
+    async trocarContato(workspaceId, id, contatoId, participantes) {
+      const { rows } = await cliente.query<LinhaDoBancoDeConversa>(
+        `update plataforma.conversas
+            set contato_id = $3, participantes = $4::jsonb
+          where workspace_id = $1 and id = $2
+          returning ${COLUNAS_CONVERSA}`,
+        [workspaceId, id, contatoId, JSON.stringify(participantes)],
+      );
+      return rows[0] ? linhaParaConversa(rows[0]) : undefined;
+    },
+
+    async definirAtribuicao(workspaceId, id, atribuido) {
+      const { rows } = await cliente.query<LinhaDoBancoDeConversa>(
+        `update plataforma.conversas
+            set atribuido_tipo = $3, atribuido_id = $4
+          where workspace_id = $1 and id = $2
+          returning ${COLUNAS_CONVERSA}`,
+        [workspaceId, id, atribuido?.tipo ?? null, atribuido?.id ?? null],
+      );
+      return rows[0] ? linhaParaConversa(rows[0]) : undefined;
+    },
+
+    async enviarParaLixeira(workspaceId, id) {
+      const { rows } = await cliente.query<LinhaDoBancoDeConversa>(
+        `update plataforma.conversas
+            set estado = 'na_lixeira', na_lixeira_em = now()
+          where workspace_id = $1 and id = $2
+          returning ${COLUNAS_CONVERSA}`,
+        [workspaceId, id],
+      );
+      return rows[0] ? linhaParaConversa(rows[0]) : undefined;
+    },
+
+    async restaurar(workspaceId, id) {
+      const { rows } = await cliente.query<LinhaDoBancoDeConversa>(
+        `update plataforma.conversas
+            set estado = 'ativo', na_lixeira_em = null
+          where workspace_id = $1 and id = $2
+          returning ${COLUNAS_CONVERSA}`,
+        [workspaceId, id],
+      );
       return rows[0] ? linhaParaConversa(rows[0]) : undefined;
     },
   };

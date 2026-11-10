@@ -4,13 +4,21 @@
 #      ao menos 30 recebem 429 e o primeiro 429 cai entre a 11ª e a 20ª chamada;
 #   2. 50 GET seguidos a /v1/public/forms/<segredo>: nenhum recebe 429;
 #   3. nenhum log do nginx (acesso e erro, arquivo e saída do contêiner) guarda
-#      o segredo, e o acesso mostra /v1/public/forms/***.
+#      o segredo, e o acesso mostra /v1/public/forms/***;
+#   4. (Fase 16, Pitfall 5) um fluxo `text/event-stream` com `X-Accel-Buffering: no`
+#      passa pelo `location /` do site e entrega o primeiro quadro em menos de 1 s,
+#      enquanto o upstream segura a resposta por 3 s. O mesmo fluxo SEM o cabeçalho
+#      é medido só como informação: o nginx 1.30 do contêiner não o segurou, e o
+#      cabeçalho continua sendo a garantia que a rota manda (não é o que a prova exige).
 #
 #   bash apps/api/deploy/provar-nginx.sh        # PORTA_DE_PROVA=18609 por padrão
 #
 # Só usa os arquivos deste diretório e uma imagem pública do nginx; não toca em
 # VPS nem em domínio nenhum. O contêiner e a pasta temporária saem no fim.
 # O dono repete o mesmo roteiro na VPS (deploy/CONTEXT.md).
+#
+# A prova 4 usa um contêiner `node:24-alpine` na rede do contêiner do nginx (só
+# para segurar o fluxo); nada toca a VPS.
 #
 # Um segundo `server` faz de upstream: um `return 200` no location rodaria antes
 # do limit_req (fase de reescrita) e pareceria que o limite não funciona.
@@ -21,10 +29,13 @@ PORTA="${PORTA_DE_PROVA:-18609}"
 SEGREDO=SEGREDOPROVA0906
 IMAGEM=nginx:stable-alpine
 CONTEINER="n1-prova-nginx-$$"
+UPSTREAM_SSE="n1-prova-sse-$$"
+IMAGEM_NODE=node:24-alpine
 TMP="$(mktemp -d)"
 FALHAS=0
 
 limpar() {
+  docker rm -f "$UPSTREAM_SSE" >/dev/null 2>&1 || true
   docker rm -f "$CONTEINER" >/dev/null 2>&1 || true
   rm -rf "$TMP"
 }
@@ -39,6 +50,10 @@ mkdir -p "$TMP/conf.d"
 cp "$AQUI/n1-crm-limites.conf" "$TMP/conf.d/00-n1-crm-limites.conf"
 sed "s/__DOMINIO__/localhost/g; s/__PORTA__/8081/g; s/__SITE__/n1-crm-api/g" \
   "$AQUI/nginx-n1-crm-api.conf" > "$TMP/conf.d/10-site.conf"
+# Prova 4: o MESMO modelo de site, num segundo nome (sse.localhost) que aponta para o
+# Node de prova na 8082 — o location / real, sem o limite das rotas públicas.
+sed "s/__DOMINIO__/sse.localhost/g; s/__PORTA__/8082/g; s/__SITE__/sse-prova/g" \
+  "$AQUI/nginx-n1-crm-api.conf" > "$TMP/conf.d/11-site-sse.conf"
 cat > "$TMP/conf.d/20-upstream.conf" <<'EOF'
 server {
     listen 8081;
@@ -102,6 +117,48 @@ elif ! printf '%s\n' "$logs" | grep -q '/v1/public/forms/\*\*\*'; then
   falhou "prova 3 (logs): o acesso não mostra /v1/public/forms/***"
 else
   echo "ok - prova 3 (logs): nenhum log guarda o segredo e o acesso mostra /v1/public/forms/***"
+fi
+
+# Prova 4: o fluxo de eventos não fica preso no buffer do nginx (T-16-57). O upstream
+# (Node, na rede do contêiner do nginx) responde `text/event-stream` e manda o
+# cabeçalho na hora; 100 ms depois escreve `: aberto`, espera 3 s e fecha. O nginx
+# repassa o cabeçalho sempre, então a medida é o tempo do primeiro QUADRO (a primeira
+# linha do corpo), não do primeiro byte. A prova exige menos de 1 s COM o cabeçalho; o
+# tempo SEM ele sai só como informação (o nginx 1.30 de `stable-alpine` não segurou o
+# fluxo nem assim, mas versões e configurações com buffer maior seguram).
+docker run -d --rm --name "$UPSTREAM_SSE" --network "container:$CONTEINER" "$IMAGEM_NODE" node -e '
+const http = require("http");
+http.createServer((req, res) => {
+  const cabecalhos = { "content-type": "text/event-stream", "cache-control": "no-cache" };
+  if (req.url.startsWith("/eventos-de-prova")) cabecalhos["x-accel-buffering"] = "no";
+  res.writeHead(200, cabecalhos);
+  res.flushHeaders();
+  setTimeout(() => res.write(": aberto\n\n"), 100);
+  setTimeout(() => res.end(), 3000);
+}).listen(8082, "127.0.0.1", () => console.log("pronto"));
+' >/dev/null
+pronto_sse=0
+for _ in $(seq 1 100); do
+  if docker logs "$UPSTREAM_SSE" 2>&1 | grep -q '^pronto$'; then pronto_sse=1; break; fi
+  sleep 0.2
+done
+[ "$pronto_sse" = 1 ] || { echo "FALHOU: o upstream de prova do SSE não subiu em 20 s" >&2; exit 1; }
+
+# Milissegundos até a primeira linha do corpo de um GET ao site `sse.localhost`
+# (perl para o relógio: o `date` do macOS não tem nanossegundos). Imprime só o número.
+primeiro_quadro_ms() {
+  curl -sN --max-time 6 -H 'Host: sse.localhost' "http://127.0.0.1:$PORTA$1" 2>/dev/null \
+    | perl -MTime::HiRes=time -e '$t = time; $l = <STDIN>; printf "%d\n", defined $l ? (time - $t) * 1000 : 99999;' || true
+}
+
+com_cabecalho_ms="$(primeiro_quadro_ms /eventos-de-prova)"
+sem_cabecalho_ms="$(primeiro_quadro_ms /sem-cabecalho)"
+if [ -z "$com_cabecalho_ms" ] || [ -z "$sem_cabecalho_ms" ]; then
+  falhou "prova 4 (SSE): não foi possível medir (curl ou perl ausente?)"
+elif [ "$com_cabecalho_ms" -ge 1000 ]; then
+  falhou "prova 4 (SSE): o primeiro quadro levou $com_cabecalho_ms ms com X-Accel-Buffering: no (esperado: menos de 1000)"
+else
+  echo "ok - prova 4 (SSE): primeiro quadro em $com_cabecalho_ms ms com X-Accel-Buffering: no (informativo, sem o cabeçalho: $sem_cabecalho_ms ms)"
 fi
 
 [ "$FALHAS" = 0 ] || exit 1

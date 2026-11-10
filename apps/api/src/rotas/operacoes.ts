@@ -30,18 +30,19 @@ import type { ZodTypeProvider } from "@fastify/type-provider-zod";
 import type { ApprovalRequest, Comment, DataState, Id, OperationResult } from "@n1/dominio";
 import { ehNomeDeOperacao, OPERACOES, reviverArgumentos, type NomeDeOperacao } from "@n1/dominio/operations/registro";
 import type { FastifyInstance } from "fastify";
+import type { PoolClient } from "pg";
 import { z } from "zod";
 import { cutucarPonte, type ParDaPonte } from "../automacoes/ponte-ativa";
 import { CODIGO_SUSPENSO, recusaDeSuspenso, type MembroDaSessao } from "../plugins/autenticacao";
 import type { EventoDeSaida } from "../persistencia/outbox";
 import { executar, type MedicaoDaExecucao, type ResultadoTransacao } from "../persistencia/unidade-de-trabalho";
-import { recortarDiferenca, recortarValor, visibilidadePara } from "@n1/dominio/derive-visibilidade";
-import { maiorIdDe } from "@n1/dominio/operations";
 import { convidarMembro } from "../servicos/convidar-membro";
 import { LimiteDeEnvio, type AuthDeConvite } from "../autenticacao/auth-de-convite";
 import type { ResolverUsuario } from "../autenticacao/resolver-usuario";
 import { LISTA_SOLICITACOES_DE_PAGAMENTO_ID } from "../servicos/dto-solicitacao";
 import { esquemaDeArgumentos } from "./esquemas-de-argumentos";
+import { AO_CONFIRMAR, LER_DO_CRM, type LidoDoCrm } from "./gesto-no-crm";
+import { recortarResposta } from "./resposta-recortada";
 
 /**
  * As duas operações desta rota que o pipeline de pagamento precisa ouvir (D-09, contrato v1 §8):
@@ -267,6 +268,13 @@ export interface OpcoesDeOperacoes {
   readonly resolverUsuario?: ResolverUsuario;
 }
 
+/** Os `args` com a posição `posicao` trocada pelo que o servidor leu; o que o navegador mandou ali some. */
+function comLidoDoCrm(args: readonly unknown[], posicao: number, lido: unknown): unknown[] {
+  const copia = args.slice(0, posicao);
+  while (copia.length < posicao) copia.push(undefined);
+  return [...copia, lido];
+}
+
 export async function rotasDeOperacoes(app: FastifyInstance, opcoes: OpcoesDeOperacoes = {}): Promise<void> {
   const SERVICOS = criarServicos(opcoes);
   app.withTypeProvider<ZodTypeProvider>().post(
@@ -325,6 +333,8 @@ export async function rotasDeOperacoes(app: FastifyInstance, opcoes: OpcoesDeOpe
       }
       const args: unknown[] = validacao.data;
       const servico = SERVICOS[nome];
+      const aoConfirmar = AO_CONFIRMAR[nome];
+      const leituraDoCrm = LER_DO_CRM[nome];
 
       let resultado: ResultadoTransacao<unknown>;
       let eraReplay = false;
@@ -357,9 +367,9 @@ export async function rotasDeOperacoes(app: FastifyInstance, opcoes: OpcoesDeOpe
                 medicao = m;
               },
             )
-          : await executar(
+          : await executar<unknown, LidoDoCrm | undefined>(
               request.membro.workspaceId,
-              (state) => {
+              (state, lidoDoCrm) => {
                 depois = state;
                 if (nome === "decideProcessApproval") {
                   eraReplay = state.approvals.find((a) => a.id === args[0])?.decision === args[1];
@@ -377,7 +387,7 @@ export async function rotasDeOperacoes(app: FastifyInstance, opcoes: OpcoesDeOpe
                 // Unidade de Trabalho (`persistencia/unidade-de-trabalho.ts`)
                 // deriva sozinha, obrigatoriamente, a partir das
                 // `AutomationExecution` que nasceram na transação.
-                const r = REGISTRO[nome]!(state, request.membro.id, ...args);
+                const r = REGISTRO[nome]!(state, request.membro.id, ...(leituraDoCrm && lidoDoCrm ? comLidoDoCrm(args, leituraDoCrm.posicao, leituraDoCrm.argumento(lidoDoCrm)) : args));
                 // D6-12 — só ANOTA quais Tarefas foram gravadas; a cutucada
                 // sai depois do commit, nunca dentro da transação.
                 if (r.ok) afetadas = tarefasAfetadasPelaOperacao(nome, args, r.value, state);
@@ -389,6 +399,12 @@ export async function rotasDeOperacoes(app: FastifyInstance, opcoes: OpcoesDeOpe
                 aoMedir: (m) => {
                   medicao = m;
                 },
+                ...(leituraDoCrm
+                  ? { lerDoCrm: (cliente: PoolClient, state: DataState) => leituraDoCrm.ler(cliente, request.membro.workspaceId, args, state, request.membro) }
+                  : {}),
+                ...(aoConfirmar
+                  ? { aoConfirmar: (cliente: PoolClient, _valor: unknown, state: DataState, lido: LidoDoCrm | undefined) => aoConfirmar(cliente, args, request.membro, state, lido) }
+                  : {}),
               },
             );
       } catch (erro) {
@@ -435,13 +451,7 @@ export async function rotasDeOperacoes(app: FastifyInstance, opcoes: OpcoesDeOpe
       if (depois && "diferenca" in resultado) {
         // `recorteMs` é a etapa do recorte por Membro (SEG-01), própria da D-02.
         const inicioDoRecorte = performance.now();
-        const { ocultos } = visibilidadePara(depois, request.membro.id);
-        const corpo = {
-          ...resultado,
-          diferenca: recortarDiferenca(resultado.diferenca, depois, request.membro.id, ocultos),
-          ...(resultado.ok ? { value: recortarValor(resultado.value, depois, request.membro.id, ocultos) } : {}),
-          sequencia: maiorIdDe(depois),
-        };
+        const corpo = recortarResposta(resultado, depois, request.membro.id);
         registrarMedicao({ recorteMs: Math.round((performance.now() - inicioDoRecorte) * 10) / 10 });
         return reply.code(200).send(corpo);
       }

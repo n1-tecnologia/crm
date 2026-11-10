@@ -16,7 +16,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { buildSeed } from "@n1/dominio/seed";
 import { containerAdminRefusal } from "@n1/dominio/derive";
-import { MEUS_NEGOCIOS_ID } from "@n1/dominio/seed-comercial";
 import type { Ordens } from "@n1/dominio";
 import {
   createFieldDefinition,
@@ -36,6 +35,9 @@ import type { RespostaDeGravacao, Transporte } from "@/dados/transporte";
 import { AppShell } from "@/features/shell/app-shell";
 import { MoverConteinerDialog } from "@/features/estrutura/mover-conteiner-dialog";
 import ListaPage from "@/app/(shell)/estrutura/listas/[lista]/page";
+
+/** A Pasta que ainda se chama «Meus negócios» nos Espaços de teste: uma Pasta comum (15-41, D-15-14); a constante do domínio saiu no 15-43. */
+const MEUS_NEGOCIOS_ID = "fld_meus_negocios";
 
 // O robô flutuante mede a tela com APIs que o jsdom não tem, e o Guia do Financeiro não é o assunto aqui.
 vi.mock("@/features/shell/robo-flutuante", () => ({ RoboFlutuante: () => null }));
@@ -139,6 +141,43 @@ function servidorFalso(): Servidor {
 }
 
 let state: DataState;
+
+/**
+ * A Pasta «Meus negócios», agora comum (15-41, D-15-14), com uma Lista de Funil dentro. O seed não as cria mais (15-31,
+ * D-15-13): os casos que as usam as montam no próprio arranjo, onde ficavam (Comercial, ordem 3) — é o que ainda existe
+ * nos Espaços de teste com Tarefas espelho.
+ */
+function montarMeusNegocios(): void {
+  const origem = { kind: "member", id: "mem_julia" } as const;
+  state.folders.push({
+    id: MEUS_NEGOCIOS_ID,
+    workspaceId: state.workspace.id,
+    createdBy: origem,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    lifecycle: "ativo",
+    name: "Meus negócios",
+    order: 3,
+    isPrivate: false,
+    modes: {},
+    blocks: {},
+    parentType: "space",
+    parentId: "spc_com",
+  });
+  state.lists.push({
+    id: "lst_funil_closer",
+    workspaceId: state.workspace.id,
+    createdBy: origem,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    lifecycle: "ativo",
+    name: "Closer",
+    order: 0,
+    isPrivate: false,
+    modeloDeTarefa: "operacional",
+    modes: {},
+    parentType: "folder",
+    parentId: MEUS_NEGOCIOS_ID,
+  });
+}
 let servidor: Servidor;
 
 const THIAGO = "mem_thiago"; // Proprietário
@@ -537,7 +576,7 @@ describe("Mover para… — sem destino disponível", () => {
   });
 });
 
-describe("Mover para… — as linhas de Pasta, Subpasta e Lista da árvore (D-09, A9)", () => {
+describe("Mover para… — as linhas de Pasta, Subpasta e Lista da árvore (D-09)", () => {
   async function abrirArvore(memberId = THIAGO) {
     montar(<AppShell>{null}</AppShell>, memberId);
     await waitFor(() => expect(temLinha("fld_clientes")).toBe(true));
@@ -577,20 +616,19 @@ describe("Mover para… — as linhas de Pasta, Subpasta e Lista da árvore (D-0
     await waitFor(() => expect(screen.getByText("Subpasta Subpasta de A agora é Pasta em Entrega.")).toBeTruthy());
   });
 
-  it("a Pasta Meus negócios e as Listas dela não têm o ⋯ de mover", async () => {
+  it("a Pasta Meus negócios e as Listas dela têm o ⋯ de mover como qualquer outra (15-41)", async () => {
+    montarMeusNegocios();
     const dosNegocios = state.lists.filter((l) => l.parentId === MEUS_NEGOCIOS_ID);
     expect(dosNegocios.length).toBeGreaterThan(0);
     await abrirArvore();
 
-    expect(within(linha(MEUS_NEGOCIOS_ID)).queryByRole("button", { name: /^Ações de / })).toBeNull();
+    expect(within(linha(MEUS_NEGOCIOS_ID)).queryByRole("button", { name: /^Ações de / })).not.toBeNull();
     for (const l of dosNegocios) {
       expect(temLinha(l.id)).toBe(true);
-      expect(within(linha(l.id)).queryByRole("button", { name: /^Ações de / })).toBeNull();
+      expect(within(linha(l.id)).queryByRole("button", { name: /^Ações de / })).not.toBeNull();
     }
-    // O controle: uma Lista vizinha, fora de Meus negócios, tem.
-    const vizinha = state.lists.find((l) => l.parentId !== MEUS_NEGOCIOS_ID && temLinha(l.id));
-    expect(vizinha).toBeDefined();
-    expect(within(linha(vizinha!.id)).queryByRole("button", { name: /^Ações de / })).not.toBeNull();
+    moverPeloMenu(MEUS_NEGOCIOS_ID);
+    expect(screen.getByRole("alertdialog", { name: "Mover “Meus negócios”" })).toBeTruthy();
   });
 
   it("o Convidado vê a árvore inerte como hoje: Espaço e Pasta sem link nem «+», e sem ⋯ em linha nenhuma", async () => {
@@ -684,14 +722,15 @@ describe("Mover para… — o cabeçalho da página da Lista", () => {
     expect((await enderecoAtual()).get("mover")).toBe(ALFA);
   });
 
-  it("não aparece na Lista de Meus negócios", async () => {
+  it("aparece também na Lista de Meus negócios, que já não é protegida (15-41)", async () => {
+    montarMeusNegocios();
     const dosNegocios = state.lists.find((l) => l.parentId === MEUS_NEGOCIOS_ID);
     expect(dosNegocios).toBeDefined();
     await montarPagina(dosNegocios!.id);
 
     const rotulos = itensDoCabecalho().map((i) => i.textContent ?? "");
     expect(rotulos.some((r) => r.includes("Salvar como modelo"))).toBe(true);
-    expect(rotulos.some((r) => r.includes("Mover para…"))).toBe(false);
+    expect(rotulos.some((r) => r.includes("Mover para…"))).toBe(true);
   });
 
   it("fica desligado com a frase de containerAdminRefusal quando o Membro não administra", async () => {

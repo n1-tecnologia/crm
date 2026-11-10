@@ -7,7 +7,7 @@
  * `../esquemas/CONTEXT.md` para a regra da pasta.
  */
 
-import type { OrigemDoDePara, ResolucaoDeCategoria, VereditoDeCategoria } from "@n1/dominio/operations/financeiro";
+import type { ClientesLidos, OrigemDoDePara, ResolucaoDeCategoria, VereditoDeCategoria } from "@n1/dominio/operations/financeiro";
 import { ID, opcional, type Confere, type Esquemas, type Igual } from "./fragmentos";
 import { z } from "zod";
 
@@ -25,6 +25,18 @@ const RECEIVABLE_SERIES_INPUT = z
     primeiroVencimento: z.string(),
   })
   .strict();
+
+/**
+ * O `clientes` que o navegador manda só serve à execução local (otimista) da série: o servidor o
+ * DESCARTA e põe no lugar o que leu de `plataforma.contatos` na transação (`LER_DO_CRM_FINANCEIRO`,
+ * T-15-48). Por isso a forma aqui é frouxa (cada item só precisa de `id`) e o tipo é o do domínio.
+ */
+const CLIENTES_DO_NAVEGADOR = z
+  .object({
+    contatos: z.array(z.object({ id: ID }).passthrough()).max(100),
+    empresas: z.array(z.object({ id: ID }).passthrough()).max(100),
+  })
+  .passthrough() as unknown as z.ZodType<ClientesLidos>;
 
 /**
  * O de-para do lançamento (D3-02/D3-03) atravessa um processo e uma rede antes
@@ -52,7 +64,7 @@ const DE_PARA_DE_LANCAMENTO = z
 const OPCOES_DE_LANCAMENTO = z.object({ dePara: DE_PARA_DE_LANCAMENTO, rehearsal: z.boolean().optional() }).strict();
 
 export const FINANCEIRO = {
-  createReceivableSeries: z.tuple([RECEIVABLE_SERIES_INPUT]),
+  createReceivableSeries: z.tuple([RECEIVABLE_SERIES_INPUT, opcional(CLIENTES_DO_NAVEGADOR)]),
   // `opcoes?: OpcoesDeLancamento` — parâmetro posicional opcional no fim.
   runLancamentoAgent: z.tuple([ID, ID, ID, opcional(OPCOES_DE_LANCAMENTO)]),
   // D3-08 — um id e nada mais: quem decide o Status de destino, o de-para dos

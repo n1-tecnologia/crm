@@ -42,9 +42,9 @@ const chamar = (token: string, nome: string, payload: unknown) =>
   appDeTeste().inject({ method: "POST", url: `/operacoes/${nome}`, headers: { authorization: `Bearer ${token}` }, payload: payload as object });
 
 describe("Membro suspenso (12.1.5 B), sem banco", () => {
-  it("o suspenso chama trashContact com qualquer corpo e recebe 403 com a frase e o codigo do suspenso", async () => {
+  it("o suspenso chama toggleConversationStar com qualquer corpo e recebe 403 com a frase e o codigo do suspenso", async () => {
     // O corpo é inválido para a operação de propósito: a recusa vem antes da validação do argumento.
-    const resposta = await chamar(TOKEN_SUSPENSO, "trashContact", { args: [] });
+    const resposta = await chamar(TOKEN_SUSPENSO, "toggleConversationStar", { args: [] });
     expect(resposta.statusCode).toBe(403);
     expect(resposta.json()).toEqual({ ok: false, error: FRASE_DE_SUSPENSO, codigo: CODIGO_SUSPENSO });
     expect(FRASE_DE_SUSPENSO).toBe("Seu acesso foi suspenso.");
@@ -63,7 +63,7 @@ describe("Membro suspenso (12.1.5 B), sem banco", () => {
   });
 
   it("um Membro ativo com argumentos inválidos continua recebendo 400 (a recusa nova não engole a validação)", async () => {
-    const resposta = await chamar(TOKEN_ATIVO, "trashContact", { args: [] });
+    const resposta = await chamar(TOKEN_ATIVO, "toggleConversationStar", { args: [] });
     expect(resposta.statusCode).toBe(400);
     expect(resposta.json().ok).toBe(false);
   });

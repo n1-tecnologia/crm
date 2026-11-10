@@ -6,7 +6,7 @@
  * Convive com o `Message` inglês de `types/crm.ts` até a fase de unificação
  * (D-11). Decisões do modelo:
  *   - `carga_bruta` (o que o provedor entregou, cru) existe só no banco e no
- *     caminho interno de ingestão (`MensagemRecebidaDoProvedor`). O tipo público
+ *     caminho interno de ingestão (`RecebidaDoProvedor`, `crm/recebimento.ts`). O tipo público
  *     `Mensagem` não a carrega: ela é dado pessoal (A9) e a anonimização futura
  *     precisa zerá-la, então nada que sai pela api pode depender dela.
  *   - A Mensagem `recebida` não nasce por rota humana: `DIRECOES_DE_ENVIO` é o
@@ -29,6 +29,7 @@
 import { fail, ok, type OperationResult } from "../state";
 import type { ConexaoDoCanal } from "./canais";
 import { LIMITES_CRM } from "./comum";
+import { categoriaDaMidia } from "./midia";
 
 export const DIRECOES_DA_MENSAGEM = ["recebida", "enviada", "interna"] as const satisfies readonly DirecaoDaMensagem[];
 export type DirecaoDaMensagem = "recebida" | "enviada" | "interna";
@@ -61,7 +62,13 @@ export interface AtorDaMensagem {
 export interface AnexoDaMensagem {
   readonly tipoDeMidia: string;
   readonly nome: string;
+  /** O id da mídia no provedor (a Mensagem `recebida`); some quando o arquivo é guardado. */
   readonly referenciaExterna?: string;
+  /** A chave do objeto no bucket. Não dá acesso a nada: quem abre o arquivo pede uma URL assinada (3.9.3). */
+  readonly objectKey?: string;
+  readonly tamanhoBytes?: number;
+  /** `true` quando o arquivo está guardado no bucket; `false` quando só há a referência do provedor (D-16-08). */
+  readonly baixado: boolean;
 }
 
 export interface EnderecoAdicional {
@@ -100,41 +107,70 @@ export interface Mensagem {
   readonly registradoEm: string;
 }
 
+/** O arquivo que a pessoa anexou: o ticket que ela pediu (`submissionId`) e o objeto reservado nele. */
+export interface ReferenciaDeAnexoEnviado {
+  readonly submissionId: string;
+  readonly objectId: string;
+}
+
+/** O que o servidor confirmou no bucket sobre um anexo: o tipo e o tamanho vêm do arquivo, não do cliente. */
+export interface AnexoConfirmado {
+  readonly objectKey: string;
+  readonly nome: string;
+  readonly tipoDeMidia: string;
+  readonly tamanhoBytes: number;
+}
+
+/** Uma Mensagem é uma mensagem no provedor e tem um `id_externo` só: um arquivo por vez. */
+export const MAX_ANEXOS_POR_MENSAGEM = 1;
+
 export interface NovaMensagem {
   readonly conversaId: string;
   readonly direcao: "enviada" | "interna";
+  /** Pode ser vazio quando há anexo (INV-CXE-07: conteúdo OU anexo). */
   readonly conteudo: string;
   readonly emRespostaAId?: string;
-}
-
-export interface MensagemRecebidaDoProvedor {
-  readonly conversaId: string;
-  readonly idExterno: string;
-  readonly criadoEm: string;
-  readonly conteudo?: string;
-  readonly anexos?: readonly AnexoDaMensagem[];
-  readonly assunto?: string;
-  readonly enderecosAdicionais?: readonly EnderecoAdicional[];
-  readonly remetenteExterno?: string;
-  readonly identificadorId?: string;
-  readonly cargaBruta: unknown;
+  readonly anexos?: readonly ReferenciaDeAnexoEnviado[];
 }
 
 /**
  * Uma Mensagem que uma pessoa manda: `enviada` ao Contato ou `interna` (nota,
- * B67). Texto obrigatório — anexos ainda não entram por aqui (INV-CXE-07 pede
- * conteúdo ou anexo, e só o conteúdo existe nesta fase).
+ * B67). INV-CXE-07: texto OU anexo. O anexo é só a referência do arquivo que a
+ * pessoa subiu; o servidor confere o arquivo (tipo, tamanho, assinatura) antes de gravar.
  */
 export function validarNovaMensagem(entrada: NovaMensagem): OperationResult<NovaMensagem> {
   if (entrada.conversaId.trim() === "") return fail("Escolha a Conversa da Mensagem.", "conversaId");
   if (!(DIRECOES_DE_ENVIO as readonly string[]).includes(entrada.direcao)) {
     return fail("Uma Mensagem recebida não é criada por uma pessoa.", "direcao");
   }
-  if (entrada.conteudo.trim() === "") return fail("Escreva a mensagem antes de enviar.", "conteudo");
+  const anexos = entrada.anexos ?? [];
+  if (anexos.length > MAX_ANEXOS_POR_MENSAGEM) return fail("Uma Mensagem leva um arquivo por vez.", "anexos");
+  for (const anexo of anexos) {
+    if (anexo.submissionId.trim() === "" || anexo.objectId.trim() === "") {
+      return fail("O arquivo anexado não foi reconhecido. Envie-o de novo.", "anexos");
+    }
+  }
+  if (entrada.conteudo.trim() === "" && anexos.length === 0) {
+    return fail("Escreva a mensagem ou anexe um arquivo antes de enviar.", "conteudo");
+  }
   if (entrada.conteudo.length > LIMITES_CRM.textoLongo) {
     return fail(`A Mensagem vai até ${LIMITES_CRM.textoLongo} caracteres.`, "conteudo");
   }
   return ok(entrada);
+}
+
+/** 3.9.1: o Canal só envia as categorias que declara em `sendableMediaTypes` — um Canal que não envia vídeo recusa vídeo. */
+export function validarAnexosDoEnvio(
+  anexos: readonly AnexoConfirmado[],
+  sendableMediaTypes: readonly string[],
+): OperationResult<void> {
+  for (const anexo of anexos) {
+    const categoria = categoriaDaMidia(anexo.tipoDeMidia);
+    if (categoria === undefined || !sendableMediaTypes.includes(categoria)) {
+      return fail("Este Canal não envia este tipo de arquivo.", "anexos");
+    }
+  }
+  return ok(undefined);
 }
 
 export interface EntradaDeEnvio {
@@ -186,9 +222,40 @@ export function validarEnvio(entrada: EntradaDeEnvio): OperationResult<void> {
 }
 
 /**
- * B69: com o Canal fora do ar a Mensagem é guardada `pendente` — nunca
- * descartada em silêncio. Só um Canal `conectada` a dá como `enviada`.
+ * B69 + 3.7.1: a Mensagem escrita na Caixa nasce SEMPRE `pendente`. Com o Canal
+ * fora do ar ela é guardada, nunca descartada em silêncio; com o Canal
+ * `conectada` ela entra na fila de saída e só o provedor diz que saiu — quem
+ * a passa a `enviada` é a entrega, depois da confirmação dele. O atendente
+ * jamais vê "enviada" numa Mensagem que ainda não saiu (MSG-02).
+ *
+ * O parâmetro `conexao` fica na assinatura: os chamadores já o passam e a regra
+ * pode voltar a distinguir o Canal sem tocar neles.
  */
-export function statusInicialDeEnvio(conexao: ConexaoDoCanal): StatusDeEntrega {
-  return conexao === "conectada" ? "enviada" : "pendente";
+export function statusInicialDeEnvio(_conexao: ConexaoDoCanal): StatusDeEntrega {
+  return "pendente";
 }
+
+/** A escada da entrega. `falhou` fica de fora: não é um degrau, é uma saída que só `pendente`/`enviada` têm. */
+const POSICAO_NA_ENTREGA: Readonly<Record<Exclude<StatusDeEntrega, "falhou">, number>> = {
+  pendente: 0,
+  enviada: 1,
+  entregue: 2,
+  lida: 3,
+};
+
+/**
+ * 3.6.5, MSG-02: o status de entrega que o provedor informa SÓ avança. A ordem é
+ * `pendente` < `enviada` < `entregue` < `lida`; um `entregue` que chega depois de um `lida` (a rede não garante a
+ * ordem) deixa a Mensagem `lida`: ela nunca parece menos entregue do que já foi. `falhou` só vale a partir de
+ * `pendente` ou `enviada` (uma Mensagem que o destinatário já recebeu não "falha"), e nada sai de `falhou` por
+ * um status do provedor: quem tira uma Mensagem de `falhou` é a pessoa, por "Tentar de novo".
+ *
+ * `atual = null` é a Mensagem que não tem status de entrega (`recebida`, `interna`): o status do provedor não se
+ * aplica e a resposta é `null`. Devolve o próprio `atual` quando o novo não avança, para quem chama comparar.
+ */
+export function proximoStatusDeEntrega(atual: StatusDeEntrega | null, novo: StatusDeEntrega): StatusDeEntrega | null {
+  if (atual === null || atual === "falhou") return atual;
+  if (novo === "falhou") return atual === "pendente" || atual === "enviada" ? "falhou" : atual;
+  return POSICAO_NA_ENTREGA[novo] > POSICAO_NA_ENTREGA[atual] ? novo : atual;
+}
+

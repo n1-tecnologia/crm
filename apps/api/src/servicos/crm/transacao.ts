@@ -7,11 +7,14 @@
  * constraint do banco que segura — `traduzirErroDePg` o transforma em 409 com
  * uma frase em português, SEM o nome do constraint (T-07-06).
  *
- * Três SQLSTATE têm tradução: `23505` (unique), `23503` (foreign key) e
+ * Quatro SQLSTATE têm tradução: `23505` (unique), `23503` (foreign key) e
  * `23514` (check — inclusive o constraint trigger deferido que a 007 usa para
  * "toda Empresa tem ao menos um Contato admin" e que só dispara no `commit`,
- * Pitfall 1). Qualquer outro, ou um destes sem frase cadastrada, é relançado
- * e vira o 500 genérico do `setErrorHandler` de `app.ts` (T-1-06).
+ * Pitfall 1) dependem de uma frase cadastrada por constraint; `40P01`
+ * (deadlock, D-15-07) vira sempre o mesmo 409 transitório, porque não há
+ * constraint a citar e a segunda tentativa costuma passar. Qualquer outro, ou
+ * um dos três primeiros sem frase cadastrada, é relançado e vira o 500
+ * genérico do `setErrorHandler` de `app.ts` (T-1-06).
  */
 
 import type { Pool, PoolClient } from "pg";
@@ -22,9 +25,19 @@ export type FrasesDeRestricao = Readonly<Record<string, { codigo: string; error:
 
 const SQLSTATE_TRADUZIVEIS: ReadonlySet<string> = new Set(["23505", "23503", "23514"]);
 
+/** `40P01`: o Postgres escolheu esta transação como vítima de um deadlock; nada foi gravado. */
+const SQLSTATE_DE_DEADLOCK = "40P01";
+
+const CONFLITO_TRANSITORIO: Recusa = {
+  status: 409,
+  error: "Outra gravação mexeu nos mesmos registros ao mesmo tempo. Tente de novo.",
+  codigo: "CONFLITO_TRANSITORIO",
+};
+
 export function traduzirErroDePg(erro: unknown, frases: FrasesDeRestricao): Recusa | undefined {
   if (typeof erro !== "object" || erro === null) return undefined;
   const { code, constraint } = erro as { code?: unknown; constraint?: unknown };
+  if (code === SQLSTATE_DE_DEADLOCK) return { ...CONFLITO_TRANSITORIO };
   if (typeof code !== "string" || !SQLSTATE_TRADUZIVEIS.has(code)) return undefined;
   if (typeof constraint !== "string") return undefined;
   const frase = frases[constraint];

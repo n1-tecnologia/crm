@@ -14,6 +14,13 @@ import { permitirFerramenta } from "./operations/ia/agentes";
 import { buildSeed } from "./seed";
 import { buildProductSeed } from "./seed-produto";
 
+/**
+ * Os quatro Funis do demo (`bootstrap:crm-demo`) como `plataforma.funis` os devolveria ao servidor: só `id` e
+ * `estado` (15-39). O seed não cria mais Funil (15-31), mas as Automações dele guardam o id do Funil.
+ */
+const funisDoSeed = (_s: ReturnType<typeof buildSeed>) =>
+  ["fnl_sdr", "fnl_closer", "fnl_validacao", "fnl_venda_direta"].map((id) => ({ id, estado: "ativo" as const })); 
+
 const SEEDS = [
   ["completo", buildSeed],
   ["produto", buildProductSeed],
@@ -28,9 +35,15 @@ describe("seed da IA — Automações", () => {
       for (const automacao of publicadas) {
         const vigente = versaoVigenteDaAutomacao(automacao);
         if (!vigente) continue;
+        // A Lista espelho do Funil saiu do seed com a Pasta "Meus negócios" (15-31): a Automação que a tem por
+        // escopo fica inoperante até alguém decidir o destino dela (linha aberta em .planning/WINDOWS.md).
+        if (automacao.scopeType === "list" && /^lst_funil_/.test(automacao.scopeId)) {
+          expect(inoperante(state, automacao, funisDoSeed(state)), `${nome} · ${automacao.id}`).toBe("escopo eliminado (Lista)");
+          continue;
+        }
         const problemas = validarAutomacao(state, automacao, vigente).map((p) => `${p.regra}: ${p.mensagem}`);
         expect(problemas, `${nome} · ${automacao.id}`).toEqual([]);
-        expect(inoperante(state, automacao), `${nome} · ${automacao.id}`).toBeUndefined();
+        expect(inoperante(state, automacao, funisDoSeed(state)), `${nome} · ${automacao.id}`).toBeUndefined();
       }
     }
   });
@@ -84,8 +97,9 @@ describe("seed da IA — Automações", () => {
     expect(escopoDe("aut_sdr_conexao")).toEqual({ scopeType: "inbox", scopeId: "inbox_n1", eventType: "mensagemRecebida" });
     expect(escopoDe("aut_sdr_enriquecimento")).toEqual({ scopeType: "funnel", scopeId: "fnl_sdr", eventType: "negocioEntrouEmEtapa" });
     expect(escopoDe("aut_clo_proposta")).toEqual({ scopeType: "list", scopeId: "lst_funil_closer", eventType: "tarefaAtualizada" });
-    // A Lista espelho do Closer existe nos dois seeds (o escopo não fica pendurado).
-    for (const [, build] of SEEDS) expect(build().lists.some((l) => l.id === "lst_funil_closer")).toBe(true);
+    // A Lista espelho do Closer SAIU dos dois seeds com a Pasta "Meus negócios" (15-31): o escopo fica pendurado
+    // de propósito (linha aberta em .planning/WINDOWS.md), e o Funil de `aut_sdr_enriquecimento` mora no demo.
+    for (const [, build] of SEEDS) expect(build().lists.some((l) => l.id === "lst_funil_closer")).toBe(false);
   });
 });
 

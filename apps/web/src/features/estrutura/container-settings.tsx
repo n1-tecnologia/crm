@@ -21,8 +21,10 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { MessageSquare } from "lucide-react";
 import { useState } from "react";
+import { useCanais } from "@/dados/crm/canais";
 import { useData, useRun, useSession } from "@/dados/store";
 import { FORMULARIOS_ANTES_DO_MODELO, LISTA_SEM_CANAIS, alterarModeloDaLista, definirCanaisDaLista, temFormularioAtivo } from "@n1/dominio/operations";
+import type { Canal } from "@n1/dominio/crm/canais";
 import type { TipoDeAtendimento } from "@n1/dominio/operations/canais";
 import { AdicionarCanalDialog } from "@/features/crm/adicionar-canal-dialog";
 import { CabecalhoDoAspecto } from "@/features/estrutura/cabecalho-do-aspecto";
@@ -82,6 +84,14 @@ export function ContainerSettings({
   // C36 — o tipo cujo popup de "adicionar conta" está no ar.
   const [adicionando, setAdicionando] = useState<TipoDeAtendimento | null>(null);
   const recente = useRecente();
+  // 3.3.7 — os Canais ativos das tabelas, só numa Lista conversacional. O servidor DESCARTA este argumento de
+  // `definirCanaisDaLista` e lê `plataforma.canais` na transação; ele existe para a execução local não depender
+  // da projeção do Canal no estado antigo.
+  const canaisDaTabela = useCanais(
+    { estado: "ativo", limite: 100 },
+    { pausado: kind !== "list" || state.lists.find((l) => l.id === id)?.modeloDeTarefa !== "conversacional" },
+  );
+  const canaisDosIds = (ids: readonly string[]): readonly Canal[] => (canaisDaTabela.data?.itens ?? []).filter((canal) => ids.includes(canal.id));
   const router = useRouter();
   const pathname = usePathname();
   const query = useSearchParams();
@@ -340,7 +350,7 @@ export function ContainerSettings({
                     valor={lista.canaisDeAtendimento ?? []}
                     onChange={(ids) =>
                       report(
-                        run((data, me) => definirCanaisDaLista(data, me, lista.id, ids)),
+                        run((data, me) => definirCanaisDaLista(data, me, lista.id, ids, canaisDosIds(ids))),
                         "Canais de atendimento atualizados.",
                       )
                     }
@@ -353,11 +363,16 @@ export function ContainerSettings({
                     {...(adicionando ? { tipo: adicionando } : {})}
                     open={adicionando !== null}
                     onClose={() => setAdicionando(null)}
-                    onDone={(canal) => {
+                    jaLigados={lista.canaisDeAtendimento ?? []}
+                    onEscolher={(canalId) => {
                       setAdicionando(null);
+                      const nome = canaisDaTabela.data?.itens.find((canal) => canal.id === canalId)?.nome ?? "O Canal";
                       report(
-                        run((data, me) => definirCanaisDaLista(data, me, lista.id, [...(lista.canaisDeAtendimento ?? []), canal.id])),
-                        `${canal.name} conectado e marcado nesta Lista.`,
+                        run((data, me) => {
+                          const ids = [...(lista.canaisDeAtendimento ?? []).filter((id) => id !== canalId), canalId];
+                          return definirCanaisDaLista(data, me, lista.id, ids, canaisDosIds(ids));
+                        }),
+                        `${nome} marcado nesta Lista.`,
                       );
                     }}
                   />

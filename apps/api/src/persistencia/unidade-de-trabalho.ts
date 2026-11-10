@@ -33,7 +33,7 @@
  * de Chicago a Oregon, medido em produção), e a Fase 12 fazia sete por
  * gravação (oito com remoção ou na primeira do processo). O `travado` as junta
  * em duas mensagens de várias instruções: a de entrada (`begin`, prazos,
- * trava, leitura do Espaço e Canais) e a de saída (`update` da revisão,
+ * trava e leitura do Espaço) e a de saída (`update` da revisão,
  * escritas e `commit`). A de saída só vale sem evento de saída nem
  * `aoConfirmar`, que precisam de instruções depois das escritas; com eles, o
  * fim segue instrução por instrução. `idasEVoltas` em `MedicaoDaExecucao` diz
@@ -41,22 +41,14 @@
  */
 
 import type { PoolClient, QueryResult } from "pg";
-import type { Channel, DataState, Diferenca, OperationResult } from "@n1/dominio";
+import type { DataState, Diferenca, OperationResult } from "@n1/dominio";
 import { DIFERENCA_VAZIA } from "@n1/dominio";
 import { syncIdSequence } from "@n1/dominio/operations";
 import { limitesDoPool, pool } from "./conexao";
 import { execucoesNovas, eventosDeNotificacaoPorCanal } from "./eventos-de-canal";
 import { gravarEventos, type EventoDeSaida } from "./outbox";
-import {
-  acrescentarCanaisProjetados,
-  canaisProjetadosDasLinhas,
-  carregarCanaisProjetados,
-  semCanaisProjetados,
-  tabelaDeCanaisConfirmada,
-} from "./canais-projetados";
 import { estadoDasLinhas, gravar, hidratar, planejarGravacao, sqlDeHidratar, sqlsDoPlano, type EstadoHidratado } from "./repositorio";
 import { literalEntreDolares } from "./sql-literal";
-import { sqlDeTodosOsCanais, type LinhaDoBancoDeCanal } from "../repositorios/crm/canais";
 
 export type Conflito = { readonly ok: false; readonly conflito: true; readonly error: string };
 
@@ -88,12 +80,10 @@ export type DesfechoDaExecucao = "gravou" | "recusou" | "conflito" | "excecao";
  *   - `conexaoMs`: `pool().connect()` — a espera pelo pool.
  *   - `inicioMs`: o `begin` com os três prazos do servidor. No regime
  *     `travado` (Fase 13) é o lote de ENTRADA inteiro: `begin`, trava, leitura
- *     do Espaço e Canais numa ida só, inclusive a espera pela vez.
+ *     do Espaço numa ida só, inclusive a espera pela vez.
  *   - `hidratarMs`: `hidratar()` — a leitura do Espaço inteiro. No `travado` é
  *     só o processador (montar o estado a partir das linhas): a ida e volta
  *     está em `inicioMs`.
- *   - `canaisMs`: a projeção dos Canais relacionais (também por tentativa); no
- *     `travado` com a tabela já confirmada, só o processador.
  *   - `operacaoMs`: a operação pura do domínio.
  *   - `atualizaMs`: só o `update plataforma.workspaces … revisao`. 0 no lote de saída.
  *   - `travaMs`: o tempo até a revisão estar GARANTIDA. No regime `otimista`
@@ -108,16 +98,14 @@ export type DesfechoDaExecucao = "gravou" | "recusou" | "conflito" | "excecao";
  *   - `eventosMs`: os eventos de saída (outbox) mais o `aoConfirmar`.
  *   - `commitMs`: o `commit`. 0 no lote de saída.
  *
- * `linhasLidas` conta os registros do Espaço hidratado (`plataforma.registros`;
- * os Canais projetados têm `canaisMs` à parte) e `linhasGravadas`, os gravados
- * mais os removidos da diferença.
+ * `linhasLidas` conta os registros do Espaço hidratado (`plataforma.registros`)
+ * e `linhasGravadas`, os gravados mais os removidos da diferença.
  */
 export interface MedicaoDaExecucao {
   readonly conexaoMs: number;
   readonly inicioMs: number;
   readonly travaMs: number;
   readonly hidratarMs: number;
-  readonly canaisMs: number;
   readonly operacaoMs: number;
   readonly atualizaMs: number;
   readonly gravarMs: number;
@@ -134,7 +122,7 @@ export interface MedicaoDaExecucao {
 }
 
 /** As opções de `executar()` que valem nos dois regimes. */
-export interface OpcoesComunsDaExecucao<T = unknown> {
+export interface OpcoesComunsDaExecucao<T = unknown, L = undefined> {
   /**
    * Fase 12 (D-02/D-03) — recebe a medição por etapa, UMA vez por chamada de
    * `executar()`, inclusive na recusa do domínio, no conflito e na exceção
@@ -181,7 +169,24 @@ export interface OpcoesComunsDaExecucao<T = unknown> {
    * função). Lançar aqui desfaz a transação inteira — mesmo efeito de uma
    * exceção dentro de `operacao`.
    */
-  readonly aoConfirmar?: (cliente: PoolClient, valor: T, state: DataState) => Promise<void>;
+  readonly aoConfirmar?: (cliente: PoolClient, valor: T, state: DataState, lido: L) => Promise<void>;
+  /**
+   * Fase 14 (3.2.1, o gesto misto) — lê as tabelas do CRM NO MESMO `cliente`,
+   * depois da trava do Espaço e da hidratação, e antes da `operacao`. O que
+   * devolve chega à `operacao` (2º argumento) e a `aoConfirmar` (4º): é por aí
+   * que um gesto que mexe nas duas bases enxerga o CRM sem abrir outra
+   * transação. Recebe o `state` hidratado (a troca de Canal da Tarefa precisa
+   * achar o Contato pelo Vínculo antes de ler o CRM).
+   *
+   * Quem a usa trava com `for update`, em ordem de id, as linhas do CRM de que
+   * a escrita depende; a trava do Espaço já é a primeira. NÃO avançar a
+   * revisão do Espaço por fora daqui: `executar()` já a sobe, e inverter a
+   * ordem das travas abre deadlock com o REST de Canal. Lançar desfaz a
+   * transação e a conexão sai do pool, como qualquer exceção do bloco. O tempo
+   * soma em `hidratarMs` (é leitura dentro da transação); a medição não ganha
+   * campo.
+   */
+  readonly lerDoCrm?: (cliente: PoolClient, state: DataState) => Promise<L>;
 }
 
 /**
@@ -195,7 +200,7 @@ export interface OpcoesComunsDaExecucao<T = unknown> {
  *     `otimista` sem ser uma dessas quatro importações falha em
  *     `regime-dos-chamadores.test.ts`.
  */
-export type OpcoesExecucao<T = unknown> = OpcoesComunsDaExecucao<T> &
+export type OpcoesExecucao<T = unknown, L = undefined> = OpcoesComunsDaExecucao<T, L> &
   (
     | { readonly regime?: "travado"; readonly tentativas?: never }
     | {
@@ -303,7 +308,6 @@ interface Acumulador {
   inicioMs: number;
   travaMs: number;
   hidratarMs: number;
-  canaisMs: number;
   operacaoMs: number;
   atualizaMs: number;
   gravarMs: number;
@@ -320,10 +324,10 @@ type Tentativa<T> =
   | { readonly tipo: "concluida"; readonly resultado: ResultadoTransacao<T>; readonly desfecho: "gravou" | "recusou" }
   | { readonly tipo: "conflito"; readonly conflito: Conflito };
 
-export async function executar<T>(
+export async function executar<T, L = undefined>(
   workspaceId: string,
-  operacao: (state: DataState) => OperationResult<T>,
-  opcoes: OpcoesExecucao<T> = {},
+  operacao: (state: DataState, lido: L) => OperationResult<T>,
+  opcoes: OpcoesExecucao<T, L> = {},
 ): Promise<ResultadoTransacao<T>> {
   const regime: RegimeDaExecucao = opcoes.regime ?? "travado";
   // D-09: o travado grava com UMA tentativa — esperou a vez, não há o que repetir.
@@ -338,7 +342,6 @@ export async function executar<T>(
     inicioMs: 0,
     travaMs: 0,
     hidratarMs: 0,
-    canaisMs: 0,
     operacaoMs: 0,
     atualizaMs: 0,
     gravarMs: 0,
@@ -372,7 +375,6 @@ export async function executar<T>(
           inicioMs: umaCasa(acc.inicioMs),
           travaMs: umaCasa(acc.travaMs),
           hidratarMs: umaCasa(acc.hidratarMs),
-          canaisMs: umaCasa(acc.canaisMs),
           operacaoMs: umaCasa(acc.operacaoMs),
           atualizaMs: umaCasa(acc.atualizaMs),
           gravarMs: umaCasa(acc.gravarMs),
@@ -420,13 +422,13 @@ async function emLote(cliente: PoolClient, instrucoes: readonly string[]): Promi
 }
 
 type Entrada =
-  | { readonly tipo: "aberta"; readonly antes: EstadoHidratado; readonly canais: Channel[] }
+  | { readonly tipo: "aberta"; readonly antes: EstadoHidratado }
   | { readonly tipo: "conflito"; readonly conflito: Conflito };
 
 /**
  * A entrada do regime `travado` numa ida só (Fase 13): `begin` com os prazos,
- * a trava da linha do Espaço, a leitura do Espaço inteiro e, quando a guarda
- * já confirmou a tabela, os Canais — quatro idas e voltas viram uma.
+ * a trava da linha do Espaço e a leitura do Espaço inteiro: três idas e voltas
+ * viram uma.
  *
  * A ordem das instruções é a de antes, e é ela que importa: em READ COMMITTED
  * cada instrução tira o próprio retrato quando COMEÇA, então a leitura, que
@@ -436,7 +438,6 @@ type Entrada =
  */
 async function abrirTravado(cliente: PoolClient, workspaceId: string, acc: Acumulador): Promise<Entrada> {
   const espaco = literalEntreDolares(workspaceId);
-  const canaisNoLote = tabelaDeCanaisConfirmada();
   const t = performance.now();
   let resultados: QueryResult[];
   try {
@@ -444,7 +445,6 @@ async function abrirTravado(cliente: PoolClient, workspaceId: string, acc: Acumu
       inicioDaTransacaoTravada(),
       sqlDaTrava(espaco),
       sqlDeHidratar(espaco),
-      ...(canaisNoLote ? [sqlDeTodosOsCanais(espaco)] : []),
     ]);
   } catch (erro) {
     acc.inicioMs += performance.now() - t;
@@ -459,26 +459,19 @@ async function abrirTravado(cliente: PoolClient, workspaceId: string, acc: Acumu
   }
   acc.inicioMs += performance.now() - t;
 
-  // Os três últimos resultados (ou dois, sem Canais) são sempre a trava, a leitura e os Canais.
-  const dosCanais = canaisNoLote ? resultados.at(-1) : undefined;
-  const daLeitura = resultados.at(canaisNoLote ? -2 : -1)!;
-  const daTrava = resultados.at(canaisNoLote ? -3 : -2)!;
+  // Os dois últimos resultados são sempre a trava e a leitura.
+  const daLeitura = resultados.at(-1)!;
+  const daTrava = resultados.at(-2)!;
   // A mesma frase de `hidratar`: o Espaço não existe, e isso não é conflito.
   if (daTrava.rowCount === 0) throw new Error(`Espaço de Trabalho "${workspaceId}" não existe.`);
 
-  // A ida e volta já foi paga acima: `hidratarMs` e `canaisMs` ficam só com o processador.
-  let t2 = performance.now();
+  // A ida e volta já foi paga acima: `hidratarMs` fica só com o processador.
+  const t2 = performance.now();
   const antes = estadoDasLinhas(workspaceId, daLeitura as unknown as Parameters<typeof estadoDasLinhas>[1]);
   acc.hidratarMs += performance.now() - t2;
   // As fakes de teste devolvem `{ state, revisao }` sem `original`: padrão 0.
   acc.linhasLidas += registrosLidos(antes.original);
-
-  t2 = performance.now();
-  const canais = dosCanais
-    ? canaisProjetadosDasLinhas(dosCanais.rows as LinhaDoBancoDeCanal[], workspaceId)
-    : await carregarCanaisProjetados(cliente, workspaceId);
-  acc.canaisMs += performance.now() - t2;
-  return { tipo: "aberta", antes, canais };
+  return { tipo: "aberta", antes };
 }
 
 /**
@@ -493,10 +486,10 @@ async function abrirTravado(cliente: PoolClient, workspaceId: string, acc: Acumu
  * instruções depois das escritas e seguem pelo caminho de sempre. O regime
  * `otimista` não mudou: uma instrução por ida, como na Fase 12.
  */
-async function umaTentativa<T>(
+async function umaTentativa<T, L>(
   workspaceId: string,
-  operacao: (state: DataState) => OperationResult<T>,
-  opcoes: OpcoesExecucao<T>,
+  operacao: (state: DataState, lido: L) => OperationResult<T>,
+  opcoes: OpcoesExecucao<T, L>,
   regime: RegimeDaExecucao,
   acc: Acumulador,
 ): Promise<Tentativa<T>> {
@@ -507,12 +500,11 @@ async function umaTentativa<T>(
   let falhou = false;
   try {
     let antes: EstadoHidratado;
-    let canais: Channel[];
     if (regime === "travado") {
       // D-09 — a trava vem ANTES da leitura (ver `abrirTravado`).
       const entrada = await abrirTravado(cliente, workspaceId, acc);
       if (entrada.tipo === "conflito") return entrada;
-      ({ antes, canais } = entrada);
+      ({ antes } = entrada);
     } else {
       t = performance.now();
       await cliente.query(inicioDaTransacao());
@@ -523,20 +515,14 @@ async function umaTentativa<T>(
       acc.hidratarMs += performance.now() - t;
       // As fakes de teste devolvem `{ state, revisao }` sem `original`: padrão 0.
       acc.linhasLidas += registrosLidos(antes.original);
-
-      t = performance.now();
-      canais = await carregarCanaisProjetados(cliente, workspaceId);
-      acc.canaisMs += performance.now() - t;
     }
 
-    // D-11 (Pitfall 4) — os Canais relacionais (`plataforma.canais`) entram em
-    // `state.channels` para a operação do modelo antigo enxergá-los; sem isso
-    // `startConversation`/`sendMessage` dariam "Canal não encontrado" e
-    // desfariam o gesto da tela. É por tentativa: um retry por conflito
-    // recarrega. `hidratar()` em si não sabe deles.
+    // Fase 14 (3.2.1) — a leitura do CRM (`lerDoCrm`) vai pelo MESMO cliente, depois da trava
+    // e da hidratação, e antes da operação. Sem a opção,
+    // o lido é `undefined` e nada muda para quem já chama `executar()`.
     t = performance.now();
-    const fotografia = acrescentarCanaisProjetados(antes.state, canais);
-    acc.canaisMs += performance.now() - t;
+    const lido = opcoes.lerDoCrm ? await opcoes.lerDoCrm(cliente, antes.state) : (undefined as L);
+    acc.hidratarMs += performance.now() - t;
     // O contador de `nextId` é de módulo: sem sincronizar com o maior id já
     // presente no estado hidratado, um processo recém-subido geraria
     // `act_000001` de novo e o upsert sobrescreveria um registro real. A
@@ -550,7 +536,7 @@ async function umaTentativa<T>(
     // documentavam quando a captura ainda morava em cada chamador.
     const idsAntes = new Set(antes.state.automationExecutions.map((e) => e.id));
     t = performance.now();
-    const resultado = operacao(antes.state);
+    const resultado = operacao(antes.state, lido);
     acc.operacaoMs += performance.now() - t;
 
     if (!resultado.ok) {
@@ -585,21 +571,13 @@ async function umaTentativa<T>(
     if (opcoes.semEventosDeSaida && eventos.length > 0) {
       throw new Error("Esta operação não pode gravar evento de saída — plataforma.integration_outbox não pode crescer.");
     }
-    // D-11 (Pitfall 3) — as escritas recebem o estado SEM os projetados: copiá-los
-    // para `plataforma.registros` criaria uma segunda fonte de verdade do
-    // Canal. Se a operação mudou algum, `semCanaisProjetados` lança e a
-    // transação é desfeita. `opcoes.eventos`/`aoConfirmar` seguem com
-    // `antes.state` (o payload de `automacao.notificar-canal.v1` leva o tipo,
-    // não o id do Canal).
-    const paraGravar = semCanaisProjetados(antes.state, fotografia);
-
     if (regime === "travado" && eventos.length === 0 && !opcoes.aoConfirmar) {
       // Fase 13 — o fim da transação numa ida só: a revisão sobe (a linha já é
       // desta transação, desde a trava), as escritas entram e o `commit` vai
       // junto. Se qualquer instrução falha, o servidor descarta o resto da
       // mensagem — o `commit` não roda — e o `catch` abaixo desfaz.
       t = performance.now();
-      const plano = planejarGravacao(paraGravar, antes);
+      const plano = planejarGravacao(antes.state, antes);
       const resultados = await emLote(cliente, [sqlDaRevisaoTravada(literalEntreDolares(workspaceId)), ...sqlsDoPlano(workspaceId, plano), "commit"]);
       acc.gravarMs += performance.now() - t;
       const daRevisao = resultados[0]!;
@@ -647,13 +625,13 @@ async function umaTentativa<T>(
     }
 
     t = performance.now();
-    const diferenca = await gravar(cliente, workspaceId, paraGravar, antes);
+    const diferenca = await gravar(cliente, workspaceId, antes.state, antes);
     acc.gravarMs += performance.now() - t;
     // A fake de `gravar` devolve `{}`: padrão 0.
     acc.linhasGravadas += (diferenca.gravados?.length ?? 0) + (diferenca.removidos?.length ?? 0);
     t = performance.now();
     await gravarEventos(cliente, workspaceId, eventos);
-    if (opcoes.aoConfirmar) await opcoes.aoConfirmar(cliente, resultado.value, antes.state);
+    if (opcoes.aoConfirmar) await opcoes.aoConfirmar(cliente, resultado.value, antes.state, lido);
     acc.eventosMs += performance.now() - t;
     t = performance.now();
     await cliente.query("commit");

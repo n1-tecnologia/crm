@@ -6,7 +6,7 @@
  */
 
 import type { ChatAnchor } from "@n1/dominio";
-import { ID, opcional, type Confere, type Esquemas, type Igual } from "./fragmentos";
+import { ID, NOMES_DO_NAVEGADOR, opcional, type Confere, type Esquemas, type Igual } from "./fragmentos";
 import { z } from "zod";
 
 const CHAT_ANCHOR_TYPE = z.enum([
@@ -77,8 +77,8 @@ export const IA = {
   publishAutomation: z.tuple([ID]),
   restoreAgent: z.tuple([ID]),
   restoreAutomation: z.tuple([ID]),
-  createChatSession: z.tuple([CREATE_CHAT_SESSION_INPUT]),
-  configureChatSession: z.tuple([ID, CONFIGURE_CHAT_SESSION_INPUT]),
+  createChatSession: z.tuple([CREATE_CHAT_SESSION_INPUT, opcional(NOMES_DO_NAVEGADOR)]),
+  configureChatSession: z.tuple([ID, CONFIGURE_CHAT_SESSION_INPUT, opcional(NOMES_DO_NAVEGADOR)]),
   sendChatMessage: z.tuple([ID, z.string()]),
 } satisfies Esquemas;
 

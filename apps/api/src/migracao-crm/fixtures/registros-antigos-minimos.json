@@ -1,0 +1,406 @@
+{
+  "_comentario": "Dados SINTÉTICOS congelados à mão (Fase 15, 15-27): o menor CRM antigo que cobre as nove coleções, com uma Conversa de Grupo. Nenhum dado real. As linhas têm a forma de plataforma.registros: { colecao, id, dados, ordem }. 'pasta' é a Pasta \"Meus negócios\" com duas Listas vazias e as Visualizações delas; 'tarefaEspelho' põe uma Tarefa numa das Listas.",
+  "linhas": [
+    {
+      "colecao": "members",
+      "id": "mem_sint",
+      "ordem": 0,
+      "dados": {
+        "id": "mem_sint",
+        "workspaceId": "ws_fixture",
+        "state": "ativo",
+        "displayName": "Membro Sintetico",
+        "roleId": "role_sint"
+      }
+    },
+    {
+      "colecao": "contacts",
+      "id": "cnt_sint_1",
+      "ordem": 0,
+      "dados": {
+        "id": "cnt_sint_1",
+        "workspaceId": "ws_fixture",
+        "createdBy": {
+          "kind": "member",
+          "id": "mem_sint"
+        },
+        "createdAt": "2026-01-02T10:00:00.000Z",
+        "lifecycle": "ativo",
+        "firstName": "Pessoa",
+        "lastName": "Sintetica Um",
+        "identifiers": [
+          {
+            "id": "cid_sint_1",
+            "type": "whatsapp",
+            "value": "+550000000001"
+          }
+        ]
+      }
+    },
+    {
+      "colecao": "contacts",
+      "id": "cnt_sint_2",
+      "ordem": 1,
+      "dados": {
+        "id": "cnt_sint_2",
+        "workspaceId": "ws_fixture",
+        "createdBy": {
+          "kind": "member",
+          "id": "mem_sint"
+        },
+        "createdAt": "2026-01-02T10:05:00.000Z",
+        "lifecycle": "ativo",
+        "firstName": "Pessoa",
+        "lastName": "Sintetica Dois",
+        "identifiers": [
+          {
+            "id": "cid_sint_2",
+            "type": "email",
+            "value": "dois@exemplo.invalid"
+          }
+        ]
+      }
+    },
+    {
+      "colecao": "companies",
+      "id": "cmp_sint_1",
+      "ordem": 0,
+      "dados": {
+        "id": "cmp_sint_1",
+        "workspaceId": "ws_fixture",
+        "createdBy": {
+          "kind": "member",
+          "id": "mem_sint"
+        },
+        "createdAt": "2026-01-02T10:10:00.000Z",
+        "lifecycle": "ativo",
+        "name": "Empresa Sintetica"
+      }
+    },
+    {
+      "colecao": "contactCompanyLinks",
+      "id": "ccl_sint_1",
+      "ordem": 0,
+      "dados": {
+        "id": "ccl_sint_1",
+        "workspaceId": "ws_fixture",
+        "contactId": "cnt_sint_1",
+        "companyId": "cmp_sint_1",
+        "role": "Sócio",
+        "principalForCompany": true
+      }
+    },
+    {
+      "colecao": "funnels",
+      "id": "fnl_sint_1",
+      "ordem": 0,
+      "dados": {
+        "id": "fnl_sint_1",
+        "workspaceId": "ws_fixture",
+        "createdBy": {
+          "kind": "member",
+          "id": "mem_sint"
+        },
+        "createdAt": "2026-01-02T09:00:00.000Z",
+        "lifecycle": "ativo",
+        "name": "Vendas Sinteticas",
+        "order": 0,
+        "isPrivate": false,
+        "closingRules": {
+          "requireLossReason": true,
+          "requireValueOnWin": false
+        },
+        "stages": [
+          {
+            "id": "stg_sint_novo",
+            "name": "Novo",
+            "order": 0,
+            "defaultProbability": 10,
+            "requirements": [],
+            "allowedTransitionStageIds": []
+          },
+          {
+            "id": "stg_sint_proposta",
+            "name": "Proposta",
+            "order": 1,
+            "defaultProbability": 60,
+            "color": "#60a5fa",
+            "requirements": [],
+            "allowedTransitionStageIds": []
+          }
+        ]
+      }
+    },
+    {
+      "colecao": "deals",
+      "id": "deal_sint_1",
+      "ordem": 0,
+      "dados": {
+        "id": "deal_sint_1",
+        "workspaceId": "ws_fixture",
+        "createdBy": {
+          "kind": "member",
+          "id": "mem_sint"
+        },
+        "createdAt": "2026-01-03T10:00:00.000Z",
+        "lifecycle": "ativo",
+        "title": "Negocio Sintetico",
+        "funnelId": "fnl_sint_1",
+        "stageId": "stg_sint_novo",
+        "situation": "aberto",
+        "ownerMemberId": "mem_sint",
+        "contactLinks": [
+          {
+            "contactId": "cnt_sint_1",
+            "principal": true
+          }
+        ]
+      }
+    },
+    {
+      "colecao": "channels",
+      "id": "chn_sint_1",
+      "ordem": 0,
+      "dados": {
+        "id": "chn_sint_1",
+        "workspaceId": "ws_fixture",
+        "createdBy": {
+          "kind": "member",
+          "id": "mem_sint"
+        },
+        "createdAt": "2026-01-01T09:00:00.000Z",
+        "lifecycle": "ativo",
+        "name": "WhatsApp Sintetico",
+        "type": "whatsapp"
+      }
+    },
+    {
+      "colecao": "conversations",
+      "id": "cnv_sint_1",
+      "ordem": 0,
+      "dados": {
+        "id": "cnv_sint_1",
+        "workspaceId": "ws_fixture",
+        "createdBy": {
+          "kind": "member",
+          "id": "mem_sint"
+        },
+        "createdAt": "2026-01-03T11:00:00.000Z",
+        "lifecycle": "ativo",
+        "contactId": "cnt_sint_1",
+        "channelId": "chn_sint_1",
+        "participants": [],
+        "messages": [
+          {
+            "id": "msg_sint_1",
+            "direction": "recebida",
+            "text": "Texto sintetico de mensagem"
+          }
+        ],
+        "starredBy": [],
+        "tagIds": [],
+        "fieldValues": [],
+        "reopenCount": 0
+      }
+    },
+    {
+      "colecao": "conversations",
+      "id": "cnv_sint_grupo",
+      "ordem": 1,
+      "dados": {
+        "id": "cnv_sint_grupo",
+        "workspaceId": "ws_fixture",
+        "createdBy": {
+          "kind": "member",
+          "id": "mem_sint"
+        },
+        "createdAt": "2026-01-03T12:00:00.000Z",
+        "lifecycle": "ativo",
+        "channelId": "chn_sint_1",
+        "groupIdentifier": {
+          "externalId": "120363000000000000@g.us",
+          "name": "Grupo Sintetico"
+        },
+        "participants": [],
+        "messages": [],
+        "starredBy": [],
+        "tagIds": [],
+        "fieldValues": [],
+        "reopenCount": 0
+      }
+    }
+  ],
+  "pasta": [
+    {
+      "colecao": "folders",
+      "id": "fld_meus_negocios",
+      "ordem": 0,
+      "dados": {
+        "workspaceId": "ws_fixture",
+        "createdBy": {
+          "kind": "member",
+          "id": "mem_sint"
+        },
+        "createdAt": "2026-01-01T09:00:00.000Z",
+        "lifecycle": "ativo",
+        "id": "fld_meus_negocios",
+        "name": "Meus negócios",
+        "description": "Pasta espelho sintetica",
+        "order": 3,
+        "isPrivate": false,
+        "modes": {},
+        "blocks": {},
+        "parentType": "space",
+        "parentId": "spc_sint"
+      }
+    },
+    {
+      "colecao": "lists",
+      "id": "lst_funil_a",
+      "ordem": 0,
+      "dados": {
+        "workspaceId": "ws_fixture",
+        "createdBy": {
+          "kind": "member",
+          "id": "mem_sint"
+        },
+        "createdAt": "2026-01-01T09:00:00.000Z",
+        "lifecycle": "ativo",
+        "id": "lst_funil_a",
+        "name": "Lista Sintetica A",
+        "description": "Espelho sintetico",
+        "order": 0,
+        "isPrivate": false,
+        "modeloDeTarefa": "conversacional",
+        "canaisDeAtendimento": [
+          "chn_sint_1"
+        ],
+        "modes": {
+          "statusSet": "sobrescrito"
+        },
+        "statusSet": {
+          "id": "sts_lst_funil_a",
+          "definitions": [
+            {
+              "id": "st_lst_funil_a_novo",
+              "name": "Novo",
+              "color": "#94a3b8",
+              "category": "naoIniciado",
+              "order": 0
+            }
+          ]
+        },
+        "features": {
+          "subtarefas": false,
+          "checklists": false
+        },
+        "parentType": "folder",
+        "parentId": "fld_meus_negocios"
+      }
+    },
+    {
+      "colecao": "lists",
+      "id": "lst_funil_b",
+      "ordem": 1,
+      "dados": {
+        "workspaceId": "ws_fixture",
+        "createdBy": {
+          "kind": "member",
+          "id": "mem_sint"
+        },
+        "createdAt": "2026-01-01T09:00:00.000Z",
+        "lifecycle": "ativo",
+        "id": "lst_funil_b",
+        "name": "Lista Sintetica B",
+        "description": "Espelho sintetico",
+        "order": 1,
+        "isPrivate": false,
+        "modeloDeTarefa": "conversacional",
+        "canaisDeAtendimento": [
+          "chn_sint_1"
+        ],
+        "modes": {
+          "statusSet": "sobrescrito"
+        },
+        "statusSet": {
+          "id": "sts_lst_funil_b",
+          "definitions": [
+            {
+              "id": "st_lst_funil_b_novo",
+              "name": "Novo",
+              "color": "#94a3b8",
+              "category": "naoIniciado",
+              "order": 0
+            }
+          ]
+        },
+        "features": {
+          "subtarefas": false,
+          "checklists": false
+        },
+        "parentType": "folder",
+        "parentId": "fld_meus_negocios"
+      }
+    },
+    {
+      "colecao": "views",
+      "id": "viw_lst_funil_a_quadro",
+      "ordem": 0,
+      "dados": {
+        "id": "viw_lst_funil_a_quadro",
+        "name": "Quadro do Funil",
+        "kind": "quadro",
+        "ownerKind": "container",
+        "ownerId": "lst_funil_a",
+        "listId": "lst_funil_a",
+        "filters": {},
+        "isDefault": true,
+        "createdBy": "mem_sint",
+        "createdAt": "2026-01-01T09:00:00.000Z"
+      }
+    },
+    {
+      "colecao": "views",
+      "id": "viw_lst_funil_b_quadro",
+      "ordem": 1,
+      "dados": {
+        "id": "viw_lst_funil_b_quadro",
+        "name": "Quadro do Funil",
+        "kind": "quadro",
+        "ownerKind": "container",
+        "ownerId": "lst_funil_b",
+        "listId": "lst_funil_b",
+        "filters": {},
+        "isDefault": true,
+        "createdBy": "mem_sint",
+        "createdAt": "2026-01-01T09:00:00.000Z"
+      }
+    }
+  ],
+  "tarefaEspelho": [
+    {
+      "colecao": "tasks",
+      "id": "tsk_lst_funil_a_deal_sint_1",
+      "ordem": 0,
+      "dados": {
+        "workspaceId": "ws_fixture",
+        "createdBy": {
+          "kind": "member",
+          "id": "mem_sint"
+        },
+        "createdAt": "2026-01-01T09:00:00.000Z",
+        "lifecycle": "ativo",
+        "id": "tsk_lst_funil_a_deal_sint_1",
+        "listId": "lst_funil_a",
+        "title": "Tarefa espelho sintetica",
+        "statusId": "st_lst_funil_a_novo",
+        "provenance": {
+          "kind": "deal",
+          "sourceId": "deal_sint_1",
+          "sourceName": "Negocio Sintetico",
+          "at": "2026-01-03T10:00:00.000Z"
+        }
+      }
+    }
+  ]
+}

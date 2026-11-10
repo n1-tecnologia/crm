@@ -27,6 +27,7 @@ import { Selo } from "@/features/estrutura/icone-de-tipo";
 import type { Report } from "@/features/shell/ficha";
 import { useFormat } from "@/features/shell/use-format";
 import { ActionMenu, Button, ConfirmDialog, EmptyState, Field, MultiSelect, Pilula, ReguaDeSecao, Select, TextInput, Toggle } from "@/features/shell/ui";
+import { crmParaSimular, useCanaisDasFerramentas } from "./crm-das-ferramentas";
 import { CRITERIO_LABEL } from "./rotulos";
 import { useParametros } from "./url";
 
@@ -38,6 +39,8 @@ export function SecaoDeLinksDeCaptacao({ report }: { readonly report: Report }) 
   const [editando, setEditando] = useState<string | null>(null);
   const [ultimoClique, setUltimoClique] = useState<{ readonly cliqueId: string; readonly grupoNome: string; readonly linkId: string } | null>(null);
   const [numero, setNumero] = useState("");
+  // O Canal vem de GET /canais (3.4.8); o Contato do número simulado nasce só na execução local (RN-GRP-10).
+  const canaisDoCrm = useCanaisDasFerramentas();
 
   const links = state.linksDeCaptacao.filter((l) => l.lifecycle !== "naLixeira");
 
@@ -58,7 +61,8 @@ export function SecaoDeLinksDeCaptacao({ report }: { readonly report: Report }) 
 
   const entrar = () => {
     if (!ultimoClique) return;
-    const r = run((data) => simularEntradaPorClique(data, ultimoClique.cliqueId, numero.trim() || `5511${String(Math.floor(900000000 + Math.random() * 99999999)).slice(0, 9)}`));
+    const numeroDaEntrada = numero.trim() || `5511${String(Math.floor(900000000 + Math.random() * 99999999)).slice(0, 9)}`;
+    const r = run((data) => simularEntradaPorClique(data, ultimoClique.cliqueId, numeroDaEntrada, crmParaSimular("simularEntradaPorClique", data, [ultimoClique.cliqueId, numeroDaEntrada], canaisDoCrm)));
     report(r, r.ok && r.value.pedidoId ? `O Grupo ${r.value.grupo.nome} aprova entradas: virou Pedido de Entrada.` : `Entrada registrada no Grupo ${r.ok ? r.value.grupo.nome : ""}: Participação com origem Link de Captação.`);
     if (r.ok) {
       setUltimoClique(null);

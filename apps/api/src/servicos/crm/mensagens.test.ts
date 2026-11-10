@@ -5,20 +5,27 @@
  *
  * "Comercial" é o WhatsApp oficial (`whatsapp-cloud`, janela de 24 h) e
  * "Suporte" o não oficial (sem janela). A `recebida` de 30 h atrás entra por
- * `registrarRecebida`, o caminho interno que a integração usará.
+ * `receberMensagem` (3.6.2), a única porta da recebida; a idempotência, o Canal
+ * da Conversa e o 404 de outro Espaço ficam provados em `recebimento.test.ts`.
  */
 
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { encerrar, pool } from "../../persistencia/conexao";
+import { criarRepositorioDeConsentimentosPg } from "../../repositorios/crm/consentimentos";
 import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
 import { criarRepositorioDeConversasPg } from "../../repositorios/crm/conversas";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearCanal, semearMembro } from "../../testes/banco-crm";
 import { criarAcessoAoCrmPg } from "./acesso";
 import { criarServicoDeMensagens } from "./mensagens";
+import { criarServicoDeRecebimento } from "./recebimento";
 import type { ResultadoCrm } from "./resultado";
 
 const servico = criarServicoDeMensagens({ pool, acesso: criarAcessoAoCrmPg(pool) });
+const recebimento = criarServicoDeRecebimento({ pool });
+
+/** O WhatsApp da Ana: é por ele que o remetente da recebida acha o Contato. */
+const WHATSAPP_DA_ANA = "+5511987654321";
 
 const sessao = (workspaceId: string, id: string): MembroDaSessao => ({ id, workspaceId, state: "ativo" });
 const horasAtras = (horas: number) => new Date(Date.now() - horas * 3_600_000).toISOString();
@@ -42,6 +49,7 @@ describeComBanco("ServicoDeMensagens — Postgres local", () => {
     await semearMembro(ws, { id: "mem_ana", base: "membro", state: "ativo" });
     await semearMembro(ws, { id: "mem_convidado", base: "convidado", state: "ativo" });
     const contato = await criarRepositorioDeContatosPg(pool()).inserir(ws, { nome: "Ana", proprietarioId: "mem_ana", criadoPor: "mem_ana" });
+    await criarRepositorioDeContatosPg(pool()).inserirIdentificador(ws, contato.id, { tipo: "whatsapp", valor: WHATSAPP_DA_ANA, principal: true });
 
     const abrir = async (nome: string, provedor: string, identificadorExterno: string, conexao: "conectada" | "desconectada") => {
       const canalId = await semearCanal(ws, { nome, tipo: "whatsapp", provedor, identificadorExterno, conexao });
@@ -61,11 +69,11 @@ describeComBanco("ServicoDeMensagens — Postgres local", () => {
     return { ws, membro: sessao(ws, "mem_ana"), convidado: sessao(ws, "mem_convidado"), comercial, suporte };
   }
 
-  const receber = (ws: string, conversaId: string, extras: { idExterno?: string; criadoEm?: string } = {}) =>
-    servico.registrarRecebida(ws, {
-      conversaId,
+  const receber = (ws: string, canalId: string, extras: { idExterno?: string; criadoEm?: string } = {}) =>
+    recebimento.receberMensagem(ws, canalId, {
       idExterno: extras.idExterno ?? "wamid.9",
       criadoEm: extras.criadoEm ?? horasAtras(30),
+      remetente: { tipo: "whatsapp", valor: WHATSAPP_DA_ANA },
       conteudo: "oi",
       cargaBruta: { entry: [{ changes: [{ value: { text: "oi" } }] }] },
     });
@@ -78,58 +86,25 @@ describeComBanco("ServicoDeMensagens — Postgres local", () => {
   });
 
   afterAll(async () => {
+    // `integration_outbox` não tem FK para o Espaço: as linhas de `mensagem.enviar.v1` saem por aqui.
+    await pool().query("delete from plataforma.integration_outbox where workspace_id = any($1::text[])", [espacos]);
     for (const ws of espacos) await limparEspaco(ws);
     await encerrar();
   });
 
-  it("registrarRecebida grava uma vez e a 2ª igual devolve a mesma Mensagem com repetida", async () => {
-    const c = await espaco("recebida");
-    const primeira = valor(await receber(c.ws, c.comercial.conversaId));
-    expect(primeira.repetida).toBe(false);
-    expect(primeira.mensagem).toMatchObject({
-      direcao: "recebida",
-      canalId: c.comercial.canalId,
-      statusEntrega: null,
-      ator: { tipo: "integration", id: c.comercial.canalId },
-    });
-
-    const segunda = valor(await receber(c.ws, c.comercial.conversaId));
-    expect(segunda.repetida).toBe(true);
-    expect(segunda.mensagem.id).toBe(primeira.mensagem.id);
-    expect(await contar(c.ws)).toBe(1);
-  });
-
-  it("registrarRecebida usa o Canal da Conversa, mesmo que a entrada traga outro, e o mesmo id externo noutro Canal grava", async () => {
-    const c = await espaco("canaldaconversa");
-    const entrada = { conversaId: c.comercial.conversaId, idExterno: "wamid.9", criadoEm: horasAtras(1), conteudo: "oi", cargaBruta: {}, canalId: c.suporte.canalId };
-    const { mensagem } = valor(await servico.registrarRecebida(c.ws, entrada));
-    expect(mensagem.canalId).toBe(c.comercial.canalId);
-
-    const outra = valor(await receber(c.ws, c.suporte.conversaId, { idExterno: "wamid.9" }));
-    expect(outra.repetida).toBe(false);
-    expect(outra.mensagem.id).not.toBe(mensagem.id);
-  });
-
-  it("registrarRecebida numa Conversa de outro Espaço dá 404", async () => {
-    const c = await espaco("ws1");
-    const outro = await espaco("ws2");
-    const r = recusado(await receber(outro.ws, c.comercial.conversaId));
-    expect(r).toMatchObject({ status: 404, codigo: "CONVERSA_NAO_ENCONTRADA" });
-    expect(await contar(outro.ws)).toBe(0);
-  });
-
-  it("registrarRecebida recusa com 400 o que o banco recusaria: id externo vazio, instante inválido, sem conteúdo nem anexo", async () => {
-    const c = await espaco("guarda");
-    const base = { conversaId: c.comercial.conversaId, idExterno: "wamid.x", criadoEm: horasAtras(1), conteudo: "oi", cargaBruta: {} };
-    expect(recusado(await servico.registrarRecebida(c.ws, { ...base, idExterno: " " }))).toMatchObject({ status: 400, codigo: "VALOR_INVALIDO", campo: "idExterno" });
-    expect(recusado(await servico.registrarRecebida(c.ws, { ...base, criadoEm: "ontem" }))).toMatchObject({ status: 400, campo: "criadoEm" });
-    expect(recusado(await servico.registrarRecebida(c.ws, { ...base, conteudo: "  " }))).toMatchObject({ status: 400, campo: "conteudo" });
-    expect(await contar(c.ws)).toBe(0);
-  });
+  /** As linhas de `mensagem.enviar.v1` do Espaço (a fila de saída da 16-04). */
+  const filaDeSaida = async (ws: string) =>
+    (
+      await pool().query<{ aggregate_type: string; aggregate_id: string; event_type: string; status: string; payload: Record<string, unknown> }>(
+        `select aggregate_type, aggregate_id, event_type, status, payload
+           from plataforma.integration_outbox where workspace_id = $1 and event_type like 'mensagem.%' order by created_at, id`,
+        [ws],
+      )
+    ).rows;
 
   it("WhatsApp oficial com recebida de 30 h: enviada dá 409 JANELA_EXPIRADA (campo modelo); interna passa sem status", async () => {
     const c = await espaco("janela");
-    valor(await receber(c.ws, c.comercial.conversaId));
+    valor(await receber(c.ws, c.comercial.canalId));
 
     const expirada = recusado(await servico.enviar(c.membro, { conversaId: c.comercial.conversaId, direcao: "enviada", conteudo: "Bom dia" }));
     expect(expirada).toMatchObject({ status: 409, codigo: "JANELA_EXPIRADA", campo: "modelo" });
@@ -141,27 +116,78 @@ describeComBanco("ServicoDeMensagens — Postgres local", () => {
 
   it("WhatsApp oficial com recebida de 2 h: enviada sai com status enviada", async () => {
     const c = await espaco("dentro");
-    valor(await receber(c.ws, c.comercial.conversaId, { criadoEm: horasAtras(2) }));
+    valor(await receber(c.ws, c.comercial.canalId, { criadoEm: horasAtras(2) }));
     const m = valor(await servico.enviar(c.membro, { conversaId: c.comercial.conversaId, direcao: "enviada", conteudo: "Bom dia" }));
-    expect(m).toMatchObject({ direcao: "enviada", statusEntrega: "enviada", conteudo: "Bom dia", canalId: c.comercial.canalId });
+    expect(m).toMatchObject({ direcao: "enviada", statusEntrega: "pendente", conteudo: "Bom dia", canalId: c.comercial.canalId });
   });
 
-  it("WhatsApp não oficial com recebida de 30 h envia: pendente se desconectado, enviada se conectado", async () => {
+  it("WhatsApp não oficial com recebida de 30 h envia: pendente se desconectado e também se conectado (só o provedor diz que saiu)", async () => {
     const c = await espaco("naooficial");
-    valor(await receber(c.ws, c.suporte.conversaId));
+    valor(await receber(c.ws, c.suporte.canalId));
 
     const pendente = valor(await servico.enviar(c.membro, { conversaId: c.suporte.conversaId, direcao: "enviada", conteudo: "Oi" }));
     expect(pendente.statusEntrega).toBe("pendente");
 
     await pool().query("update plataforma.canais set conexao = 'conectada' where workspace_id = $1 and id = $2", [c.ws, c.suporte.canalId]);
-    const enviada = valor(await servico.enviar(c.membro, { conversaId: c.suporte.conversaId, direcao: "enviada", conteudo: "Oi de novo" }));
-    expect(enviada.statusEntrega).toBe("enviada");
+    const conectada = valor(await servico.enviar(c.membro, { conversaId: c.suporte.conversaId, direcao: "enviada", conteudo: "Oi de novo" }));
+    expect(conectada.statusEntrega).toBe("pendente");
   });
 
   it("oficial sem nenhuma recebida ainda não tem janela: a primeira enviada passa", async () => {
     const c = await espaco("semrecebida");
     const m = valor(await servico.enviar(c.membro, { conversaId: c.comercial.conversaId, direcao: "enviada", conteudo: "Olá" }));
-    expect(m.statusEntrega).toBe("enviada");
+    expect(m.statusEntrega).toBe("pendente");
+  });
+
+  describe("fila de saída (16-04, 3.7.1): a Mensagem enviada e o evento mensagem.enviar.v1 nascem juntos", () => {
+    it("Canal conectado: a enviada nasce pendente com UMA linha mensagem.enviar.v1 só com ids", async () => {
+      const c = await espaco("fila");
+      const m = valor(await servico.enviar(c.membro, { conversaId: c.comercial.conversaId, direcao: "enviada", conteudo: "olá" }));
+      expect(m.statusEntrega).toBe("pendente");
+
+      const linhas = await filaDeSaida(c.ws);
+      expect(linhas).toHaveLength(1);
+      expect(linhas[0]).toMatchObject({
+        event_type: "mensagem.enviar.v1",
+        aggregate_type: "mensagem",
+        aggregate_id: m.id,
+        status: "pending",
+        payload: { mensagemId: m.id, conversaId: c.comercial.conversaId, canalId: c.comercial.canalId },
+      });
+      expect(Object.keys(linhas[0]!.payload).sort()).toEqual(["canalId", "conversaId", "mensagemId"]);
+      expect(JSON.stringify(linhas[0]!.payload)).not.toContain("olá");
+    });
+
+    it("Canal fora do ar (B69): a Mensagem fica pendente e nenhuma linha é gravada", async () => {
+      const c = await espaco("foradoar");
+      const m = valor(await servico.enviar(c.membro, { conversaId: c.suporte.conversaId, direcao: "enviada", conteudo: "guardada" }));
+      expect(m.statusEntrega).toBe("pendente");
+      expect(await filaDeSaida(c.ws)).toHaveLength(0);
+      expect(await contar(c.ws)).toBe(1);
+    });
+
+    it("a Mensagem interna não tem status de entrega e não enfileira nada", async () => {
+      const c = await espaco("interna_fila");
+      const m = valor(await servico.enviar(c.membro, { conversaId: c.comercial.conversaId, direcao: "interna", conteudo: "nota" }));
+      expect(m.statusEntrega).toBeNull();
+      expect(await filaDeSaida(c.ws)).toHaveLength(0);
+    });
+
+    it("se o insert do evento falha, a Mensagem também não fica (rollback)", async () => {
+      const c = await espaco("rollback");
+      const quebrado = criarServicoDeMensagens({
+        pool,
+        acesso: criarAcessoAoCrmPg(pool),
+        enfileirar: async () => {
+          throw new Error("fila fora do ar");
+        },
+      });
+      await expect(quebrado.enviar(c.membro, { conversaId: c.comercial.conversaId, direcao: "enviada", conteudo: "não pode ficar" })).rejects.toThrow(
+        "fila fora do ar",
+      );
+      expect(await contar(c.ws)).toBe(0);
+      expect(await filaDeSaida(c.ws)).toHaveLength(0);
+    });
   });
 
   it("emRespostaAId de outra Conversa dá 409 RESPOSTA_DE_OUTRA_CONVERSA; da mesma Conversa grava", async () => {
@@ -179,7 +205,7 @@ describeComBanco("ServicoDeMensagens — Postgres local", () => {
 
   it("Conversa na lixeira, Canal arquivado e Conversa inexistente recusam o envio", async () => {
     const c = await espaco("recusas");
-    await pool().query("update plataforma.conversas set situacao = 'resolvida', estado = 'na_lixeira' where workspace_id = $1 and id = $2", [
+    await pool().query("update plataforma.conversas set situacao = 'resolvida', estado = 'na_lixeira', na_lixeira_em = now() where workspace_id = $1 and id = $2", [
       c.ws,
       c.suporte.conversaId,
     ]);
@@ -224,7 +250,7 @@ describeComBanco("ServicoDeMensagens — Postgres local", () => {
   it("listar devolve o fio da Conversa, sem cargaBruta, e 404 para Conversa de outro Espaço", async () => {
     const c = await espaco("lista");
     const outro = await espaco("lista_outro");
-    valor(await receber(c.ws, c.comercial.conversaId, { criadoEm: horasAtras(2) }));
+    valor(await receber(c.ws, c.comercial.canalId, { criadoEm: horasAtras(2) }));
     valor(await servico.enviar(c.membro, { conversaId: c.comercial.conversaId, direcao: "enviada", conteudo: "Resposta" }));
 
     const fio = valor(await servico.listar(c.membro, { conversaId: c.comercial.conversaId, limite: 50, deslocamento: 0 }));
@@ -234,6 +260,91 @@ describeComBanco("ServicoDeMensagens — Postgres local", () => {
     expect(recusado(await servico.listar(outro.membro, { conversaId: c.comercial.conversaId, limite: 50, deslocamento: 0 }))).toMatchObject({
       status: 404,
       codigo: "CONVERSA_NAO_ENCONTRADA",
+    });
+  });
+  describe("SEM_CONSENTIMENTO (14-08, 3.2.4): modelo de marketing exige consentimento vigente", () => {
+    /** O serviço com o resolvedor de modelo injetado: a Sessão 7 trará os modelos de verdade. */
+    const comCategoria = (categoria: string | undefined) =>
+      criarServicoDeMensagens({ pool, acesso: criarAcessoAoCrmPg(pool), categoriaDoModelo: async () => categoria });
+
+    const enviarSuporte = (svc: ReturnType<typeof comCategoria>, c: Awaited<ReturnType<typeof espaco>>, direcao: "enviada" | "interna" = "enviada") =>
+      svc.enviar(c.membro, { conversaId: c.suporte.conversaId, direcao, conteudo: "Novidades do mês" });
+
+    /** O Espaço de teste com a finalidade "Marketing" no Catálogo e o id do Contato da Conversa. */
+    async function espacoComMarketing(rotulo: string) {
+      const c = await espaco(rotulo);
+      await pool().query(
+        `insert into plataforma.registros (workspace_id, colecao, id, dados)
+         values ($1, 'catalog', 'cat_fin_mkt', $2::jsonb)
+         on conflict (workspace_id, colecao, id) do nothing`,
+        [c.ws, JSON.stringify({ id: "cat_fin_mkt", kind: "finalidadeConsentimento", name: "Marketing", lifecycle: "ativo" })],
+      );
+      const { rows } = await pool().query<{ contato_id: string }>("select contato_id from plataforma.conversas where workspace_id = $1 and id = $2", [
+        c.ws,
+        c.suporte.conversaId,
+      ]);
+      return { ...c, contatoId: rows[0]!.contato_id };
+    }
+
+    const consentir = (ws: string, contatoId: string, extra: { tipoDeCanal?: "whatsapp" | "email" | "todos"; decisao?: "concedido" | "revogado"; em: string }) =>
+      criarRepositorioDeConsentimentosPg(pool()).inserir(
+        ws,
+        contatoId,
+        { finalidadeId: "cat_fin_mkt", tipoDeCanal: extra.tipoDeCanal ?? "whatsapp", decisao: extra.decisao ?? "concedido", origem: "formulario", em: extra.em },
+        "mem_ana",
+      );
+
+    it("modelo de marketing sem nenhum consentimento: 409 SEM_CONSENTIMENTO (campo modelo) e nenhuma Mensagem nova", async () => {
+      const c = await espacoComMarketing("semconsent");
+      const r = recusado(await enviarSuporte(comCategoria("marketing"), c));
+      expect(r).toMatchObject({ status: 409, codigo: "SEM_CONSENTIMENTO", campo: "modelo" });
+      expect(r.error).toBe("Este Contato não consentiu receber marketing por este Canal.");
+      expect(await contar(c.ws)).toBe(0);
+    });
+
+    it("com concedido de marketing para o tipo do Canal, a Mensagem é gravada", async () => {
+      const c = await espacoComMarketing("comconsent");
+      await consentir(c.ws, c.contatoId, { em: horasAtras(48) });
+      const m = valor(await enviarSuporte(comCategoria("marketing"), c));
+      expect(m).toMatchObject({ direcao: "enviada", canalId: c.suporte.canalId });
+      expect(await contar(c.ws)).toBe(1);
+    });
+
+    it("um revogado posterior volta a recusar; um concedido para todos libera de novo", async () => {
+      const c = await espacoComMarketing("revogado");
+      await consentir(c.ws, c.contatoId, { em: horasAtras(48) });
+      await consentir(c.ws, c.contatoId, { decisao: "revogado", em: horasAtras(24) });
+      expect(recusado(await enviarSuporte(comCategoria("marketing"), c))).toMatchObject({ status: 409, codigo: "SEM_CONSENTIMENTO" });
+      expect(await contar(c.ws)).toBe(0);
+
+      await consentir(c.ws, c.contatoId, { tipoDeCanal: "todos", em: horasAtras(1) });
+      valor(await enviarSuporte(comCategoria("marketing"), c));
+      expect(await contar(c.ws)).toBe(1);
+    });
+
+    it("o consentimento de outro tipo de Canal não vale para o WhatsApp", async () => {
+      const c = await espacoComMarketing("outrotipo");
+      await consentir(c.ws, c.contatoId, { tipoDeCanal: "email", em: horasAtras(48) });
+      expect(recusado(await enviarSuporte(comCategoria("marketing"), c))).toMatchObject({ status: 409, codigo: "SEM_CONSENTIMENTO" });
+    });
+
+    it("sem a finalidade Marketing no Catálogo não há como provar o consentimento: recusa", async () => {
+      const c = await espaco("semfinalidade");
+      expect(recusado(await enviarSuporte(comCategoria("marketing"), c))).toMatchObject({ status: 409, codigo: "SEM_CONSENTIMENTO" });
+    });
+
+    it("categoria utilidade, ou nenhum resolvedor, não muda nada em relação a hoje", async () => {
+      const c = await espacoComMarketing("utilidade");
+      valor(await enviarSuporte(comCategoria("utilidade"), c));
+      valor(await enviarSuporte(comCategoria(undefined), c));
+      valor(await enviarSuporte(servico, c));
+      expect(await contar(c.ws)).toBe(3);
+    });
+
+    it("a Mensagem interna não passa pela regra", async () => {
+      const c = await espacoComMarketing("interna");
+      const m = valor(await enviarSuporte(comCategoria("marketing"), c, "interna"));
+      expect(m).toMatchObject({ direcao: "interna", statusEntrega: null });
     });
   });
 });

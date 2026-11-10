@@ -13,9 +13,14 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Canal } from "@n1/dominio/crm/canais";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { encerrar, pool } from "../../persistencia/conexao";
-import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearMembro } from "../../testes/banco-crm";
+import { describeComBanco, limparEspaco, novoEspacoDeTeste, poolDoDono, prepararBancoCrm, semearMembro } from "../../testes/banco-crm";
+import { abrirTransacaoDeA, aindaPendenteApos } from "../../testes/duas-conexoes";
+import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
+import { criarRepositorioDeConversasPg } from "../../repositorios/crm/conversas";
+import { criarRepositorioDeMensagensPg } from "../../repositorios/crm/mensagens";
 import { criarAcessoAoCrmPg } from "./acesso";
 import { criarServicoDeCanais } from "./canais";
+import { criarServicoDeMensagens } from "./mensagens";
 import type { ResultadoCrm } from "./resultado";
 
 const servico = criarServicoDeCanais({ pool, acesso: criarAcessoAoCrmPg(pool) });
@@ -68,7 +73,11 @@ describeComBanco("ServicoDeCanais — Postgres local", () => {
   });
 
   afterAll(async () => {
-    for (const ws of espacos) await limparEspaco(ws);
+    for (const ws of espacos) {
+      // `integration_outbox` não tem FK para o Espaço: as linhas de `mensagem.enviar.v1` saem por aqui.
+      await pool().query("delete from plataforma.integration_outbox where workspace_id = $1", [ws]);
+      await limparEspaco(ws);
+    }
     await encerrar();
   });
 
@@ -104,8 +113,8 @@ describeComBanco("ServicoDeCanais — Postgres local", () => {
     });
   });
 
-  describe("unicidade entre o acervo novo e o do seed (A5)", () => {
-    it("nome ou conta de um Canal antigo ativo → 409 com bloqueios.canais apontando o detentor", async () => {
+  describe("unicidade só dentro de plataforma.canais (15-33: a conferência com o seed saiu)", () => {
+    it("nome ou conta de um Canal antigo em registros já não bloqueia: o Canal só existe em plataforma.canais", async () => {
       const c = await espaco("antigo");
       await semearRegistro(c.ws, "channels", "chn_antigo", {
         name: "Comercial SP",
@@ -113,13 +122,8 @@ describeComBanco("ServicoDeCanais — Postgres local", () => {
         externalId: "+5511987654321",
         lifecycle: "ativo",
       });
-      const porNome = recusado(await criar(c, "comercial sp ", "+55 11 97777-0020"));
-      expect(porNome).toMatchObject({ status: 409, codigo: "CANAL_NOME_EM_USO", campo: "nome" });
-      expect(porNome.bloqueios?.canais?.[0]?.id).toBe("chn_antigo");
-
-      const porConta = recusado(await criar(c, "Outro nome", "+55 11 98765-4321"));
-      expect(porConta).toMatchObject({ status: 409, codigo: "CANAL_CONTA_EM_USO", campo: "identificador" });
-      expect(porConta.bloqueios?.canais?.[0]?.id).toBe("chn_antigo");
+      valor(await criar(c, "comercial sp ", "+55 11 97777-0020"));
+      valor(await criar(c, "Outro nome", "+55 11 98765-4321"));
     });
 
     it("um Canal antigo arquivado não bloqueia", async () => {
@@ -133,7 +137,7 @@ describeComBanco("ServicoDeCanais — Postgres local", () => {
       valor(await criar(c, "Velho", "+55 11 95555-0001"));
     });
 
-    it("renomear para o nome de um Canal antigo ativo → 409 CANAL_NOME_EM_USO", async () => {
+    it("renomear para o nome de um Canal antigo em registros já não é recusado", async () => {
       const c = await espaco("renomear");
       await semearRegistro(c.ws, "channels", "chn_antigo", {
         name: "Vendas",
@@ -142,9 +146,7 @@ describeComBanco("ServicoDeCanais — Postgres local", () => {
         lifecycle: "ativo",
       });
       const canal = valor(await criar(c, "Comercial", "+55 11 97777-0021"));
-      const r = recusado(await servico.editar(c.admin, canal.id, { nome: "vendas" }));
-      expect(r).toMatchObject({ status: 409, codigo: "CANAL_NOME_EM_USO" });
-      expect(r.bloqueios?.canais?.[0]?.id).toBe("chn_antigo");
+      expect(valor(await servico.editar(c.admin, canal.id, { nome: "vendas" })).nome).toBe("vendas");
     });
 
     it("renomear para o próprio nome (outra caixa) ou para o de um Canal novo repetido", async () => {
@@ -263,6 +265,39 @@ describeComBanco("ServicoDeCanais — Postgres local", () => {
     });
   });
 
+  describe("ordem de travas com o gesto misto (WR-02)", () => {
+    it("o REST de Canal espera o Espaço ANTES de travar o Canal: um terceiro cliente trava o Canal com nowait enquanto ele espera", async () => {
+      const c = await espaco("ordemtravas");
+      const canal = valor(await criar(c, "Comercial", "+55 11 97777-0070"));
+
+      // A é o gesto misto em curso: já tem a linha do Espaço (`executar()` trava o Espaço primeiro).
+      const a = await abrirTransacaoDeA();
+      try {
+        await a.cliente.query("select revisao from plataforma.workspaces where workspace_id = $1 for update", [c.ws]);
+
+        const b = servico.simularConexao(c.admin, canal.id);
+        expect(await aindaPendenteApos(b, 400)).toBe(true);
+
+        // O gesto misto chega ao Canal DEPOIS do Espaço. Se B tivesse travado o Canal primeiro, isto falharia
+        // com 55P03 (e, com A pedindo o Canal, seria `40P01`).
+        const d = await poolDoDono().connect();
+        try {
+          await d.query("begin");
+          const livre = await d.query("select 1 from plataforma.canais where workspace_id = $1 and id = $2 for update nowait", [c.ws, canal.id]);
+          expect(livre.rowCount).toBe(1);
+          await d.query("rollback");
+        } finally {
+          d.release();
+        }
+
+        await a.confirmar();
+        expect(valor(await b)).toMatchObject({ id: canal.id, conexao: "conectada" });
+      } finally {
+        await a.desfazer();
+      }
+    });
+  });
+
   describe("Papel (B35) e isolamento entre Espaços", () => {
     it("Membro e Convidado recebem 403 em criar, editar, simular, desconectar e arquivar; todos leem", async () => {
       const c = await espaco("papel");
@@ -297,6 +332,107 @@ describeComBanco("ServicoDeCanais — Postgres local", () => {
         await servico.arquivar(b.admin, canal.id),
       ];
       for (const r of respostas) expect(recusado(r)).toMatchObject({ status: 404, codigo: "CANAL_NAO_ENCONTRADO" });
+    });
+  });
+
+  describe("Canal que volta ao ar reenfileira as pendentes (16-06, B69, 3.7.1 item 5)", () => {
+    const mensagens = criarServicoDeMensagens({ pool, acesso: criarAcessoAoCrmPg(pool) });
+
+    /** Um Canal simulado e conectado com uma Conversa aberta, pronta para receber Mensagens. */
+    async function canalComConversa(c: Contexto, numero: string) {
+      const canal = valor(await criar(c, "Comercial", numero));
+      valor(await servico.simularConexao(c.admin, canal.id));
+      const contato = await criarRepositorioDeContatosPg(pool()).inserir(c.ws, { nome: "Ana", proprietarioId: "mem_admin", criadoPor: "mem_admin" });
+      await criarRepositorioDeContatosPg(pool()).inserirIdentificador(c.ws, contato.id, { tipo: "whatsapp", valor: "+5511987654321", principal: true });
+      const conversa = await criarRepositorioDeConversasPg(pool()).inserir(c.ws, {
+        canalId: canal.id,
+        contatoId: contato.id,
+        titulo: "Ana",
+        filaId: null,
+        atribuido: { tipo: "membro", id: "mem_admin" },
+        participantes: [],
+        criadoPor: { tipo: "member", id: "mem_admin" },
+      });
+      return { canal, conversa };
+    }
+
+    const escrever = async (c: Contexto, conversaId: string, conteudo: string) =>
+      valor(await mensagens.enviar(c.admin, { conversaId, direcao: "enviada", conteudo }));
+
+    const fila = async (ws: string, mensagemId: string) =>
+      (
+        await pool().query<{ status: string; attempts: number; last_error_code: string | null }>(
+          "select status, attempts, last_error_code from plataforma.integration_outbox where workspace_id = $1 and aggregate_id = $2",
+          [ws, mensagemId],
+        )
+      ).rows;
+
+    it("Desconectar, escrever duas Mensagens (nascem pendente, sem linha) e Simular conexão: as duas ganham a linha pending no mesmo commit", async () => {
+      const c = await espaco("volta");
+      const { canal, conversa } = await canalComConversa(c, "+55 11 97777-0201");
+      const antes = await escrever(c, conversa.id, "uma, com o Canal no ar");
+      expect(await fila(c.ws, antes.id)).toEqual([{ status: "pending", attempts: 0, last_error_code: null }]);
+
+      valor(await servico.desconectar(c.admin, canal.id));
+      const a = await escrever(c, conversa.id, "guardada A");
+      const b = await escrever(c, conversa.id, "guardada B");
+      expect(a.statusEntrega).toBe("pendente");
+      expect(b.statusEntrega).toBe("pendente");
+      expect(await fila(c.ws, a.id)).toEqual([]);
+      expect(await fila(c.ws, b.id)).toEqual([]);
+
+      expect(valor(await servico.simularConexao(c.admin, canal.id))).toMatchObject({ conexao: "conectada" });
+      expect(await fila(c.ws, a.id)).toEqual([{ status: "pending", attempts: 0, last_error_code: null }]);
+      expect(await fila(c.ws, b.id)).toEqual([{ status: "pending", attempts: 0, last_error_code: null }]);
+      // A que já estava na fila (e nunca saiu) continua com UMA linha só: nada é duplicado nem zerado.
+      expect(await fila(c.ws, antes.id)).toEqual([{ status: "pending", attempts: 0, last_error_code: null }]);
+    });
+
+    it("a linha failed (Canal que caiu na hora de entregar) reabre com as tentativas zeradas; a delivering e a Mensagem já enviada não são tocadas", async () => {
+      const c = await espaco("voltafila");
+      const { canal, conversa } = await canalComConversa(c, "+55 11 97777-0202");
+      const caiu = await escrever(c, conversa.id, "o Canal caiu na hora");
+      const emEntrega = await escrever(c, conversa.id, "um worker a segura agora");
+      const jaSaiu = await escrever(c, conversa.id, "já saiu");
+      await pool().query(
+        `update plataforma.integration_outbox
+            set status = 'failed', attempts = 1, last_error_code = 'CANAL_DESCONECTADO', last_error_summary = 'caiu'
+          where workspace_id = $1 and aggregate_id = $2`,
+        [c.ws, caiu.id],
+      );
+      await pool().query(
+        "update plataforma.integration_outbox set status = 'delivering', attempts = 1, locked_at = now(), locked_by = 'outro-worker' where workspace_id = $1 and aggregate_id = $2",
+        [c.ws, emEntrega.id],
+      );
+      await criarRepositorioDeMensagensPg(pool()).gravarEnvio(c.ws, jaSaiu.id, { idExterno: "ext-1", em: new Date().toISOString() });
+      await pool().query("update plataforma.integration_outbox set status = 'delivered' where workspace_id = $1 and aggregate_id = $2", [c.ws, jaSaiu.id]);
+
+      valor(await servico.desconectar(c.admin, canal.id));
+      valor(await servico.simularConexao(c.admin, canal.id));
+
+      expect(await fila(c.ws, caiu.id)).toEqual([{ status: "pending", attempts: 0, last_error_code: null }]);
+      expect(await fila(c.ws, emEntrega.id)).toEqual([{ status: "delivering", attempts: 1, last_error_code: null }]);
+      expect(await fila(c.ws, jaSaiu.id)).toEqual([{ status: "delivered", attempts: 0, last_error_code: null }]);
+    });
+
+    it("só as Mensagens do Canal que voltou: o outro Canal do Espaço segue como estava", async () => {
+      const c = await espaco("voltaoutro");
+      const um = await canalComConversa(c, "+55 11 97777-0203");
+      const outro = valor(await servico.criar(c.admin, { provedor: "whatsapp-cloud", nome: "Suporte", identificador: "+55 11 97777-0204" }));
+      const contato = await criarRepositorioDeContatosPg(pool()).inserir(c.ws, { nome: "Beto", proprietarioId: "mem_admin", criadoPor: "mem_admin" });
+      await criarRepositorioDeContatosPg(pool()).inserirIdentificador(c.ws, contato.id, { tipo: "whatsapp", valor: "+5511911112222", principal: true });
+      const conversaDoOutro = await criarRepositorioDeConversasPg(pool()).inserir(c.ws, {
+        canalId: outro.id, contatoId: contato.id, titulo: "Beto", filaId: null,
+        atribuido: { tipo: "membro", id: "mem_admin" }, participantes: [], criadoPor: { tipo: "member", id: "mem_admin" },
+      });
+      // O Canal `outro` nunca conectou: a Mensagem fica guardada, sem linha.
+      const guardadaNoOutro = await escrever(c, conversaDoOutro.id, "guardada no outro Canal");
+      valor(await servico.desconectar(c.admin, um.canal.id));
+      const guardadaNoUm = await escrever(c, um.conversa.id, "guardada no primeiro Canal");
+
+      valor(await servico.simularConexao(c.admin, um.canal.id));
+      expect(await fila(c.ws, guardadaNoUm.id)).toHaveLength(1);
+      expect(await fila(c.ws, guardadaNoOutro.id)).toEqual([]);
     });
   });
 

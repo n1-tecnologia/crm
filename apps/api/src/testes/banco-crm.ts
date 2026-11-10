@@ -4,8 +4,9 @@
  * `prepararBancoCrm` roda `migrar()`, e rodar `migrar()` contra o pooler do
  * Supabase do `.env` aplicaria a `007-crm.sql` em produção antes de alguém
  * conferi-la (D-12, Pitfall 11). Por isso `temBancoCrm` só é verdadeiro quando
- * `DATABASE_URL` aponta para `localhost` ou `127.0.0.1`; contra qualquer outro
- * host os blocos `describeComBanco` pulam e `prepararBancoCrm` lança.
+ * `DATABASE_URL` aponta para `localhost`, `127.0.0.1` ou `[::1]` e não traz query
+ * (`?host=` trocaria o destino do `pg`; a regra está em `persistencia/host-local.ts`);
+ * contra qualquer outro host os blocos `describeComBanco` pulam e `prepararBancoCrm` lança.
  *
  * Cada plano da fase sobe o seu container (`crm-n1-pg-07NN`, porta 554NN):
  *
@@ -19,19 +20,10 @@ import { randomUUID } from "node:crypto";
 import { describe } from "vitest";
 import type { MemberState, SystemRole } from "@n1/dominio/types/workspace";
 import { carregarEnv, pool, poolDeMigracao } from "../persistencia/conexao";
+import { hostEhLocal } from "../persistencia/host-local";
 import { migrar } from "../persistencia/migrar";
 
 carregarEnv();
-
-function hostEhLocal(url: string | undefined): boolean {
-  if (!url) return false;
-  try {
-    const host = new URL(url).hostname;
-    return host === "localhost" || host === "127.0.0.1";
-  } catch {
-    return false;
-  }
-}
 
 /** Verdadeiro só com `DATABASE_URL` apontando para o Postgres local. */
 export const temBancoCrm = hostEhLocal(process.env.DATABASE_URL);
@@ -76,9 +68,14 @@ export async function limparEspaco(workspaceId: string): Promise<void> {
     await cliente.query("begin");
     // Mensagens, Conversas e Canais (008) antes de Contatos: a FK de `conversas`
     // aponta para `contatos` e `canais` (Pitfall 2).
+    // As tabelas da 011 com FK saem pela cascata: `contato_notas` e `contato_consentimentos`
+    // com o Contato, `conversa_marcacoes` com a Conversa. `crm_de_para` e `registros_crm_antigo`
+    // não têm FK e entram na lista.
     for (const tabela of [
       "mensagens",
       "conversas",
+      // A fila de entrada da mensageria (013) tem FK para `canais`: sai antes dele.
+      "webhooks_recebidos",
       "canais",
       "negocios",
       "contato_empresa",
@@ -87,6 +84,10 @@ export async function limparEspaco(workspaceId: string): Promise<void> {
       "contato_identificadores",
       "contatos",
       "funis",
+      "crm_de_para",
+      "registros_crm_antigo",
+      // A Atividade (012) não tem FK para o objeto (sobrevive à eliminação, INV-ET-12): entra na lista.
+      "crm_atividades",
     ]) {
       await cliente.query(`delete from plataforma.${tabela} where workspace_id = $1`, [workspaceId]);
     }

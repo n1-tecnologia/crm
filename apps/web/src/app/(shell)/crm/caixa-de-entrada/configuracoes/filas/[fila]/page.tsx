@@ -7,12 +7,20 @@
  * operational reference: it grants `ver` over the Conversations that pass
  * through it, and over nothing else. The screen states that in words, because
  * a list of names does not say what the names can do.
+ *
+ * As Conversas da Fila e a carga de cada Membro vêm de `GET /conversas`
+ * (`filaId`, `atribuidoId`), e os Canais que entram aqui de `GET /canais`
+ * (`useCanais`, pela Fila padrão do Canal): o número mostrado é sempre o `total`
+ * da api, não o tamanho da página. A Fila em si (elegíveis, distribuição, horário)
+ * é configuração do Espaço e segue no store.
  */
 
 import Link from "next/link";
 import { use } from "react";
+import { useCanais } from "@/dados/crm/canais";
+import { useConversas } from "@/dados/crm/conversas";
 import { useData } from "@/dados/store";
-import { contactDisplayName } from "@n1/dominio/derive";
+import type { Queue } from "@n1/dominio/types";
 import { AVAILABILITY_LABEL, CHANNEL_TYPE_LABEL, CONVERSATION_STATE_LABEL } from "@/features/shell/format";
 import { useFormat } from "@/features/shell/use-format";
 import {
@@ -38,9 +46,7 @@ const WEEK_DAYS = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", 
 
 export default function FilaPage({ params }: { params: Promise<{ fila: string }> }) {
   const { fila } = use(params);
-  const state = useData((data) => data);
-  const fmt = useFormat();
-  const queue = state.queues.find((q) => q.id === fila);
+  const queue = useData((data) => data.queues.find((q) => q.id === fila));
 
   if (!queue) {
     return (
@@ -53,22 +59,25 @@ export default function FilaPage({ params }: { params: Promise<{ fila: string }>
     );
   }
 
-  const conversations = state.conversations.filter(
-    (conversation) => conversation.queueId === queue.id && conversation.lifecycle === "ativo",
-  );
+  return <FichaDaFila queue={queue} />;
+}
+
+function FichaDaFila({ queue }: { readonly queue: Queue }) {
+  const state = useData((data) => data);
+  const fmt = useFormat();
+  // Uma página de 20 para a lista; o número do cabeçalho e do rodapé é o `total` da api.
+  const conversas = useConversas({ filaId: queue.id, limite: 20 });
+  const conversations = conversas.data?.itens ?? [];
+  const totalDeConversas = conversas.data?.total;
+  const canaisDaTabela = useCanais({ estado: "ativo", limite: 100 });
   const teamMemberIds = new Set(
     queue.eligibleTeamIds.flatMap(
       (teamId) => state.teams.find((team) => team.id === teamId)?.memberIds ?? [],
     ),
   );
   const eligibleMemberIds = new Set([...queue.eligibleMemberIds, ...teamMemberIds]);
-  const channels = state.channels.filter((channel) => channel.defaultQueueId === queue.id);
+  const channels = (canaisDaTabela.data?.itens ?? []).filter((channel) => channel.filaPadraoId === queue.id);
   const owner = state.members.find((m) => m.id === queue.defaultContactOwnerMemberId);
-
-  const loadOf = (memberId: string): number =>
-    conversations.filter(
-      (conversation) => conversation.assignee?.kind === "member" && conversation.assignee.id === memberId,
-    ).length;
 
   const businessHours = queue.businessHours
     ? queue.businessHours.days.map((day) => `${WEEK_DAYS[day.weekDay]} ${day.from}–${day.to}`).join(", ")
@@ -90,7 +99,7 @@ export default function FilaPage({ params }: { params: Promise<{ fila: string }>
         }
         title={queue.name}
         seal={<StateSeal state={queue.lifecycle} />}
-        meta={`${conversations.length} Conversa(s) ativa(s)`}
+        meta={`${totalDeConversas ?? "—"} Conversa(s) ativa(s)`}
       />
 
       <CorpoDeTela>
@@ -145,7 +154,7 @@ export default function FilaPage({ params }: { params: Promise<{ fila: string }>
                           <div className="app-meta shrink-0 text-right">
                             <p>{AVAILABILITY_LABEL[member.availability.value] ?? member.availability.value}</p>
                             <p className="app-numero">
-                              {loadOf(memberId)}
+                              <CargaDoMembro filaId={queue.id} membroId={memberId} />
                               {queue.maxConversationsPerAttendant !== undefined
                                 ? ` de ${queue.maxConversationsPerAttendant}`
                                 : ""}{" "}
@@ -161,25 +170,23 @@ export default function FilaPage({ params }: { params: Promise<{ fila: string }>
             </Painel>
 
             <Painel>
-              <CabecalhoDePainel titulo="Conversas na Fila" contagem={conversations.length} />
+              <CabecalhoDePainel titulo="Conversas na Fila" contagem={totalDeConversas ?? 0} />
               <div className="p-3">
-                {conversations.length === 0 ? (
+                {conversas.data === undefined ? (
+                  <p role="status" className="app-meta px-1">
+                    Carregando as Conversas…
+                  </p>
+                ) : conversations.length === 0 ? (
                   <EmptyState compact title="Nenhuma Conversa ativa nesta Fila." />
                 ) : (
                   <ul className="pilha-solta">
-                    {conversations.slice(0, 20).map((conversation) => {
-                      const contact = conversation.contactId
-                        ? state.contacts.find((c) => c.id === conversation.contactId)
-                        : undefined;
+                    {conversations.map((conversation) => {
                       const assignee =
-                        conversation.assignee?.kind === "member"
-                          ? state.members.find((m) => m.id === conversation.assignee?.id)?.displayName
-                          : conversation.assignee?.kind === "agent"
-                            ? state.agents.find((a) => a.id === conversation.assignee?.id)?.name
+                        conversation.atribuido?.tipo === "membro"
+                          ? state.members.find((m) => m.id === conversation.atribuido?.id)?.displayName
+                          : conversation.atribuido?.tipo === "agente"
+                            ? state.agents.find((a) => a.id === conversation.atribuido?.id)?.name
                             : undefined;
-                      const last = [...conversation.messages]
-                        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-                        .at(-1);
                       return (
                         <li key={conversation.id}>
                           <Link
@@ -189,14 +196,14 @@ export default function FilaPage({ params }: { params: Promise<{ fila: string }>
                           >
                             <span className="min-w-0 flex-1">
                               <span className="app-base block truncate" style={{ color: "var(--texto)" }}>
-                                {contact ? contactDisplayName(contact) : "Contato não resolvido"}
+                                {conversation.contatoNome ?? "Contato não resolvido"}
                               </span>
-                              <span className="app-meta block truncate">{conversation.title}</span>
+                              <span className="app-meta block truncate">{conversation.titulo}</span>
                             </span>
                             <span className="app-meta shrink-0 text-right">
-                              <span className="block">{CONVERSATION_STATE_LABEL[conversation.state]}</span>
+                              <span className="block">{CONVERSATION_STATE_LABEL[conversation.situacao]}</span>
                               <span className="block">{assignee ?? "sem Atribuído"}</span>
-                              {last ? <span className="app-numero block">{fmt.relative(last.createdAt)}</span> : null}
+                              <span className="app-numero block">{fmt.relative(conversation.atualizadoEm)}</span>
                             </span>
                           </Link>
                         </li>
@@ -204,9 +211,9 @@ export default function FilaPage({ params }: { params: Promise<{ fila: string }>
                     })}
                   </ul>
                 )}
-                {conversations.length > 20 ? (
+                {totalDeConversas !== undefined && totalDeConversas > conversations.length ? (
                   <p className="app-meta app-numero px-1 pt-2">
-                    Mostrando 20 de {conversations.length}. Use os filtros da Caixa de Entrada para ver todas.
+                    Mostrando {conversations.length} de {totalDeConversas}. Use os filtros da Caixa de Entrada para ver todas.
                   </p>
                 ) : null}
               </div>
@@ -236,10 +243,10 @@ export default function FilaPage({ params }: { params: Promise<{ fila: string }>
                     <li key={channel.id}>
                       <Link href={`/crm/caixa-de-entrada/configuracoes/canais/${channel.id}`} className="item-solto">
                         <span className="app-base min-w-0 flex-1 truncate" style={{ color: "var(--texto)" }}>
-                          {channel.name}
+                          {channel.nome}
                         </span>
                         <span className="app-meta shrink-0">
-                          ({CHANNEL_TYPE_LABEL[channel.channelType] ?? channel.channelType})
+                          ({CHANNEL_TYPE_LABEL[channel.tipo] ?? channel.tipo})
                         </span>
                       </Link>
                     </li>
@@ -252,4 +259,10 @@ export default function FilaPage({ params }: { params: Promise<{ fila: string }>
       </CorpoDeTela>
     </div>
   );
+}
+
+/** Quantas Conversas abertas o Membro tem nesta Fila: o `total` de uma consulta de uma linha. */
+function CargaDoMembro({ filaId, membroId }: { readonly filaId: string; readonly membroId: string }) {
+  const carga = useConversas({ filaId, atribuidoId: membroId, situacao: "aberta", limite: 1 });
+  return <>{carga.data?.total ?? "—"}</>;
 }

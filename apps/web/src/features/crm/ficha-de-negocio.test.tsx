@@ -7,8 +7,8 @@
  * Etapa do Funil novo; editar é `PATCH` só com o que mudou; o encerramento
  * passa pelo `DialogoDeEncerramento` com as Regras do Funil; Reabrir um ganho
  * é de quem administra (RN-NEG-10, D-14); arquivado é só leitura (RN-NEG-16);
- * nada do que a 007 não guarda aparece (D-02); e um id do modelo antigo abre a
- * `DealScreen` (D-15). O teste mora em `features/crm/` porque `app/` só guarda
+ * nada do que a 007 não guarda aparece (D-02); e um id do modelo antigo mostra
+ * "não encontrado", sem recuo para a `DealScreen` (UCR-06). O teste mora em `features/crm/` porque `app/` só guarda
  * convenção de arquivo do Next. Nenhuma rede: `fetch` roteado por método e
  * URL, sessão falsa, `StoreProvider` de verdade com o seed.
  *
@@ -154,7 +154,7 @@ beforeEach(() => {
     return resposta(404, { ok: false, error: "não roteado", codigo: "NAO_ROTEADO" });
   });
   vi.stubGlobal("fetch", fetchMock);
-  // O jsdom não tem `ResizeObserver`; a tela antiga (recuo D-15) pode medir a largura. Aqui nada é medido.
+  // O jsdom não tem `ResizeObserver`; a ficha pode medir a largura. Aqui nada é medido.
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -418,7 +418,7 @@ describe("FichaDeNegocio — ciclo de vida (e) e D-02 (f)", () => {
   });
 });
 
-describe("página /crm/negocios/[negocio] — recuo para a tela antiga (D-15)", () => {
+describe("página /crm/negocios/[negocio] — não encontrado, sem recuo para a tela antiga (UCR-06)", () => {
   const NAO_ENCONTRADO = { ok: false, error: "Negócio não encontrado.", codigo: "NEGOCIO_NAO_ENCONTRADO" };
 
   it("404 da api para um id que não existe em lugar nenhum mostra Negócio não encontrado", async () => {
@@ -428,12 +428,13 @@ describe("página /crm/negocios/[negocio] — recuo para a tela antiga (D-15)", 
     expect(texto()).toContain("Ele pode ter sido excluído permanentemente.");
   });
 
-  it("404 da api para um id do modelo antigo abre a DealScreen intacta", async () => {
-    const antigo = buildSeed().deals[0]!;
+  it("404 da api para um id que existe no modelo antigo também mostra Negócio não encontrado (sem recuo)", async () => {
+    // O seed não cria mais Negócio (15-31): basta o id e o título do Negócio do modelo antigo (do demo).
+    const antigo = { id: "deal_sdr_1", title: "Full Face Avançado para Iallas" };
     rotas[`GET /negocios/${antigo.id}`] = () => resposta(404, NAO_ENCONTRADO);
     await montarPagina(antigo.id);
-    await vi.waitFor(() => expect(texto()).toContain(antigo.title), { timeout: 3000 });
-    expect(texto()).not.toContain("Negócio não encontrado.");
+    await vi.waitFor(() => expect(texto()).toContain("Negócio não encontrado."), { timeout: 3000 });
+    expect(texto()).not.toContain(antigo.title);
   });
 
   it("outro erro da api vira um estado vazio com a mensagem", async () => {

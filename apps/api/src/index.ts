@@ -25,6 +25,22 @@
  * vezes — a exclusão é do banco (`for update skip locked` sobre
  * `plataforma.automacao_agenda`), não deste arquivo.
  *
+ * O processador da fila de entrada da mensageria (Fase 16, 16-03) é do mesmo molde: só sobe aqui por
+ * `MENSAGERIA_WORKER_ATIVO === "true"`, e a rota `POST /webhooks/mensageria/:canalId` o acorda depois do 200. A saída
+ * (Fase 16, 16-05, `criarWorkerDeSaida`) sobe junto, pela mesma variável: um segundo worker do outbox só com
+ * `mensagem.enviar.v1`.
+ *
+ * A coleta de órfãos do bucket (Fase 16, 16-10, 3.9.6) é do mesmo molde: só sobe por `COLETA_DE_ORFAOS_ATIVA === "true"`
+ * (desligada por padrão, e nos testes), roda uma vez por dia e só uma instância por vez (`pg_try_advisory_lock`).
+ *
+ * O tempo real (Fase 16, 16-07, D-16-01) sobe aqui sempre, salvo `TEMPO_REAL_ATIVO=false`: o hub de eventos nasce antes
+ * do `buildApp` (a rota `GET /eventos` o recebe) e o ouvinte `LISTEN crm_eventos` o alimenta. Na desmontagem os
+ * fluxos SSE abertos fecham ANTES do `app.close()`, que senão pendura esperando as abas (e o systemd mata aos 20 s).
+ *
+ * O SIGTERM e o SIGINT de produção (Fase 16, 16-18, T-16-28) rodam a MESMA desmontagem da recarga e então saem do
+ * processo (`encerramento.ts`), com teto de 15 s, abaixo dos 20 s de `TimeoutStopSec`. Antes, cada worker pendurava um
+ * ouvinte que só o parava: o Node deixava de sair sozinho e o `restart` terminava em SIGKILL.
+ *
  * A ponte do Agente (Plan 03-11, `automacoes/invocar-agente.ts`) segue a
  * MESMA separação e é a terceira peça do mesmo molde: não conhece
  * `buildApp()`/Fastify, só é ativada aqui por env
@@ -60,8 +76,15 @@
 import { buildApp } from "./app";
 import { opcoesDoLogger } from "./observabilidade/log";
 import { fecharSentry, iniciarSentry } from "./observabilidade/sentry";
-import { carregarEnv, encerrar } from "./persistencia/conexao";
+import { criarEncerramento } from "./encerramento";
+import { carregarEnv, encerrar, pool } from "./persistencia/conexao";
 import { criarOutboxWorker } from "./persistencia/outbox-worker";
+import { criarColetaDeOrfaos } from "./mensageria/coleta-de-orfaos";
+import { criarWorkerDeSaida } from "./mensageria/entregar-mensagem";
+import { criarHubDeEventos } from "./mensageria/hub-de-eventos";
+import { criarOuvinteDoCrm } from "./mensageria/ouvinte-pg";
+import { criarProcessadorDeEntrada } from "./mensageria/processador-de-entrada";
+import { criarAcessoAoCrmPg, exigir } from "./servicos/crm/acesso";
 import { criarSchedulerWorker, escopoDoAgendador } from "./automacoes/scheduler-worker";
 import {
   criarPonteDoAgente,
@@ -100,27 +123,65 @@ const sentryAtivo = iniciarSentry();
 const porta = Number(process.env.PORT ?? 3002);
 const host = process.env.HOST ?? "127.0.0.1";
 
-const app = buildApp({ logger: opcoesDoLogger() });
+// Os acordadores da mensageria, por referência: a rota do webhook nasce em `buildApp`, antes de o processador de
+// entrada existir (e ele só existe com `MENSAGERIA_WORKER_ATIVO=true`). Sem o processador, a rota só grava na fila
+// e o acordador é um no-op. `saida` acorda o worker de saída logo depois do commit de uma Mensagem (o ouvinte do
+// tempo real o chama a cada `mensagem.nova` e `mensagem.status`); sem ele vale o intervalo de reserva de 5 s.
+const acordadores = { entrada: () => {}, saida: () => {} };
 
-/** O que esta instância precisa parar ao ser desmontada, e os ouvintes de SIGTERM que ela pendurou no processo. */
-const paradas: Array<() => Promise<void>> = [];
-const ouvintesDeSigterm: Array<() => void> = [];
+// O hub do tempo real (16-07): o Papel é lido do banco a cada pergunta (`exigir`), na abertura do fluxo e na
+// reconferência de 60 s, para uma remoção ou troca de Papel cortar o fluxo sem esperar o token vencer.
+const hub = criarHubDeEventos({
+  podeLer: async (membro) => (await exigir(criarAcessoAoCrmPg(pool), membro, "ler", "conversa")) === undefined,
+});
+
+const app = buildApp({
+  logger: opcoesDoLogger(),
+  webhooksDeMensageria: { acordarProcessador: () => acordadores.entrada() },
+  eventos: { hub },
+});
+
+// O tratador único do encerramento (16-18, T-16-28): um SIGTERM ou SIGINT roda a mesma desmontagem da recarga e sai do
+// processo, com teto de 15 s. Os workers só registram como parar (`aoEncerrar`); nenhum pendura ouvinte de sinal.
+const encerramento = criarEncerramento({
+  fecharFluxos: () => hub.definirDisponivel(false),
+  fecharServidor: () => app.close(),
+  encerrarPool: encerrar,
+  registrar: (nivel, mensagem, dados) => {
+    app.log[nivel](dados ?? {}, mensagem);
+  },
+});
 
 /** Registra como parar um worker — na desmontagem da recarga e no SIGTERM. */
-function aoEncerrar(parar: () => Promise<void>): void {
-  paradas.push(parar);
-  const noSigterm = () => {
-    void parar();
-  };
-  process.on("SIGTERM", noSigterm);
-  ouvintesDeSigterm.push(noSigterm);
-}
+const aoEncerrar = encerramento.aoEncerrar;
 
 // Corre junto com os outros no SIGTERM e na desmontagem da recarga: espera até
 // 2 s o envio pendente, para um erro capturado logo antes do desligamento ainda
 // sair (T-09-65).
 if (sentryAtivo) app.log.info(`Sentry ativo (ambiente=${process.env.SENTRY_AMBIENTE?.trim() || "desenvolvimento"})`);
 aoEncerrar(fecharSentry);
+
+// Fase 16 (16-07): o ouvinte `LISTEN crm_eventos`, uma conexão por processo fora do pool. Sem ele o hub fica
+// indisponível e `GET /eventos` responde 503 (a tela relê a cada 5 s). O fim vem ANTES do `app.close()` da
+// desmontagem: os fluxos fecham e só então o servidor para (Pitfall 5, T-16-28).
+if (process.env.TEMPO_REAL_ATIVO !== "false") {
+  const ouvinte = criarOuvinteDoCrm({
+    aoEvento: (evento) => {
+      hub.publicar(evento);
+      // A Mensagem acabou de ser confirmada (nova, ou voltou a `pendente` por "Tentar de novo"): a saída não espera os 5 s.
+      if (evento.tipo === "mensagem.nova" || evento.tipo === "mensagem.status") acordadores.saida();
+    },
+    aoConectar: () => hub.definirDisponivel(true),
+    aoCair: () => hub.definirDisponivel(false),
+    registrar: (nivel, mensagem, dados) => {
+      app.log[nivel](dados ?? {}, mensagem);
+    },
+  });
+  ouvinte.iniciar();
+  // O hub já é fechado pela primeira etapa do encerramento (`fecharFluxos`): aqui só o ouvinte do Postgres.
+  aoEncerrar(() => ouvinte.parar());
+  app.log.info("ouvinte do tempo real ativo");
+}
 
 let ponte: PonteDoAgente | undefined;
 
@@ -231,17 +292,62 @@ if (process.env.AUTOMACOES_WORKER_ATIVO === "true") {
   app.log.info({ espaco: escopo.workspaceId, lista: escopo.listId ?? "todas" }, "scheduler de Automações ativo");
 }
 
+// Fase 16 (16-03): o processador da fila de entrada da mensageria (`webhooks_recebidos`). Mesma separação do
+// outbox e do agendador: não conhece `buildApp()`, só é ativado por env, e duas instâncias podem rodá-lo juntas
+// (`for update skip locked`). A rota do webhook o acorda depois do 200; o intervalo de 10 s é só a reserva.
+if (process.env.MENSAGERIA_WORKER_ATIVO === "true") {
+  const processador = criarProcessadorDeEntrada({
+    workerId: process.env.MENSAGERIA_WORKER_ID ?? `apps-api-entrada-${process.pid}`,
+    acordarSaida: () => acordadores.saida(),
+    registrar: (nivel, mensagem, dados) => {
+      app.log[nivel](dados ?? {}, mensagem);
+    },
+  });
+  processador.iniciar();
+  acordadores.entrada = () => processador.acordar();
+  aoEncerrar(() => processador.parar());
+  app.log.info("processador de entrada da mensageria ativo");
+
+  // 16-05: a saída. O worker do outbox só com `mensagem.enviar.v1`, entregando pelo provedor do Canal (nunca pelo
+  // `automation/`), ao lado do processador de entrada e ligado pela MESMA variável.
+  const saida = criarWorkerDeSaida({
+    workerId: process.env.MENSAGERIA_WORKER_ID ? `${process.env.MENSAGERIA_WORKER_ID}-saida` : `apps-api-saida-${process.pid}`,
+    registrar: (nivel, mensagem, dados) => {
+      app.log[nivel](dados ?? {}, mensagem);
+    },
+  });
+  saida.iniciar();
+  acordadores.saida = () => saida.acordar();
+  aoEncerrar(() => saida.parar());
+  app.log.info("worker de saída da mensageria ativo");
+}
+
+// Fase 16 (16-10): a coleta diária de órfãos do bucket (sessões de upload expiradas e mídia de `entrada/` sem Mensagem).
+// Desligada por padrão: só com `COLETA_DE_ORFAOS_ATIVA=true` e com o Storage configurado. A trava consultiva garante que duas
+// instâncias nunca coletem juntas; o registro leva só contagens.
+if (process.env.COLETA_DE_ORFAOS_ATIVA === "true") {
+  const coleta = criarColetaDeOrfaos({
+    registrar: (nivel, mensagem, dados) => {
+      app.log[nivel](dados ?? {}, mensagem);
+    },
+  });
+  coleta.iniciar();
+  aoEncerrar(() => coleta.parar());
+  app.log.info("coleta de órfãos ativa");
+}
+
 // Registrada ANTES do `listen`: se ele falhar (porta ocupada), a próxima
 // recarga ainda consegue parar os workers que esta instância já ligou.
 registroGlobal[CHAVE_DA_DESMONTAGEM] = async () => {
-  for (const ouvinte of ouvintesDeSigterm) process.off("SIGTERM", ouvinte);
-  // Primeiro os workers (nada novo sai para a rede), esperando a volta em
-  // voo; depois o servidor (espera as requisições em curso); por último o
-  // pool DESTA instância — a próxima abre o seu, num módulo novo.
-  await Promise.all(paradas.map((parar) => parar()));
-  await app.close();
-  await encerrar();
+  // A recarga roda a mesma sequência do SIGTERM (fluxos, workers esperando a volta em voo, servidor, pool DESTA
+  // instância — a próxima abre o seu, num módulo novo), mas sem sair do processo, e tira os ouvintes de sinal desta
+  // instância para a próxima não ficar com dois.
+  encerramento.desinstalar();
+  await encerramento.desmontar();
 };
+
+// Antes do `listen`, como a desmontagem acima: o SIGTERM de produção encerra a api sozinho (T-16-28).
+encerramento.instalar(process);
 
 await app.listen({ port: porta, host });
 app.log.info(`apps/api ouvindo em http://${host}:${porta}`);

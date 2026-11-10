@@ -6,19 +6,27 @@
 
 import { describe, expect, it } from "vitest";
 import { CP, CR } from "./operations/financeiro";
-import { MEUS_NEGOCIOS_ID } from "./seed-comercial";
 import { LISTA_ID } from "./solicitacao-de-pagamento-evolver";
-import { ehEstruturaFixa, LISTA_CONTAS_A_RECEBER_ID, LISTA_SOLICITACOES_DE_PAGAMENTO_ID, PASTA_MEUS_NEGOCIOS_ID } from "./estruturas-fixas";
+import * as estruturasFixas from "./estruturas-fixas";
+import { ehEstruturaFixa, LISTA_CONTAS_A_RECEBER_ID, LISTA_SOLICITACOES_DE_PAGAMENTO_ID } from "./estruturas-fixas";
 
 describe("estruturas fixas (Q2)", () => {
   it("cada id confere com a constante de origem", () => {
-    expect(PASTA_MEUS_NEGOCIOS_ID).toBe(MEUS_NEGOCIOS_ID);
     expect(LISTA_CONTAS_A_RECEBER_ID).toBe(CR.listId);
     expect(LISTA_SOLICITACOES_DE_PAGAMENTO_ID).toBe(LISTA_ID);
   });
 
-  it("reconhece a Pasta Meus negócios e as três Listas, e só elas", () => {
-    expect(ehEstruturaFixa("folder", MEUS_NEGOCIOS_ID)).toBe(true);
+  it("a constante da Pasta Meus negócios saiu do módulo (15-43): nenhuma regra a lê", () => {
+    // Só os ids das duas Listas e a função: a Pasta não tem mais constante, e quem a citasse por nome não compilaria.
+    expect(Object.keys(estruturasFixas).sort()).toEqual([
+      "LISTA_CONTAS_A_RECEBER_ID",
+      "LISTA_SOLICITACOES_DE_PAGAMENTO_ID",
+      "ehEstruturaFixa",
+    ]);
+  });
+
+  it("reconhece as três Listas fixas, e só elas: a Pasta Meus negócios deixou de ser fixa (15-41, D-15-14)", () => {
+    expect(ehEstruturaFixa("folder", "fld_meus_negocios")).toBe(false);
     expect(ehEstruturaFixa("list", CP.listId)).toBe(true);
     expect(ehEstruturaFixa("list", CR.listId)).toBe(true);
     expect(ehEstruturaFixa("list", LISTA_ID)).toBe(true);

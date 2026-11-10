@@ -16,6 +16,7 @@ export * from "./types/primitives";
 export * from "./types/workspace";
 export * from "./types/structure";
 export * from "./types/crm";
+export * from "./types/conversa-de-grupo";
 export * from "./types/ai";
 export * from "./types/panels";
 export * from "./types/ferramentas";

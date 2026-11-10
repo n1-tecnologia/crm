@@ -45,7 +45,6 @@ import {
   agentesGovernaveisPor,
   disponibilidadeDoAgente,
   efeitoDeclarado,
-  inoperante,
   rascunhoDaHabilidade,
   versaoCorrenteDaHabilidade,
   versaoCorrenteDoAgente,
@@ -54,6 +53,7 @@ import {
 import type { Id } from "@n1/dominio/types";
 import { AUTONOMY_LABEL, EFFECT_CLASS_LABEL, LIFECYCLE_LABEL, RESOURCE_TYPE_LABEL, TRIGGER_KIND_LABEL } from "@/features/shell/format";
 import { useAvisos } from "@/features/shell/ficha";
+import { inoperanteComFunis, useFunisDoEscopo } from "../automacoes/funis-do-escopo";
 import { useNavegar } from "@/features/shell/navegacao";
 import { marcarChegada, useRecente } from "@/features/shell/recente";
 import { Button, ConfirmDialog, Icone } from "@/features/shell/ui";
@@ -418,6 +418,8 @@ export function HabilidadesCatalogo() {
  */
 export function AutomacoesCatalogo() {
   const state = useData((data) => data);
+  // Os Funis do CRM novo (GET /funis): sem eles o escopo Funil de toda Automação pareceria eliminado (15-39, 15-21).
+  const funis = useFunisDoEscopo();
   const run = useRun();
   const { memberId } = useSession();
   const { avisos, report } = useAvisos();
@@ -434,7 +436,7 @@ export function AutomacoesCatalogo() {
       const hibrida = automacao.versions.some((v) => v.conditions.some((c) => c.kind === "hibrida"));
       const execucoes = state.automationExecutions.filter((e) => e.automationId === automacao.id).length;
       const dono = state.members.find((m) => m.id === automacao.ownerMemberId)?.displayName ?? "—";
-      const motivo = inoperante(state, automacao);
+      const motivo = inoperanteComFunis(state, automacao, funis);
       const executa = escopoExecutaNoPrototipo(automacao.scopeType, corrente?.trigger);
       const pausar = recusaDeAdministrarAutomacao(state, memberId, automacao, "pausar");
       const arquivar = recusaDeAdministrarAutomacao(state, memberId, automacao, "arquivar");

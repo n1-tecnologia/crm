@@ -20,6 +20,7 @@ import { ActionMenu, Button, Icone, PageHeader } from "@/features/shell/ui";
 import { AbaComunidades } from "./aba-comunidades";
 import { AbaFlows } from "./aba-flows";
 import { AbaGrupos } from "./aba-grupos";
+import { useCanaisDasFerramentas, useCrmDasFerramentas } from "./crm-das-ferramentas";
 import { useParametros, type AbaDeFerramentas } from "./url";
 
 const TITULO: Record<AbaDeFerramentas, string> = { grupos: "Grupos", comunidades: "Comunidades", flows: "Flows" };
@@ -32,6 +33,8 @@ export function TelaDeFerramentas({ aba }: { readonly aba: AbaDeFerramentas }) {
   const { set } = useParametros();
   const { avisos, report } = useAvisos();
   const { memberId } = useSession();
+  // O Canal vem de GET /canais (3.4.8): as sincronizações levam o `crm` como as fichas.
+  const crm = useCrmDasFerramentas(useCanaisDasFerramentas());
   // A mesma recusa que cada sincronização devolveria: o item já nasce desligado com ela.
   const recusaDeMembro = recusaDeMembroAtivo(state, memberId);
 
@@ -54,9 +57,9 @@ export function TelaDeFerramentas({ aba }: { readonly aba: AbaDeFerramentas }) {
       }
     };
     if (aba === "grupos") {
-      for (const g of state.grupos.filter((x) => x.lifecycle !== "naLixeira")) contar(run((data, me) => sincronizarGrupo(data, me, g.id)));
+      for (const g of state.grupos.filter((x) => x.lifecycle !== "naLixeira")) contar(run((data, me) => sincronizarGrupo(data, me, g.id, crm)));
     } else {
-      for (const c of state.comunidades.filter((x) => x.lifecycle !== "naLixeira")) contar(run((data, me) => sincronizarComunidade(data, me, c.id)));
+      for (const c of state.comunidades.filter((x) => x.lifecycle !== "naLixeira")) contar(run((data, me) => sincronizarComunidade(data, me, c.id, crm)));
     }
     report(
       falhas === 0 ? { ok: true } : { ok: false, error: `${ok} sincronizado${ok === 1 ? "" : "s"}, ${falhas} não: ${[...erros].join(" ") || "Não foi possível concluir a operação."}` },

@@ -41,6 +41,41 @@ por nenhuma rota: o navegador só recebe o ticket de upload assinado
 (`createSignedUploadUrl`, escopo de um único objeto, `upsert: false`) ou a
 URL de download assinada — nunca a credencial que os gera.
 
+### O anexo da Mensagem (Fase 16)
+
+A Mensagem do CRM usa as mesmas funções do bucket com a lista e os tetos DELA, sem mexer no Formulário:
+
+- **A lista é do domínio** (`TIPOS_ACEITOS_NA_MENSAGEM`, `@n1/dominio/crm/midia`): PDF, XML, JPEG, PNG, WebP, áudio
+  (ogg, mpeg, mp4, aac), vídeo (mp4, 3gpp), docx, xlsx, pptx, csv, txt e zip. O `TIPOS_ACEITOS` de `storage-uploads.ts`
+  (PDF, XML, JPEG, PNG, WebP) continua sendo o do Formulário público e da Tarefa, e continua recusando áudio.
+- **Opções por pedido, o padrão é o de hoje.** `emitirTicket(…, opcoes)` e `confirmarObjeto(…, opcoes)` recebem tipos,
+  prefixo da chave (`workspace/<ws>/conversas/<id>/<uuid>`, nascida no servidor), teto por tipo e o tamanho que o
+  cliente diz que vai subir (acima do teto, o ticket não sai). A confirmação compara o tipo RESERVADO e confere o
+  conteúdo inteiro, nunca só o `Content-Type`.
+- **Tetos:** `tetosDeMidia()` e `tetoDoTipo()`: 16 MiB para áudio e vídeo (`UPLOAD_MAX_BYTES_MIDIA`) e 25 MiB para o
+  resto (`UPLOAD_MAX_BYTES`), D-16-08.
+- **Assinaturas novas** (`assinaturaConfereComTipo`): OggS, MP3 (ID3 e quadros), `ftyp` no byte 4 (MP4, M4A, 3GP),
+  ADTS e ZIP. `familiaDoZip` separa docx, xlsx e pptx de zip comum lendo `[Content_Types].xml` e a pasta `word/`,
+  `xl/` ou `ppt/` do diretório central (o EOCD nos últimos 64 KiB; comentário que imita um EOCD é ignorado e ZIP64 ou
+  diretório inflado é recusado). csv e txt não têm assinatura: valem só se `pareceTexto` (aceita Windows-1252, o CSV do
+  Excel brasileiro).
+- **`urlDeDownload(objectKey, { download })`** assina uma URL nova a cada abertura (TTL de 5 min); documento sai com
+  `Content-Disposition` de download.
+- **A porta `armazenamento-de-anexos.ts`** (`ArmazenamentoDeAnexos`: abrir sessão, emitir ticket, confirmar, assinar,
+  subir, remover, listar) é o que o serviço de Mensagens, a mídia recebida e a coleta de órfãos usam; a implementação
+  padrão delega a `storage-uploads.ts` e o teste injeta `criarArmazenamentoFalso()` (`../testes/armazenamento-falso.ts`).
+  `listarObjetos` lista UMA pasta, sem descer, e não tem deslocamento (o limite de 500 está em
+  `.planning/phases/16-*/deferred-items.md`). `coletarOrfaos` de `storage-uploads.ts` não é chamada por produção: a
+  coleta da Fase 16 passa pela porta.
+- **Nada disso rodou contra o Supabase Storage real:** os testes de rota e de mídia usam o falso.
+
+### A lista de Mensagens (`crm/mensagens.ts`)
+
+O serviço de Mensagens fica separado do serviço do Formulário: a lista do fio (`listar`, por `(criado_em, seq)`) e o
+envio (`enviar`, que grava a Mensagem `pendente` e chama `enfileirarEnvio` na mesma transação), a anotação interna, os
+três serviços de anexo e `reenviar` ("Tentar de novo") vivem aqui, atrás de `ServicoDeMensagens`. A recebida não passa
+por ele: entra por `crm/recebimento.ts` (`receberMensagem`), a única porta da recebida.
+
 ## CRM (`crm/`, Fase 7)
 
 Um serviço por recurso — `contatos.ts`, `empresas.ts`, `funis.ts`,
@@ -65,7 +100,9 @@ a contagem. Entre a pré-checagem e a escrita outra requisição pode entrar;
 aí é o constraint do banco que segura, e `traduzirErroDePg` transforma
 `23505`/`23503`/`23514` em 409 com uma frase em português cadastrada em
 `FrasesDeRestricao`, **sem o nome do constraint** (T-07-06). SQLSTATE sem
-frase é relançado e vira o 500 genérico.
+frase é relançado e vira o 500 genérico. Exceção (Fase 15, D-15-07): `40P01`
+(deadlock) vira sempre 409 `CONFLITO_TRANSITORIO` ("Tente de novo."), sem
+constraint a citar.
 
 **Permissão antes de qualquer escrita (D-14, `acesso.ts`).** Todo método
 chama `exigir(acesso, membro, acao, recurso)` antes de ler ou escrever: o
@@ -84,6 +121,33 @@ Espaço cai na mesma recusa 409 `PROPRIETARIO_INVALIDO`, T-07-40).
 **Espaço.** `workspace_id` vem de `request.membro`, nunca do corpo; todo
 `WHERE` dos repositórios o leva (T-07-01). Um registro de outro Espaço não
 existe: 404, não 403.
+
+## Contato mesclado (Fase 14)
+
+**RN-CON-14: o Contato `mesclado` é somente leitura em todo serviço do CRM
+novo.** `mesclado` é o quarto estado do Contato (011): o Contato foi absorvido
+por outro (`mescladoEmId`) e não volta. Em `crm/contatos.ts` o helper `escrita`
+confere o estado logo depois de travar a linha e, antes de qualquer outra regra,
+recusa **409 `CONTATO_MESCLADO`** — "Este Contato foi mesclado e agora é somente
+leitura. Abra o Contato que ficou." Isso cobre editar, os três gestos de
+Identificador, arquivar, restaurar, lixeira e exclusão permanente, e a linha do
+banco não muda. `obter` e `listar` seguem liberados (a tela leva o absorvido ao
+sobrevivente).
+
+**Quem o referencia.** `crm/negocios.ts` (`conferirContato`, em criar e em
+editar trocando o Contato), `crm/empresas.ts` (`carregarContato`, em criar com
+Contato admin existente, vincular e trocar admin) e `crm/conversas.ts`
+(`abrirConversaNoCliente`) recusam o absorvido com o mesmo código e
+`campo: "contatoId"`, e o leem com `for update` (WR-01, Fase 15): uma mesclagem
+confirmada no meio faz a escrita esperar e então enxergar `mesclado`. O REST de
+Canal (`crm/canais.ts`) trava a linha do Espaço antes da do Canal, a mesma ordem
+do gesto misto (WR-02). Contato `arquivado` continua aceito em Negócio
+(RN-CON-19); a Tarefa conversacional exige `ativo` e confere isso no próprio
+serviço (14-14).
+
+**Quem grava o estado.** Só a mesclagem (14-09). `definirEstado` do repositório
+continua tipado com `EstadoCrm`, que não inclui `mesclado`: nenhum outro serviço
+consegue gravá-lo. Os testes marcam o absorvido por SQL, com `poolDoDono()`.
 
 ## Cofre de credenciais (Fase 9)
 

@@ -6,7 +6,7 @@
  * regra de negócio.
  */
 
-import { ID, opcional, type Esquemas } from "./fragmentos";
+import { CRM_DO_NAVEGADOR, ID, opcional, type Esquemas } from "./fragmentos";
 import { z } from "zod";
 
 const CONFIGURACOES_DA_COMUNIDADE = z
@@ -48,18 +48,18 @@ const SAIR_INPUT = z.object({ entendiIrreversivel: z.boolean().optional() }).str
  * para `z.ZodTypeAny`.
  */
 export const COMUNIDADES = {
-  criarComunidade: z.tuple([CRIAR_COMUNIDADE_INPUT]),
-  sincronizarComunidade: z.tuple([ID]),
-  editarComunidade: z.tuple([ID, EDITAR_COMUNIDADE_INPUT]),
+  criarComunidade: z.tuple([CRIAR_COMUNIDADE_INPUT, opcional(CRM_DO_NAVEGADOR)]),
+  sincronizarComunidade: z.tuple([ID, opcional(CRM_DO_NAVEGADOR)]),
+  editarComunidade: z.tuple([ID, EDITAR_COMUNIDADE_INPUT, opcional(CRM_DO_NAVEGADOR)]),
   // Partial<ConfiguracoesDaComunidade> é posicional obrigatório (sem `?`),
   // mas todos os seus campos são opcionais — o mesmo schema de dentro de
   // CRIAR_COMUNIDADE_INPUT.configuracoes, aqui não-`.optional()` na tupla.
-  alterarConfiguracoesDaComunidade: z.tuple([ID, CONFIGURACOES_DA_COMUNIDADE]),
-  vincularGrupoAComunidade: z.tuple([ID, ID]),
-  desvincularGrupoDaComunidade: z.tuple([ID, ID]),
-  enviarMensagemAComunidade: z.tuple([ID, ENVIAR_MENSAGEM_INPUT]),
+  alterarConfiguracoesDaComunidade: z.tuple([ID, CONFIGURACOES_DA_COMUNIDADE, opcional(CRM_DO_NAVEGADOR)]),
+  vincularGrupoAComunidade: z.tuple([ID, ID, opcional(CRM_DO_NAVEGADOR)]),
+  desvincularGrupoDaComunidade: z.tuple([ID, ID, opcional(CRM_DO_NAVEGADOR)]),
+  enviarMensagemAComunidade: z.tuple([ID, ENVIAR_MENSAGEM_INPUT, opcional(CRM_DO_NAVEGADOR)]),
   // `input: {...} = {}` — parâmetro posicional opcional no fim.
-  sairDaComunidade: z.tuple([ID, opcional(SAIR_INPUT)]),
+  sairDaComunidade: z.tuple([ID, opcional(SAIR_INPUT), opcional(CRM_DO_NAVEGADOR)]),
   arquivarComunidade: z.tuple([ID]),
   restaurarComunidade: z.tuple([ID]),
   enviarComunidadeALixeira: z.tuple([ID]),

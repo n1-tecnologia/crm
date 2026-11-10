@@ -3,6 +3,12 @@
  * nasce de um Contato que já conversa com o Instituto e carrega a conversa
  * dele por Vínculos — Contato e Conversa sempre, Negócio só quando há um.
  *
+ * Desde o 15-31 (D-15-13) o seed não cria Contato, Conversa nem Negócio: as
+ * Tarefas guardam só os ids (`cnt_*`, `cnv_*`, `deal_*`) e o nome do Contato na
+ * Proveniência, e o `bootstrap:crm-demo` carrega esses registros nas tabelas
+ * com os mesmos ids. Que cada Conversa é do Contato da Tarefa é provado em
+ * `seed-sem-crm-antigo.test.ts`.
+ *
  * É a prova de que o modelo conversacional não depende de "Meus negócios":
  * aqui não há Etapa nem valor, só o atendimento a quem já comprou. Como o
  * espelho comercial, é uma CÓPIA de seed, aberta em Quadro por padrão.
@@ -31,7 +37,7 @@ const STATUS = {
 
 /**
  * Cada Tarefa aponta para um Contato que JÁ tem Conversa de WhatsApp ativa no
- * seed. Atenção ao seed: `cnv_1` é da Marina (`cnt_2`, reatribuída para o
+ * demo. Atenção ao demo: `cnv_1` é da Marina (`cnt_2`, reatribuída para o
  * Rascunho de IA), e `cnv_13` é a Conversa da lixeira — por isso a resolvida
  * aqui é a `cnv_17`.
  */
@@ -39,6 +45,8 @@ const TAREFAS: ReadonlyArray<{
   readonly id: Id;
   readonly title: string;
   readonly contactId: Id;
+  /** O nome do Contato como a Proveniência o guarda (o demo carrega o mesmo). */
+  readonly contactName: string;
   readonly conversationId: Id;
   readonly statusId: Id;
   readonly assignee: Id;
@@ -46,11 +54,11 @@ const TAREFAS: ReadonlyArray<{
   readonly dueInDays?: number;
   readonly dealId?: Id;
 }> = [
-  { id: "tsk_pv_1", title: "Enviar cronograma do Elite", contactId: "cnt_2", conversationId: "cnv_1", statusId: STATUS.conversa, assignee: "mem_julia", daysAgo: 2, dueInDays: 1 },
-  { id: "tsk_pv_2", title: "Dúvida sobre acompanhamento de casos", contactId: "cnt_5", conversationId: "cnv_5", statusId: STATUS.novo, assignee: "mem_marcos", daysAgo: 1 },
-  { id: "tsk_pv_3", title: "Remarcar treinamento da equipe", contactId: "cnt_9", conversationId: "cnv_9", statusId: STATUS.aguardando, assignee: "mem_julia", daysAgo: 4 },
-  { id: "tsk_pv_4", title: "Confirmar acesso à plataforma", contactId: "cnt_17", conversationId: "cnv_17", statusId: STATUS.resolvido, assignee: "mem_marcos", daysAgo: 6 },
-  { id: "tsk_pv_5", title: "Retorno sobre parcelamento", contactId: "cnt_35", conversationId: "cnv_sdr_1", statusId: STATUS.conversa, assignee: "mem_julia", daysAgo: 0, dealId: "deal_sdr_1" },
+  { id: "tsk_pv_1", title: "Enviar cronograma do Elite", contactId: "cnt_2", contactName: "Marina Alves", conversationId: "cnv_1", statusId: STATUS.conversa, assignee: "mem_julia", daysAgo: 2, dueInDays: 1 },
+  { id: "tsk_pv_2", title: "Dúvida sobre acompanhamento de casos", contactId: "cnt_5", contactName: "Diego Barbosa", conversationId: "cnv_5", statusId: STATUS.novo, assignee: "mem_marcos", daysAgo: 1 },
+  { id: "tsk_pv_3", title: "Remarcar treinamento da equipe", contactId: "cnt_9", contactName: "Eduardo Correia", conversationId: "cnv_9", statusId: STATUS.aguardando, assignee: "mem_julia", daysAgo: 4 },
+  { id: "tsk_pv_4", title: "Confirmar acesso à plataforma", contactId: "cnt_17", contactName: "Gustavo Batista", conversationId: "cnv_17", statusId: STATUS.resolvido, assignee: "mem_marcos", daysAgo: 6 },
+  { id: "tsk_pv_5", title: "Retorno sobre parcelamento", contactId: "cnt_35", contactName: "Iallas", conversationId: "cnv_sdr_1", statusId: STATUS.conversa, assignee: "mem_julia", daysAgo: 0, dealId: "deal_sdr_1" },
 ];
 
 export function applyPosVenda(state: DataState, clock: Clock): void {
@@ -98,11 +106,7 @@ export function applyPosVenda(state: DataState, clock: Clock): void {
   });
 
   for (const [i, entrada] of TAREFAS.entries()) {
-    const contact = state.contacts.find((c) => c.id === entrada.contactId);
-    const conversation = state.conversations.find((c) => c.id === entrada.conversationId);
-    // A Conversa tem que ser DESTE Contato: um par trocado nasceria com fio de outra pessoa.
-    if (!contact || !conversation || conversation.contactId !== contact.id) continue;
-    const nome = `${contact.firstName} ${contact.lastName}`.trim();
+    const nome = entrada.contactName;
     const criadaEm = at(entrada.daysAgo, 10);
     const task: Task = {
       id: entrada.id,
@@ -129,7 +133,7 @@ export function applyPosVenda(state: DataState, clock: Clock): void {
       dependencies: [],
       attachments: [],
       comments: [],
-      provenance: { kind: "contact", sourceId: contact.id, sourceName: nome, at: criadaEm },
+      provenance: { kind: "contact", sourceId: entrada.contactId, sourceName: nome, at: criadaEm },
       updatedAt: criadaEm,
     };
     state.tasks.push(task);
@@ -143,9 +147,9 @@ export function applyPosVenda(state: DataState, clock: Clock): void {
       createdBy: task.createdBy,
       createdAt: criadaEm,
     });
-    state.links.push(vinculo("contato", "contact", contact.id, "contato da Tarefa"));
-    state.links.push(vinculo("conversa", "conversation", conversation.id, "conversa da Tarefa"));
-    if (entrada.dealId && state.deals.some((d) => d.id === entrada.dealId)) {
+    state.links.push(vinculo("contato", "contact", entrada.contactId, "contato da Tarefa"));
+    state.links.push(vinculo("conversa", "conversation", entrada.conversationId, "conversa da Tarefa"));
+    if (entrada.dealId) {
       state.links.push(vinculo("negocio", "deal", entrada.dealId, "Negócio da Tarefa"));
     }
   }

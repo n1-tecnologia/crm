@@ -11,11 +11,23 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "../seed";
 import type { DataState } from "../state";
-import { CP, createReceivableSeries } from "./financeiro";
+import { CP, createReceivableSeries, type ClientesLidos } from "./financeiro";
 import { createFolder } from "./structure";
 
 /** A expressão do UI-SPEC S10: RN-/INV-/DO-, (B..) e (A..). */
 const CODIGO_DE_REGRA = /\((RN|INV|DO)-[A-Z]+-[0-9]+\)|\(B[0-9]+[a-z]?\)|\(A[0-9]+\.[0-9]+\)/;
+
+/**
+ * Os clientes como o servidor os leria das tabelas (Fase 15, 3.4.10). O seed não cria mais Contato (15-31): são os
+ * Contatos do demo que estes testes usam, com o nome e o dono que o demo carrega.
+ */
+const clientesDoSeed = (_s: DataState): ClientesLidos => ({
+  contatos: [
+    { id: "cnt_2", nome: "Marina Alves", estado: "ativo", proprietarioId: "mem_rafael" },
+    { id: "cnt_4", nome: "Renata Moreira", estado: "ativo", proprietarioId: "mem_julia" },
+  ],
+  empresas: [],
+});
 
 let state: DataState;
 beforeEach(() => {
@@ -37,7 +49,7 @@ function recusa(resultado: { readonly ok: boolean; readonly error?: string }): s
 describe("recusas do domínio sem código de regra (UI-SPEC S10)", () => {
   it("série de parcelas sem Centro de Custo: \"Centro de Custo é obrigatório.\"", () => {
     const erro = recusa(
-      createReceivableSeries(state, CP.financeiroId, { contactId: "cnt_2", centroDeCusto: "  ", valorParcela: 100, parcelas: 2, primeiroVencimento: em(5) }),
+      createReceivableSeries(state, CP.financeiroId, { contactId: "cnt_2", centroDeCusto: "  ", valorParcela: 100, parcelas: 2, primeiroVencimento: em(5) }, clientesDoSeed(state)),
     );
     expect(erro).toBe("Centro de Custo é obrigatório.");
     expect(erro).not.toMatch(CODIGO_DE_REGRA);
@@ -52,20 +64,20 @@ describe("recusas do domínio sem código de regra (UI-SPEC S10)", () => {
       valorParcela: 2500,
       parcelas: 1,
       primeiroVencimento: em(30),
-    });
+    }, clientesDoSeed(state));
     expect(primeira.ok).toBe(true);
     const erro = recusa(
-      createReceivableSeries(state, CP.financeiroId, { contactId: "cnt_2", centroDeCusto: "Tria Tech", valorEntrada: 1, vencimentoEntrada: em(1), valorParcela: 1, parcelas: 1, primeiroVencimento: em(60) }),
+      createReceivableSeries(state, CP.financeiroId, { contactId: "cnt_2", centroDeCusto: "Tria Tech", valorEntrada: 1, vencimentoEntrada: em(1), valorParcela: 1, parcelas: 1, primeiroVencimento: em(60) }, clientesDoSeed(state)),
     );
     expect(erro).toBe("Marina Alves já tem uma Entrada em aberto ou recebida nesta Lista.");
     expect(erro).not.toMatch(CODIGO_DE_REGRA);
   });
 
   it("Parcela repetida do mesmo cliente nesta Lista: \"Descarte a série antiga antes de criar outra.\"", () => {
-    const primeira = createReceivableSeries(state, CP.financeiroId, { contactId: "cnt_2", centroDeCusto: "Tria Tech", valorParcela: 2500, parcelas: 2, primeiroVencimento: em(30) });
+    const primeira = createReceivableSeries(state, CP.financeiroId, { contactId: "cnt_2", centroDeCusto: "Tria Tech", valorParcela: 2500, parcelas: 2, primeiroVencimento: em(30) }, clientesDoSeed(state));
     expect(primeira.ok).toBe(true);
     const erro = recusa(
-      createReceivableSeries(state, CP.financeiroId, { contactId: "cnt_2", centroDeCusto: "Tria Tech", valorParcela: 1, parcelas: 1, primeiroVencimento: em(60) }),
+      createReceivableSeries(state, CP.financeiroId, { contactId: "cnt_2", centroDeCusto: "Tria Tech", valorParcela: 1, parcelas: 1, primeiroVencimento: em(60) }, clientesDoSeed(state)),
     );
     expect(erro).toBe("Marina Alves já tem a 1ª Parcela nesta Lista. Descarte a série antiga antes de criar outra.");
     expect(erro).not.toMatch(CODIGO_DE_REGRA);

@@ -14,14 +14,19 @@
  * (RN-CXE-31, INV-CXE-01); a frase não carrega o nome do constraint (T-08-04).
  *
  * 08-03 completa o recurso:
- *   - a pré-checagem rica de nome e conta nos DOIS acervos (a tabela nova e o
- *     `channels` do seed, A5), com `bloqueios.canais` apontando o detentor;
+ *   - a pré-checagem rica de nome e conta em `plataforma.canais`, com
+ *     `bloqueios.canais` apontando o detentor (o `channels` do seed deixou de
+ *     contar no 15-33: o Canal só existe na tabela);
  *   - Fila e Origem padrão validadas contra o Espaço (D-07);
  *   - a conexão em dois atos sem provedor (D-08): a decisão da transição é do
  *     domínio (`proximaConexao`), o serviço só a grava;
  *   - arquivar desconectando na mesma escrita (11.1);
  *   - a revisão do Espaço somada na mesma transação de toda escrita (A4).
- * Toda escrita carrega o Canal travado (`for update`) NESTE Espaço: id de
+ *   - 16-06: o Canal que volta a `conectada` reenfileira, na mesma transação, as Mensagens `pendente` dele
+ *     (`reenfileirarPendentesDoCanal`).
+ *   - CR-01 (16-17): "Simular conexão" recusa (409 `TRANSICAO_INVALIDA`) o Canal com credencial ativa do próprio provedor
+ *     no cofre, antes de qualquer escrita; o fato é lido depois do `for update` do Canal, na mesma transação.
+ * Toda escrita trava a linha do Espaço e, só depois, carrega o Canal travado (`for update`) NESTE Espaço: id de
  * outro Espaço é 404, nunca 403 (T-08-13).
  */
 
@@ -35,20 +40,23 @@ import {
   validarNovoCanal,
   type AcaoDeConexao,
   type Canal,
+  type CanalNaFicha,
   type EdicaoDeCanal,
   type FiltroDeCanais,
   type NovoCanal,
 } from "@n1/dominio/crm/canais";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
+import { reenfileirarPendentesDoCanal } from "../../mensageria/fila-de-saida";
 import { criarRepositorioDeCanaisPg, type RepositorioDeCanais } from "../../repositorios/crm/canais";
-import { avancarRevisaoDoEspaco, canalAntigoEmConflito, filaAtiva, origemAtiva } from "../../repositorios/crm/referencias";
+import { avancarRevisaoDoEspaco, filaAtiva, origemAtiva } from "../../repositorios/crm/referencias";
 import { exigir, type AcessoAoCrm } from "./acesso";
 import { recusa, sucesso, type ResultadoCrm } from "./resultado";
 import { comTransacao, type FrasesDeRestricao } from "./transacao";
 
 export interface ServicoDeCanais {
   listar(membro: MembroDaSessao, filtro: FiltroDeCanais): Promise<ResultadoCrm<Pagina<Canal>>>;
-  obter(membro: MembroDaSessao, id: string): Promise<ResultadoCrm<Canal>>;
+  /** O Canal da ficha: o `Canal` mais `ligadoAoProvedor` (CR-01, 16-17). */
+  obter(membro: MembroDaSessao, id: string): Promise<ResultadoCrm<CanalNaFicha>>;
   criar(membro: MembroDaSessao, entrada: NovoCanal): Promise<ResultadoCrm<Canal>>;
   editar(membro: MembroDaSessao, id: string, edicao: EdicaoDeCanal): Promise<ResultadoCrm<Canal>>;
   simularConexao(membro: MembroDaSessao, id: string): Promise<ResultadoCrm<Canal>>;
@@ -119,18 +127,14 @@ async function referenciasInvalidas(
   return undefined;
 }
 
-/** O nome ou a conta já são de outro Canal ativo, na tabela nova ou no seed (A5)? */
+/** O nome ou a conta já são de outro Canal ativo de `plataforma.canais`? */
 async function conflitoDeCanal(
-  cliente: Cliente,
   repositorio: RepositorioDeCanais,
   workspaceId: string,
   alvo: Parameters<RepositorioDeCanais["ativoEmConflito"]>[1],
 ) {
   const novo = await repositorio.ativoEmConflito(workspaceId, alvo);
-  if (novo) return emUso(novo);
-  // O seed só tem ids do modelo antigo: `excetoId` (um UUID da tabela nova) não se aplica a ele.
-  const antigo = await canalAntigoEmConflito(cliente, workspaceId, alvo);
-  return antigo ? emUso(antigo) : undefined;
+  return novo ? emUso(novo) : undefined;
 }
 
 export function criarServicoDeCanais(deps: { readonly pool: () => Pool; readonly acesso: AcessoAoCrm }): ServicoDeCanais {
@@ -159,6 +163,9 @@ export function criarServicoDeCanais(deps: { readonly pool: () => Pool; readonly
     return comTransacao(
       deps.pool,
       async (cliente) => {
+        // A linha do Espaço ANTES da do Canal, a mesma ordem de `executar()` e do gesto misto (WR-02): travar o
+        // Canal primeiro e só depois subir a revisão do Espaço dá `40P01` contra um gesto misto em curso.
+        await cliente.query("select 1 from plataforma.workspaces where workspace_id = $1 for update", [membro.workspaceId]);
         const repositorio = criarRepositorioDeCanaisPg(cliente);
         const canal = await repositorio.obter(membro.workspaceId, id, { travar: true });
         if (!canal) return naoEncontrado();
@@ -168,14 +175,26 @@ export function criarServicoDeCanais(deps: { readonly pool: () => Pool; readonly
     );
   }
 
-  /** `simular_conexao` e `desconectar`: o domínio decide a transição, o serviço a grava. */
-  function mudarConexao(membro: MembroDaSessao, id: string, acao: AcaoDeConexao): Promise<ResultadoCrm<Canal>> {
+  /**
+   * `simular_conexao` e `desconectar`: o domínio decide a transição, o serviço a grava. `conexao_confirmada` (16-13) não
+   * passa por aqui: quem a confirma é o comando `canal:ligar-evolution`, que fala com o provedor, não um Membro pela rota.
+   */
+  function mudarConexao(membro: MembroDaSessao, id: string, acao: Exclude<AcaoDeConexao, "conexao_confirmada">): Promise<ResultadoCrm<Canal>> {
     return escrita(membro, acao, id, async ({ cliente, repositorio, canal }) => {
-      const proxima = proximaConexao(canal, acao);
+      // CR-01 (16-17): o fato "o Canal é real" é lido AQUI, depois do `for update` do Canal (o `canal:ligar-evolution` grava a
+      // credencial e a conexão com o mesmo Canal travado: sem corrida). `desconectar` não precisa dele.
+      const fatos =
+        acao === "simular_conexao"
+          ? { ligadoAoProvedor: await repositorio.ligadoAoProvedor(membro.workspaceId, canal) }
+          : undefined;
+      const proxima = proximaConexao(canal, acao, fatos);
       if (!proxima.ok) return transicaoInvalida(proxima.error);
       const atualizado = await repositorio.definirConexao(membro.workspaceId, id, proxima.value);
       if (!atualizado) return naoEncontrado();
       await avancarRevisaoDoEspaco(cliente, membro.workspaceId);
+      // B69 (16-06): as Mensagens guardadas enquanto o Canal estava fora do ar saem agora, no MESMO commit da
+      // conexão: se a fila falhar, o Canal também não muda. Nada é descartado.
+      if (atualizado.conexao === "conectada") await reenfileirarPendentesDoCanal(cliente, membro.workspaceId, id);
       return sucesso(atualizado);
     });
   }
@@ -190,8 +209,10 @@ export function criarServicoDeCanais(deps: { readonly pool: () => Pool; readonly
     async obter(membro, id) {
       const negado = await exigir(deps.acesso, membro, "ler", "canal");
       if (negado) return { ok: false, ...negado };
-      const canal = await criarRepositorioDeCanaisPg(deps.pool()).obter(membro.workspaceId, id);
-      return canal ? sucesso(canal) : naoEncontrado();
+      const repositorio = criarRepositorioDeCanaisPg(deps.pool());
+      const canal = await repositorio.obter(membro.workspaceId, id);
+      if (!canal) return naoEncontrado();
+      return sucesso({ ...canal, ligadoAoProvedor: await repositorio.ligadoAoProvedor(membro.workspaceId, canal) });
     },
 
     async criar(membro, entrada) {
@@ -208,7 +229,7 @@ export function criarServicoDeCanais(deps: { readonly pool: () => Pool; readonly
           const repositorio = criarRepositorioDeCanaisPg(cliente);
           const referencia = await referenciasInvalidas(cliente, membro.workspaceId, entrada);
           if (referencia) return referencia;
-          const conflito = await conflitoDeCanal(cliente, repositorio, membro.workspaceId, { nome, tipo, identificadorExterno });
+          const conflito = await conflitoDeCanal(repositorio, membro.workspaceId, { nome, tipo, identificadorExterno });
           if (conflito) return conflito;
           const canal = await repositorio.inserir(membro.workspaceId, {
             nome,
@@ -238,7 +259,7 @@ export function criarServicoDeCanais(deps: { readonly pool: () => Pool; readonly
           if (canal.estado === "arquivado") return canalArquivado();
           const campos = validacao.value;
           if (campos.nome !== undefined) {
-            const conflito = await conflitoDeCanal(cliente, repositorio, membro.workspaceId, { nome: campos.nome, excetoId: id });
+            const conflito = await conflitoDeCanal(repositorio, membro.workspaceId, { nome: campos.nome, excetoId: id });
             if (conflito) return conflito;
           }
           const referencia = await referenciasInvalidas(cliente, membro.workspaceId, campos);

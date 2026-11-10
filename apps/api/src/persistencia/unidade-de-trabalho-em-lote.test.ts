@@ -11,7 +11,7 @@
  *     gravaria — o teste diferencial, com texto hostil, números fracionários,
  *     remoção e carga grande;
  *   - que uma instrução que falha no meio do lote desfaz a transação inteira;
- *   - que os Canais lidos dentro do lote de entrada chegam à operação.
+ *   - que o Canal da tabela própria não entra no estado da operação (a ponte saiu no 15-33).
  *
  * SÓ Postgres local descartável (`describeComBanco` pula fora de
  * localhost/127.0.0.1). Um teste de banco que sai "skipped" NÃO prova nada.
@@ -29,6 +29,7 @@ import type { DataState } from "@n1/dominio";
 import { createList } from "@n1/dominio/operations";
 import { fail, ok } from "@n1/dominio/state";
 import { buildSeed } from "@n1/dominio/seed";
+import { colecaoPelaChave } from "@n1/dominio/testes/crm-de-teste";
 import { encerrar, pool } from "./conexao";
 import { executar, type MedicaoDaExecucao } from "./unidade-de-trabalho";
 import { gravar, hidratar, planejarGravacao, semear, sqlsDoPlano } from "./repositorio";
@@ -94,7 +95,7 @@ describeComBanco("executar() no regime travado: duas idas ao banco (Fase 13)", (
     return ws;
   }
 
-  it("uma gravação comum vai duas vezes ao banco; a primeira do processo paga a guarda dos Canais, as seguintes não", async () => {
+  it("uma gravação comum vai duas vezes ao banco, a primeira do processo também (sem guarda de Canais desde o 15-33)", async () => {
     const ws = await novo("idas");
     const n = await revisaoDe(ws);
     const primeira = coletor();
@@ -112,7 +113,7 @@ describeComBanco("executar() no regime travado: duas idas ao banco (Fase 13)", (
     const nomes = r2.diferenca.gravados.filter((g) => g.colecao === "lists").map((g) => (g.dados as { name: string }).name);
     expect(nomes).toEqual(["Lista 2"]);
     expect(segunda.medicoes[0]!.idasEVoltas).toBe(2);
-    expect(primeira.medicoes[0]!.idasEVoltas).toBeLessThanOrEqual(4);
+    expect(primeira.medicoes[0]!.idasEVoltas).toBe(2);
     // A ida e volta de cada lote está em inicioMs e gravarMs; a trava, o update e o commit não têm etapa própria.
     expect(segunda.medicoes[0]).toMatchObject({ regime: "travado", tentativas: 1, desfecho: "gravou", travaMs: 0, atualizaMs: 0, commitMs: 0 });
     expect(segunda.medicoes[0]!.linhasLidas).toBeGreaterThan(100);
@@ -122,7 +123,6 @@ describeComBanco("executar() no regime travado: duas idas ao banco (Fase 13)", (
 
   it("a recusa do domínio: duas idas (entrada e rollback), nada gravado, e a revisão não muda", async () => {
     const ws = await novo("recusa");
-    await executar(ws, criarLista("aquece a guarda dos Canais"));
     const n = await revisaoDe(ws);
     const antes = await registrosDe(ws);
     const { medicoes, aoMedir } = coletor();
@@ -138,7 +138,6 @@ describeComBanco("executar() no regime travado: duas idas ao banco (Fase 13)", (
 
   it("com aoConfirmar o fim volta a ser instrução por instrução (revisão, escrita, commit) e a gravação continua correta", async () => {
     const ws = await novo("confirmar");
-    await executar(ws, criarLista("aquece a guarda dos Canais"));
     const n = await revisaoDe(ws);
     const { medicoes, aoMedir } = coletor();
     let chamadas = 0;
@@ -162,7 +161,6 @@ describeComBanco("executar() no regime travado: duas idas ao banco (Fase 13)", (
 
   it("com evento de saída (outbox) o fim também segue instrução por instrução, e o evento entra na mesma transação", async () => {
     const ws = await novo("evento");
-    await executar(ws, criarLista("aquece a guarda dos Canais"));
     const { medicoes, aoMedir } = coletor();
     const idDoComentario = `cmt_${ws}`;
 
@@ -185,9 +183,8 @@ describeComBanco("executar() no regime travado: duas idas ao banco (Fase 13)", (
     expect(outbox.rows).toEqual([{ event_type: "solicitacao.comentario-criado.v1" }]);
   });
 
-  it("os Canais da tabela própria, lidos dentro do lote de entrada, chegam à operação — e não são gravados em registros", async () => {
+  it("o Canal da tabela própria não entra no estado da operação — e nada dele é gravado em registros (15-33)", async () => {
     const ws = await novo("canais");
-    await executar(ws, criarLista("aquece a guarda dos Canais"));
     const idDoCanal = await semearCanal(ws, { nome: "Canal do lote", tipo: "whatsapp", provedor: "whatsapp-cloud", identificadorExterno: "5511999990000" });
     const { medicoes, aoMedir } = coletor();
     let vistos: string[] = [];
@@ -195,15 +192,15 @@ describeComBanco("executar() no regime travado: duas idas ao banco (Fase 13)", (
     const r = await executar(
       ws,
       (state) => {
-        vistos = state.channels.map((c) => c.id);
+        vistos = colecaoPelaChave(state, "channels").map((c) => (c as { id: string }).id);
         return ok("visto");
       },
       { aoMedir },
     );
 
     expect(r.ok).toBe(true);
-    expect(vistos).toContain(idDoCanal);
-    // Os Canais vieram no lote de entrada (sem ida própria), e a operação não gravou nada: entrada e commit.
+    expect(vistos).not.toContain(idDoCanal);
+    // O Canal não é lido (nem na entrada, nem em ida própria), e a operação não gravou nada: entrada e commit.
     expect(medicoes[0]!.idasEVoltas).toBe(2);
     const gravados = (await registrosDe(ws)).filter((x) => x.colecao === "channels").map((x) => x.id);
     expect(gravados).not.toContain(idDoCanal);
@@ -211,7 +208,6 @@ describeComBanco("executar() no regime travado: duas idas ao banco (Fase 13)", (
 
   it("uma instrução que falha no MEIO do lote de saída desfaz a transação inteira, inclusive a revisão, e a seguinte passa", async () => {
     const ws = await novo("falha");
-    await executar(ws, criarLista("aquece a guarda dos Canais"));
     const n = await revisaoDe(ws);
     const antes = await registrosDe(ws);
     const { medicoes, aoMedir } = coletor();

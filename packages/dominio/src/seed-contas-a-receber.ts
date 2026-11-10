@@ -8,12 +8,14 @@
  * `{ fixtures: false }`.
  *
  * Com `fixtures: true` (o padrão, usado por `buildSeed()`), a mesma função
- * também acrescenta o cliente como Contato do CRM ligado por Vínculo e as
- * Tarefas fictícias que reproduzem os casos do histórico lido no ClickUp em
- * 2026-09-14 (`docs/07-processos/contas-a-receber.md`): clientes, valores e
+ * também acrescenta as Tarefas fictícias que reproduzem os casos do histórico
+ * lido no ClickUp em 2026-09-14 (`docs/07-processos/contas-a-receber.md`),
+ * cada uma ligada por Vínculo ao cliente (`cnt_cr_*`): clientes, valores e
  * datas são inventados, com as datas perto de hoje para o processo poder
  * rodar. D-07 proíbe Contatos fictícios no bootstrap de produção — por isso o
- * Contato também é fixture, não configuração.
+ * cliente também é fixture, não configuração. Desde o 15-31 (D-15-13) o seed
+ * não cria o Contato: o Vínculo guarda o id e o dono, e o
+ * `bootstrap:crm-demo` carrega o Contato com o mesmo id.
  *
  * Decisões da seção 12: `em cobrança`/`inadimplência` viram o Campo "Situação
  * de cobrança" (seção 6); `conta tria` vira o Campo "Conta de recebimento";
@@ -30,7 +32,6 @@ import type {
   AutomationCondition,
   AutomationTrigger,
   Comment,
-  Contact,
   FieldDefinition,
   FieldValue,
   Grant,
@@ -196,30 +197,11 @@ export function applyContasAReceber(state: DataState, clock: Clock, opcoes: Opco
   if (opcoes.fixtures) {
 
   /* ── Clientes no CRM (seção 2) ────────────────────────────────────────── */
-  const contact = (id: Id, firstName: string, lastName: string, ownerMemberId: Id, email: string): Contact => ({
-    id,
-    workspaceId,
-    createdBy: member(ownerMemberId),
-    createdAt: at(260),
-    lifecycle: "ativo",
-    firstName,
-    lastName,
-    ownerMemberId,
-    creationMode: "manual",
-    qualificationId: "cat_qual_cli",
-    description: "",
-    identifiers: [{ id: `cid_${id}`, type: "email", value: email, displayValue: email, verified: true, principal: true, createdBy: member(ownerMemberId), createdAt: at(260) }],
-    consents: [],
-    addresses: [],
-    tagIds: [],
-    fieldValues: [],
-    comments: [],
-  });
-  const helena = contact("cnt_cr_helena", "Helena", "Vasconcelos", CR.comercialId, "helena.vasconcelos@exemplo.com.br");
-  const ricardo = contact("cnt_cr_ricardo", "Ricardo", "Tavares", CR.comercialId, "financeiro@tavaresclinica.exemplo.com.br");
-  const camila = contact("cnt_cr_camila", "Camila", "Duarte", "mem_rafael", "camila.duarte@exemplo.com.br");
-  const otavio = contact("cnt_cr_otavio", "Otávio", "Ramires", "mem_rafael", "otavio.ramires@exemplo.com.br");
-  state.contacts.push(helena, ricardo, camila, otavio);
+  // O Contato mora nas tabelas do CRM (o demo o carrega com este id); aqui só o id e o dono.
+  const helena = { id: "cnt_cr_helena", ownerMemberId: CR.comercialId };
+  const ricardo = { id: "cnt_cr_ricardo", ownerMemberId: CR.comercialId };
+  const camila = { id: "cnt_cr_camila", ownerMemberId: "mem_rafael" };
+  const otavio = { id: "cnt_cr_otavio", ownerMemberId: "mem_rafael" };
 
   /* ── Permissões (seção 10) ─────────────────────────────────────────────── */
   const grant = (id: Id, subjectId: Id, action: Grant["action"], resourceType: string, resourceId: Id): Grant => ({
@@ -352,7 +334,7 @@ export function applyContasAReceber(state: DataState, clock: Clock, opcoes: Opco
   state.tasks.push(...tarefas);
 
   /* ── Vínculos com o cliente e o que o Comercial vê (seções 2 e 10) ───── */
-  const cliente = (t: Task, c: Contact) => {
+  const cliente = (t: Task, c: { readonly id: Id; readonly ownerMemberId: Id }) => {
     state.links.push({ id: `lnk_cr_${t.id}`, fromType: "task", fromId: t.id, toType: "contact", toId: c.id, role: CR.linkRole, createdBy: member(CP.financeiroId), createdAt: t.createdAt });
     // O dono do cliente no CRM vê e comenta só as contas dos seus clientes.
     state.grants.push(grant(`gr_cr_${t.id}`, c.ownerMemberId, "comentar", "task", t.id));

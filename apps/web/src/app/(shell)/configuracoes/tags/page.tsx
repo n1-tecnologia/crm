@@ -63,13 +63,9 @@ export default function TagsPage() {
   const tags = state.tags.filter((tag) => includeArchived || tag.lifecycle === "ativo");
   const archivedCount = state.tags.filter((tag) => tag.lifecycle !== "ativo").length;
 
-  const usageOf = (tagId: string) => ({
-    task: state.tasks.filter((task) => task.tagIds.includes(tagId)).length,
-    contact: state.contacts.filter((contact) => contact.tagIds.includes(tagId)).length,
-    company: state.companies.filter((company) => company.tagIds.includes(tagId)).length,
-    deal: state.deals.filter((deal) => deal.tagIds.includes(tagId)).length,
-    conversation: state.conversations.filter((conversation) => conversation.tagIds.includes(tagId)).length,
-  });
+  // Só o uso em Tarefas vem do estado: Contato, Empresa, Negócio e Conversa moram nas tabelas do
+  // CRM (3.4.7), e contá-los no CRM antigo mostraria um número que não é o do Espaço.
+  const usoEmTarefas = (tagId: string): number => state.tasks.filter((task) => task.tagIds.includes(tagId)).length;
 
   const abrir = (tag?: Tag) => {
     setNome(tag?.name ?? "");
@@ -186,8 +182,7 @@ export default function TagsPage() {
               </thead>
               <tbody>
                 {tags.map((tag) => {
-                  const usage = usageOf(tag.id);
-                  const total = Object.values(usage).reduce((sum, count) => sum + count, 0);
+                  const tarefas = usoEmTarefas(tag.id);
                   const ativa = tag.lifecycle === "ativo";
                   return (
                     <tr key={tag.id}>
@@ -202,16 +197,12 @@ export default function TagsPage() {
                           : tag.appliesTo.map((target) => TARGET_LABEL[target] ?? target).join(", ")}
                       </td>
                       <td>
-                        {total === 0 ? (
-                          <span style={{ color: "var(--texto-4)" }}>em nenhum registro</span>
+                        {tarefas === 0 ? (
+                          <span style={{ color: "var(--texto-4)" }}>em nenhuma Tarefa</span>
                         ) : (
-                          <span className="app-numero">
-                            {Object.entries(usage)
-                              .filter(([, count]) => count > 0)
-                              .map(([target, count]) => `${count} ${TARGET_LABEL[target] ?? target}`)
-                              .join(" · ")}
-                          </span>
+                          <span className="app-numero">{tarefas} Tarefas</span>
                         )}
+                        <span className="app-meta block">O uso no CRM não aparece aqui.</span>
                       </td>
                       <td>
                         {ativa ? (

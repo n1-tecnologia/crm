@@ -10,7 +10,9 @@
  * escolhido no próprio formulário.
  */
 
+import { useCanais } from "@/dados/crm/canais";
 import { useData } from "@/dados/store";
+import { LIMITES_CRM } from "@n1/dominio/crm/comum";
 import { effectiveContainerConfig } from "@n1/dominio/derive";
 import type { AutomationScopeType, FieldDefinition, Id } from "@n1/dominio/types";
 import { Field, MultiSelect, Pilula, Select, TextArea, TextInput, Toggle } from "@/features/shell/ui";
@@ -31,7 +33,10 @@ export function BlocoForm({
   readonly scopeId: Id;
 }) {
   const state = useData((data) => data);
-  const ctx: ContextoDaSpec = { state, scopeType, scopeId, valor };
+  // Os Canais do CRM novo (GET /canais): só vão à api se algum campo do bloco os usa.
+  const canais = useCanais({ estado: "ativo", limite: LIMITES_CRM.paginaMaxima }, { pausado: !spec.campos.some((c) => c.usaCanais) });
+  const itensDeCanais = canais.data?.itens;
+  const ctx: ContextoDaSpec = { state, scopeType, scopeId, valor, ...(itensDeCanais ? { canais: itensDeCanais } : {}) };
   const visiveis = spec.campos.filter((c) => !c.visivelSe || c.visivelSe(valor));
   const mudar = (chave: string, v: unknown) => {
     const proximo = { ...valor };

@@ -28,11 +28,13 @@ import {
 import { rotasDeClassificacoes, type OpcoesDeClassificacoes } from "./rotas/classificacoes";
 import { rotasDeCrm, type OpcoesDeCrm } from "./rotas/crm";
 import { rotasDeEstado } from "./rotas/estado";
+import { rotasDeEventos, type OpcoesDeEventos } from "./rotas/eventos";
 import { rotasDeAnexosDaTarefa } from "./rotas/anexos-da-tarefa";
 import { rotasDeFinanceiro, type OpcoesDeFinanceiro } from "./rotas/financeiro";
 import { rotasDeFormulariosPublicos, type OpcoesDeFormulariosPublicos } from "./rotas/formularios-publicos";
 import { rotasDeTarefasPublicas, type OpcoesDeTarefasPublicas } from "./rotas/tarefas-publicas";
 import { rotasDeWebhookMeta, type OpcoesDeWebhookMeta } from "./rotas/webhook-meta";
+import { rotasDeWebhooksDeMensageria, type OpcoesDeWebhooksDeMensageria } from "./rotas/webhooks-de-mensageria";
 import { rotasDeIntegracaoDeSolicitacoes } from "./rotas/integracao-solicitacoes";
 import { rotasDeOperacoes } from "./rotas/operacoes";
 import { rotasDeConvites } from "./rotas/convites";
@@ -90,6 +92,12 @@ export interface OpcoesDoApp {
   /** Os webhooks da Meta (WhatsApp oficial e Instagram): testes injetam o token e os segredos em vez de ler o ambiente. */
   readonly webhookMeta?: OpcoesDeWebhookMeta;
   /**
+   * Fase 16 (16-03) — o webhook de mensageria por Canal (`POST /webhooks/mensageria/:canalId`): testes injetam o
+   * cofre, o registro de provedores, o limite por IP e um acordador em vez de ler o ambiente; `index.ts` liga o
+   * acordador ao processador de entrada quando `MENSAGERIA_WORKER_ATIVO=true`.
+   */
+  readonly webhooksDeMensageria?: OpcoesDeWebhooksDeMensageria;
+  /**
    * Plan 02-24 — `POST /v1/integrations/payment-approvals/classifications`
    * (`./rotas/classificacoes.ts`) aceita o mesmo padrão de injeção: testes
    * trocam o `Relogio` por `relogioFixo`, sem esperar tempo real para provar
@@ -102,6 +110,12 @@ export interface OpcoesDoApp {
   readonly crm?: OpcoesDeCrm;
   /** 12.3.2 — o Auth do reenvio de convite; os testes passam um falso. */
   readonly membros?: OpcoesDeMembros;
+  /**
+   * Fase 16 (16-07, D-16-01) — o tempo real: `GET /eventos` entrega por SSE o que o hub recebe do ouvinte `LISTEN`.
+   * `index.ts` cria o hub antes do `buildApp` e o encerra antes do `app.close()`; sem `hub` a rota responde 503
+   * `TEMPO_REAL_INDISPONIVEL` e a tela cai na releitura de 5 s. Testes injetam a batida e a duração máxima.
+   */
+  readonly eventos?: OpcoesDeEventos;
   /**
    * Fase 9 (09-13, D-13) — recebe o erro inesperado (o ramo 500 do tratador de
    * erro, e só ele). Padrão: `capturarErroNoSentry`, que não faz nada enquanto o
@@ -262,6 +276,8 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
   app.register(rotasDeFinanceiro, opcoes.financeiro ?? {});
   // Fase 7 (D-03) — o CRM em REST por recurso, na RAIZ para herdar o JWT de Membro.
   app.register(rotasDeCrm, opcoes.crm ?? {});
+  // Fase 16 (16-07) — o fluxo de eventos do CRM, na RAIZ para herdar o JWT de Membro (sem `publica`).
+  app.register(rotasDeEventos, opcoes.eventos ?? {});
   // D-02 — as únicas rotas SEM `Authorization: Bearer` desta instância: cada
   // uma se isenta explicitamente com `config: { publica: true }`, o mesmo
   // gancho de `/saude` acima (`plugins/autenticacao.ts`). CORS continua pela
@@ -272,6 +288,10 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
   // O webhook da Meta chama de servidor, sem JWT: a confiança vem do token de
   // verificação (GET) e da assinatura do corpo (POST), não de Authorization.
   app.register(rotasDeWebhookMeta, opcoes.webhookMeta ?? {});
+  // O webhook de mensageria por Canal também chama de servidor, sem JWT: a confiança é o segredo do Canal
+  // no cabeçalho `x-n1-webhook-segredo` (D-16-03). Plugin irmão do da Meta e fora de `rotasDeCrm`, para o
+  // `config: { publica: true }` valer só para ele e o parser do corpo cru não vazar para as outras rotas.
+  app.register(rotasDeWebhooksDeMensageria, opcoes.webhooksDeMensageria ?? {});
 
   // Rotas serviço-a-serviço: credencial própria
   // (`plugins/autenticacao-servico.ts`), nunca JWT humano. Rotas

@@ -2,10 +2,10 @@
 
 /**
  * O cartão de Negócio do quadro de `/crm/negocios` lido da api: o mesmo corpo
- * do `DealCard` (rosto, título, destaque com o valor e a probabilidade, rodapé
- * em duas colunas) sobre `CartaoDeQuadro`, mas alimentado por `NegocioResumo`
- * — o modelo novo — em vez do `Deal` do store. `DealCard` continua das Listas
- * conversacionais e da ficha antiga; este é o do quadro das Etapas do Funil.
+ * do antigo `DealCard` (rosto, título, destaque com o valor e a probabilidade, rodapé
+ * em duas colunas) sobre `CartaoDeQuadro`, alimentado por `NegocioResumo` — o
+ * modelo novo. O `DealCard` saiu no 15-40 com o espelho das Listas; este é o
+ * cartão do quadro das Etapas do Funil.
  *
  * O `ActionMenu` mora FORA do link do cartão (um botão dentro de `<a>` não é
  * HTML válido): o cartão ocupa o espaço, o menu fica sobreposto no canto, e o

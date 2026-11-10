@@ -14,7 +14,10 @@ vi.mock("@/autenticacao/cliente-navegador", () => ({
   clienteDoNavegador: () => ({ auth: { getSession: obterSessao } }),
 }));
 
-import { chamarCrm, ErroDeApi } from "./cliente-crm";
+vi.mock("swr", () => ({ mutate: vi.fn(async () => undefined) }));
+
+import { mutate } from "swr";
+import { chamarCrm, ErroDeApi, invalidarCrm, invalidarCrmComArrays } from "./cliente-crm";
 
 function respostaFalsa(status: number, corpo: unknown): Response {
   return {
@@ -103,5 +106,36 @@ describe("chamarCrm — falhas", () => {
     const erro = (await chamarCrm("/contatos").catch((e: unknown) => e)) as ErroDeApi;
     expect(erro.status).toBe(502);
     expect(erro.message).toBe("O servidor não respondeu.");
+  });
+});
+
+/** A função que o `mutate` recebeu: o filtro de chaves que decide o que revalida. */
+function filtroDoUltimoMutate(): (chave: unknown) => boolean {
+  const chamadas = vi.mocked(mutate).mock.calls;
+  return chamadas[chamadas.length - 1]![0] as unknown as (chave: unknown) => boolean;
+}
+
+describe("invalidarCrmComArrays (16-08, Pitfall 4)", () => {
+  it("revalida a chave array cujo primeiro item começa pelo prefixo e a chave de texto", async () => {
+    await invalidarCrmComArrays("/tarefas-conversacionais/resumo");
+    const filtro = filtroDoUltimoMutate();
+    expect(filtro(["/tarefas-conversacionais/resumo", "t1:c1"])).toBe(true);
+    expect(filtro("/tarefas-conversacionais/resumo")).toBe(true);
+  });
+
+  it("não revalida chave array de outro prefixo nem chave que não é texto nem array", async () => {
+    await invalidarCrmComArrays("/tarefas-conversacionais/resumo");
+    const filtro = filtroDoUltimoMutate();
+    expect(filtro(["/outra", "x"])).toBe(false);
+    expect(filtro("/conversas")).toBe(false);
+    expect(filtro([1, "x"])).toBe(false);
+    expect(filtro(undefined)).toBe(false);
+  });
+
+  it("invalidarCrm continua sem casar chave array (os chamadores de hoje não mudam)", async () => {
+    await invalidarCrm("/tarefas-conversacionais");
+    const filtro = filtroDoUltimoMutate();
+    expect(filtro(["/tarefas-conversacionais/resumo", "t1:c1"])).toBe(false);
+    expect(filtro("/tarefas-conversacionais/resumo")).toBe(true);
   });
 });

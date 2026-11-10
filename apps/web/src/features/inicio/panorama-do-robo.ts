@@ -4,37 +4,45 @@
  * O PANORAMA DO ROBÔ — o que ele sabe do Membro, lido do armazém NA HORA da
  * pergunta (não na renderização: a tela do Início nasce igual no servidor e no
  * navegador, e "vencida" depende de agora). Alimenta `responderEmTexto`.
+ * Desde o 15-23 o CRM vem de `GET /crm/inicio/panorama`, não do store.
  */
 
 import { useCallback } from "react";
-import { contactDisplayName, isOverdue, notificacoesDoMembro, tarefasAbertasDoMembro, weightedValue } from "@n1/dominio/derive";
+import type { PanoramaDoCrm } from "@n1/dominio/crm/inicio";
+import { isOverdue, tarefasAbertasDoMembro, type NotificacoesDoMembro } from "@n1/dominio/derive";
 import type { DataState } from "@n1/dominio/state";
+import { usePanoramaDoCrm } from "@/dados/crm/inicio";
 import { useData, useSession } from "@/dados/store";
 import type { Formatters } from "@/features/shell/format";
+import { useNotificacoesDoMembro } from "@/features/shell/use-notificacoes";
 import { useFormat } from "@/features/shell/use-format";
 import { responderEmTexto, type Panorama } from "./respostas-do-robo";
 
 /** Quantos títulos e nomes o robô cita. */
 const CITADOS = 3;
 
-export function montarPanorama(state: DataState, memberId: string | undefined, formato: Formatters, agora: Date): Panorama {
+/**
+ * O que o robô sabe. As Tarefas saem do store; Contatos, Negócios e Conversas
+ * abertas saem do que o servidor somou (`GET /crm/inicio/panorama`, 15-18), que
+ * chega por `panorama`: sem ele (carregando, recusado) ou com o bloco `null` (Papel
+ * sem `ler`), o número é zero e o valor ponderado some, nunca um palpite.
+ */
+export function montarPanorama(
+  state: DataState,
+  memberId: string | undefined,
+  formato: Formatters,
+  agora: Date,
+  notificacoes: NotificacoesDoMembro | null,
+  panorama: PanoramaDoCrm | undefined,
+): Panorama {
   const membro = state.members.find((m) => m.id === memberId);
   const minhas = memberId ? tarefasAbertasDoMembro(state, memberId) : [];
   const vencidas = minhas.filter((tarefa) => isOverdue(state, tarefa, agora));
-  const notificacoes = memberId ? notificacoesDoMembro(state, memberId, agora) : null;
-  const contatos = state.contacts.filter((contato) => contato.lifecycle === "ativo");
-  const recentes = [...contatos]
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .slice(0, CITADOS)
-    .map(contactDisplayName);
-  const abertos = state.deals.filter((negocio) => negocio.lifecycle === "ativo" && negocio.situation === "aberto");
-  const moedas = new Set(abertos.map((negocio) => negocio.value?.currency).filter((moeda): moeda is string => Boolean(moeda)));
-  const [moeda] = moedas;
+  const abertos = panorama?.negociosAbertos ?? null;
   const valorPonderado =
-    moedas.size === 1 && moeda
-      ? formato.money({ amount: abertos.reduce((soma, negocio) => soma + (weightedValue(state, negocio) ?? 0), 0), currency: moeda })
+    abertos && abertos.valorPonderado !== null && abertos.moeda !== null
+      ? formato.money({ amount: abertos.valorPonderado, currency: abertos.moeda })
       : null;
-  const conversasAbertas = state.conversations.filter((conversa) => conversa.lifecycle === "ativo" && conversa.state !== "resolvida");
   return {
     nome: membro?.displayName.trim().split(/\s+/)[0] ?? "",
     tarefas: { abertas: minhas.length, vencidas: vencidas.length, urgentes: vencidas.slice(0, CITADOS).map((tarefa) => tarefa.title) },
@@ -42,12 +50,15 @@ export function montarPanorama(state: DataState, memberId: string | undefined, f
       total: notificacoes?.total ?? 0,
       mencoes: notificacoes?.mencoes.length ?? 0,
       aprovacoes: notificacoes?.aprovacoes.length ?? 0,
-      conversas: notificacoes?.conversas.length ?? 0,
+      conversas: notificacoes?.conversasTotal ?? 0,
       vencidas: notificacoes?.vencidas.length ?? 0,
     },
-    contatos: { total: contatos.length, recentes },
-    negocios: { abertos: abertos.length, valorPonderado },
-    conversas: { abertas: conversasAbertas.length, minhas: notificacoes?.conversas.length ?? 0 },
+    contatos: {
+      total: panorama?.contatosTotal ?? 0,
+      recentes: (panorama?.contatosRecentes ?? []).slice(0, CITADOS).map((contato) => contato.nome),
+    },
+    negocios: { abertos: abertos?.quantidade ?? 0, valorPonderado },
+    conversas: { abertas: panorama?.conversasAbertas ?? 0, minhas: notificacoes?.conversasTotal ?? 0 },
   };
 }
 
@@ -58,5 +69,12 @@ export function useRespostaDoRobo(): (pergunta: string | null) => string {
   const dados = useData((estado) => estado);
   const { memberId } = useSession();
   const formato = useFormat();
-  return useCallback((pergunta) => responderEmTexto(pergunta, montarPanorama(dados, memberId, formato, new Date())), [dados, memberId, formato]);
+  // As notificações (com as Conversas atribuídas da api) vêm do mesmo hook do selo e da página.
+  const notificacoes = useNotificacoesDoMembro();
+  // O resto do CRM (Contatos, Negócios, Conversas abertas) é o que o servidor somou.
+  const { panorama } = usePanoramaDoCrm();
+  return useCallback(
+    (pergunta) => responderEmTexto(pergunta, montarPanorama(dados, memberId, formato, new Date(), memberId ? notificacoes : null, panorama)),
+    [dados, memberId, formato, notificacoes, panorama],
+  );
 }

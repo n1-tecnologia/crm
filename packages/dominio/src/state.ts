@@ -11,23 +11,15 @@ import type {
   Automation,
   AutomationExecution,
   CatalogItem,
-  Channel,
   ChatFolder,
   ChatSession,
   Collection,
   CollectionGrant,
   Comunidade,
-  Company,
-  CompanyCompanyLink,
-  Contact,
-  ContactCompanyLink,
-  Conversation,
-  Deal,
-  DistinctFromLink,
+  ConversaDeGrupo,
   FieldDefinition,
   Flow,
   Folder,
-  Funnel,
   Grant,
   Grupo,
   Id,
@@ -82,18 +74,13 @@ export interface DataState {
   lists: List[];
   tasks: Task[];
 
-  contacts: Contact[];
-  companies: Company[];
-  deals: Deal[];
-  funnels: Funnel[];
-  contactCompanyLinks: ContactCompanyLink[];
-  companyCompanyLinks: CompanyCompanyLink[];
-  distinctFromLinks: DistinctFromLink[];
-
   inbox: Inbox;
-  channels: Channel[];
   queues: Queue[];
-  conversations: Conversation[];
+  /**
+   * Só a Conversa de GRUPO (e a 1:1 que Flow e Automação abrem): a Conversa do CRM mora em
+   * `plataforma.conversas` (Fase 15, F14-D-05).
+   */
+  conversations: ConversaDeGrupo[];
 
   chatFolders: ChatFolder[];
   chatSessions: ChatSession[];

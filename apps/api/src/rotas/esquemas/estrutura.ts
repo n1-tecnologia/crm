@@ -8,6 +8,7 @@
 import type { FieldRequirement } from "@n1/dominio";
 import { CONTAINER_TYPE, ID, MODELO_DE_TAREFA, opcional, STATUS_CATEGORY, STATUS_MAPPING, type Confere, type Esquemas, type Igual } from "./fragmentos";
 import { z } from "zod";
+import { CANAIS_DO_NAVEGADOR } from "./tarefas-conversacionais";
 
 const FIELD_REQUIREMENT = z
   .object({
@@ -102,7 +103,7 @@ const PAI_DE_CONTEINER = z.object({ type: z.enum(["space", "folder"]), id: ID })
 export const ESTRUTURA = {
   createSpace: z.tuple([CREATE_SPACE_INPUT]),
   createFolder: z.tuple([CREATE_CONTAINER_INPUT]),
-  createList: z.tuple([CREATE_LIST_INPUT]),
+  createList: z.tuple([CREATE_LIST_INPUT, opcional(CANAIS_DO_NAVEGADOR)]),
   updateContainer: z.tuple([CONTAINER_TYPE, ID, UPDATE_CONTAINER_INPUT]),
   moveContainer: z.tuple([FOLDER_OU_LIST, ID, DESTINO_DE_MOVER, opcional(z.array(STATUS_MAPPING))]),
   reorderContainers: z.tuple([CONTAINER_TYPE, PAI_DE_CONTEINER.nullable(), z.array(ID)]),

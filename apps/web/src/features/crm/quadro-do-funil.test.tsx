@@ -28,7 +28,7 @@ import { DialogoNovoNegocio } from "./formulario-de-negocio";
 
 const { obterSessao, navegacao } = vi.hoisted(() => ({
   obterSessao: vi.fn(),
-  navegacao: { busca: "", push: vi.fn() },
+  navegacao: { busca: "", push: vi.fn(), replace: vi.fn() },
 }));
 
 vi.mock("@/autenticacao/cliente-navegador", () => ({
@@ -42,7 +42,7 @@ vi.mock("@/dados/crm/cliente-crm", async (original) => {
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/crm/negocios",
-  useRouter: () => ({ replace: vi.fn(), push: navegacao.push }),
+  useRouter: () => ({ replace: navegacao.replace, push: navegacao.push }),
   useSearchParams: () => new URLSearchParams(navegacao.busca),
 }));
 
@@ -127,6 +127,7 @@ beforeEach(() => {
   process.env.NEXT_PUBLIC_API_URL = "http://api";
   navegacao.busca = "";
   navegacao.push.mockReset();
+  navegacao.replace.mockReset();
   vi.mocked(invalidarCrm).mockClear();
   rotas = {};
   fetchMock = vi.fn(async (url: string, init: RequestInit = {}) => {
@@ -362,6 +363,88 @@ describe("QuadroDoFunil — encerrar e reabrir (D-05, D-14)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Mostrar encerrados" }));
     const linhaDoGanho = screen.getByText("Fechado Gama").closest("li") as HTMLElement;
     expect(within(linhaDoGanho).getByRole("button", { name: "Reabrir" }).getAttribute("aria-disabled")).not.toBe("true");
+  });
+});
+
+describe("filtro \"Meus\" — \"Meus negócios\" é o quadro do Funil com os Negócios do Membro da sessão (F14-D-06, UCR-06)", () => {
+  const CHAVE_DOS_MEUS = "GET /negocios?estado=ativo&funilId=f2&proprietarioId=mem_julia&limite=200&deslocamento=0";
+
+  /** As leituras de lista de Negócios que a tela fez, na ordem, sem repetir o que já se pediu. */
+  function listasLidas(): string[] {
+    const lidas = (fetchMock.mock.calls as Array<[string, RequestInit | undefined]>)
+      .filter(([url, init]) => (init?.method ?? "GET") === "GET" && url.replace("http://api", "").startsWith("/negocios?"))
+      .map(([url]) => `GET ${url.replace("http://api", "")}`);
+    return [...new Set(lidas)];
+  }
+
+  function rotearOsMeus() {
+    rotas[CHAVE_DOS_MEUS] = () =>
+      resposta(200, {
+        ok: true,
+        itens: NEGOCIOS.filter((item) => item.id === "n1" || item.id === "n4").map((item) => ({ ...item, proprietarioId: "mem_julia" })),
+        total: 2,
+      });
+  }
+
+  it("(f) com ?meus=1 a lista sai pedida com proprietarioId do Membro da sessão e o quadro só mostra os Negócios dele", async () => {
+    rotearOsMeus();
+    navegacao.busca = "meus=1";
+    await abrirQuadro("mem_julia");
+    expect(listasLidas()).toEqual([CHAVE_DOS_MEUS]);
+    expect(screen.getByText("Contrato Ana")).toBeTruthy();
+    expect(screen.queryByText("Renovação Beta")).toBeNull();
+    expect(screen.queryByText("Proposta Alfa")).toBeNull();
+    expect(screen.getByRole("button", { name: "Meus" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("(f) sem ?meus=1 o parâmetro não vai à api e o botão \"Meus\" aparece desligado", async () => {
+    await abrirQuadro("mem_julia");
+    expect(listasLidas()).toEqual([CHAVE_DA_LISTA]);
+    expect(screen.getByRole("button", { name: "Meus" }).getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("(f) ligar e desligar mexe só na URL (?meus=1), preservando os outros parâmetros da tela", async () => {
+    await abrirQuadro("mem_julia");
+    fireEvent.click(screen.getByRole("button", { name: "Meus" }));
+    expect(navegacao.replace).toHaveBeenLastCalledWith("/crm/negocios?meus=1", { scroll: false });
+
+    navegacao.busca = "meus=1&origem=menu";
+    cleanup();
+    rotearOsMeus();
+    render(provedores(<NegociosPage />, "mem_julia"));
+    await screen.findByText("Contrato Ana", undefined, { timeout: 3000 });
+    fireEvent.click(screen.getByRole("button", { name: "Meus" }));
+    expect(navegacao.replace).toHaveBeenLastCalledWith("/crm/negocios?origem=menu", { scroll: false });
+  });
+
+  it("(f) borda UCR-06: ligado e desligado duas vezes volta ao mesmo quadro — só duas chaves de SWR existem, a com e a sem o filtro", async () => {
+    rotear();
+    rotearOsMeus();
+    const { rerender } = render(provedores(<NegociosPage />, "mem_julia"));
+    await screen.findByText("Contrato Ana", undefined, { timeout: 3000 });
+    expect(screen.getByText("Renovação Beta")).toBeTruthy();
+
+    for (let volta = 0; volta < 2; volta += 1) {
+      navegacao.busca = "meus=1";
+      rerender(provedores(<NegociosPage />, "mem_julia"));
+      await waitFor(() => expect(screen.queryByText("Renovação Beta")).toBeNull(), { timeout: 3000 });
+      expect(screen.getByText("Contrato Ana")).toBeTruthy();
+
+      navegacao.busca = "";
+      rerender(provedores(<NegociosPage />, "mem_julia"));
+      await waitFor(() => expect(screen.getByText("Renovação Beta")).toBeTruthy(), { timeout: 3000 });
+    }
+
+    expect(listasLidas()).toEqual([CHAVE_DA_LISTA, CHAVE_DOS_MEUS]);
+  });
+
+  it("(f) o filtro só restringe: a recusa da api continua sendo a da api (o quadro mostra o erro, não esconde)", async () => {
+    rotas[CHAVE_DOS_MEUS] = () => resposta(403, { ok: false, error: "Sem permissão para ler Negócios.", codigo: "PERMISSAO" });
+    rotas["GET /funis?estado=ativo&limite=200&deslocamento=0"] = () => resposta(200, FUNIS_ATIVOS);
+    rotas["GET /funis/f2"] = () => resposta(200, funilDetalhado());
+    navegacao.busca = "meus=1";
+    render(provedores(<NegociosPage />, "mem_julia"));
+    expect(await screen.findByText("Não foi possível carregar o quadro.", undefined, { timeout: 3000 })).toBeTruthy();
   });
 });
 

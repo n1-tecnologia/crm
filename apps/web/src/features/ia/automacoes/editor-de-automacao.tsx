@@ -49,7 +49,7 @@ import {
   type ControleDeAcao,
   type ProblemaDeAutomacao,
 } from "@n1/dominio/operations";
-import { inoperante, rascunhoDaAutomacao, versaoVigenteDaAutomacao } from "@n1/dominio/derive-ia";
+import { rascunhoDaAutomacao, versaoVigenteDaAutomacao } from "@n1/dominio/derive-ia";
 import type { Automation, AutomationAction, AutomationCondition, AutomationExecution, AutomationScopeType, AutomationTrigger, AutomationVersion, AutonomyLevel, Id, TriggerKind } from "@n1/dominio/types";
 import { useAgir, useAvisos, type Report } from "@/features/shell/ficha";
 import { AUTONOMY_LABEL, EFFECT_CLASS_LABEL, EXECUTION_STATE_LABEL, EXECUTION_STEP_KIND_LABEL, OBJECT_TYPE_LABEL, TRIGGER_KIND_LABEL } from "@/features/shell/format";
@@ -58,6 +58,7 @@ import { marcarChegada, useRecente } from "@/features/shell/recente";
 import { useFormat } from "@/features/shell/use-format";
 import { Abas, ActionMenu, Button, CabecalhoDePainel, ConditionMarker, ConfirmDialog, CorpoDeTela, EmptyState, Field, Icone, PageHeader, Painel, Pilula, RecordPanel, RecordRow, Select, SetaDeOrdem, StateSeal, TextInput, Toggle, type TomPilula } from "@/features/shell/ui";
 import { useParametros } from "@/features/ferramentas/url";
+import { inoperanteComFunis, useFunisDoEscopo } from "./funis-do-escopo";
 import { CLASSE_DE_EFEITO_TOM, EXECUTA_LABEL, LEGADO_LABEL, NAO_EXECUTA_LABEL, VERSAO_LABEL, VERSAO_TOM } from "../rotulos";
 import {
   SPEC_DA_CONDICAO,
@@ -186,6 +187,8 @@ export function EditorDeAutomacao({ automationId }: { readonly automationId: str
   const agir = useAgir(report);
   const [navegar] = useNavegar();
   const recente = useRecente();
+  // Os Funis do CRM novo (GET /funis): o escopo Funil e o nome dele já não saem do store (15-39, 15-21).
+  const funis = useFunisDoEscopo();
   const [dialogo, setDialogo] = useState<"publicar" | "descartar" | "arquivar" | "lixeira" | null>(null);
   // O último bloco criado nesta tela, para a peça nova `surgir` com o realce.
   const [recem, setRecem] = useState<{ readonly bloco: "condicoes" | "acoes"; readonly indice: number } | null>(null);
@@ -234,13 +237,13 @@ export function EditorDeAutomacao({ automationId }: { readonly automationId: str
   const recusaPublicar =
     recusaDeAdministrarAutomacao(state, memberId, automation, "publicar") ??
     (!rascunho ? "Não há rascunho para publicar." : problemas.length > 0 ? `${contagem(problemas.length, "problema", "problemas")} de validação (RN-AUT-07).` : undefined);
-  const motivoInoperante = inoperante(state, automation);
+  const motivoInoperante = inoperanteComFunis(state, automation, funis);
   // A faixa "não executa" só quando há o que dizer: um Gatilho que os motores não escutam, ou um escopo que nenhum motor alcança.
   const naoExecuta = versao.trigger ? !executaGatilho(automation.scopeType, versao.trigger) : !ESCOPOS_QUE_EXECUTAM.has(automation.scopeType);
   const hibrida = versao.conditions.some((c) => c.kind === "hibrida");
   const proprietario = state.members.find((m) => m.id === automation.ownerMemberId);
   const rotuloDoEscopo = OBJECT_TYPE_LABEL[automation.scopeType] ?? automation.scopeType;
-  const nomeDoEscopo = nomeDoRegistro(state, automation.scopeType, automation.scopeId);
+  const nomeDoEscopo = nomeDoRegistro(state, automation.scopeType, automation.scopeId, funis.nomes);
   const hrefDoEscopo = rotaDoEscopo(automation.scopeType, automation.scopeId);
   const execucoes = [...state.automationExecutions.filter((e) => e.automationId === automation.id)].sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
 
@@ -422,8 +425,8 @@ export function EditorDeAutomacao({ automationId }: { readonly automationId: str
   );
 }
 
-/** O nome do registro que é o escopo; o Espaço de Trabalho é o próprio. */
-function nomeDoRegistro(state: DataState, scopeType: AutomationScopeType, scopeId: Id): string {
+/** O nome do registro que é o escopo; o Espaço de Trabalho é o próprio e o Funil vem da lista da api (`nomesDosFunis`). */
+function nomeDoRegistro(state: DataState, scopeType: AutomationScopeType, scopeId: Id, nomesDosFunis: ReadonlyMap<Id, string>): string {
   switch (scopeType) {
     case "workspace":
       return state.workspace.name;
@@ -434,7 +437,7 @@ function nomeDoRegistro(state: DataState, scopeType: AutomationScopeType, scopeI
     case "list":
       return state.lists.find((l) => l.id === scopeId)?.name ?? scopeId;
     case "funnel":
-      return state.funnels.find((f) => f.id === scopeId)?.name ?? scopeId;
+      return nomesDosFunis.get(scopeId) ?? scopeId;
     case "inbox":
       return "Caixa de Entrada";
     case "queue":

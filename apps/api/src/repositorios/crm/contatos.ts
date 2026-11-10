@@ -13,12 +13,14 @@
  */
 
 import type { Pool, PoolClient } from "pg";
+import type { ContatoDaFerramenta } from "@n1/dominio";
 import type { CamposAdicionais, Endereco, EstadoCrm, ModoDeCriacao, Pagina } from "@n1/dominio/crm/comum";
 import {
   nomeDeExibicaoDoContato,
   type Contato,
   type ContatoResumo,
   type EdicaoDeContato,
+  type EstadoDoContato,
   type IdentificadorDeContato,
   type NovoContato,
   type TipoIdentificadorContato,
@@ -33,6 +35,8 @@ export type LinhaDeContato = Omit<NovoContato, "identificadores" | "proprietario
 export interface FiltroDeContatos {
   readonly estado: EstadoCrm;
   readonly q?: string | undefined;
+  /** Só Contatos que têm ao menos um Identificador desse tipo (Fase 15, 3.4.8). */
+  readonly comIdentificador?: TipoIdentificadorContato | undefined;
   readonly limite: number;
   readonly deslocamento: number;
 }
@@ -87,18 +91,54 @@ export interface RepositorioDeContatos {
   /** Tira a marca de principal do Identificador atual do tipo (INV-CON-03). */
   rebaixarPrincipal(workspaceId: string, contatoId: string, tipo: TipoIdentificadorContato): Promise<void>;
   removerIdentificador(workspaceId: string, identificadorId: string): Promise<void>;
+  /**
+   * Passa o Identificador para outro Contato (3.2.3, DO-CON-12) e fixa se chega principal. Não
+   * confere nada: quem chama já travou os dois Contatos e decidiu o principal. O par (tipo, valor)
+   * não muda, então `contato_identificadores_unico` não é tocado.
+   */
+  moverIdentificador(workspaceId: string, identificadorId: string, paraContatoId: string, principal: boolean): Promise<void>;
   detentorDoIdentificador(workspaceId: string, tipo: TipoIdentificadorContato, valor: string): Promise<DetentorDeIdentificador | undefined>;
 
+  /**
+   * Os Contatos do Espaço entre os `ids` citados, no resumo que as Ferramentas conferem (Fase 15,
+   * 3.4.8): id, nome de exibição, estado e o WhatsApp principal (Identificador `whatsapp` com
+   * `principal`, senão o mais antigo). Id repetido conta uma vez, id de outro Espaço ou inexistente
+   * não volta, e mais de `TETO_DE_CONTATOS_RESUMIDOS` ids é erro (T-15-21, T-15-22).
+   */
+  resumidosPorIds(workspaceId: string, ids: readonly string[]): Promise<ContatoDaFerramenta[]>;
+  /**
+   * Os Contatos do Espaço entre os `ids` citados, como CLIENTE de Contas a receber (Fase 15, 3.4.10):
+   * id, nome de exibição, estado e Proprietário (o dono do cliente, que comenta as contas dele). O
+   * estado volta como está — quem decide se vale é o domínio. Mesmo teto de `resumidosPorIds`.
+   */
+  clientesPorIds(workspaceId: string, ids: readonly string[]): Promise<ClienteDoContato[]>;
+  /**
+   * Os Contatos ATIVOS do Espaço, só id e nome de exibição: o catálogo de clientes da importação de
+   * Contas a receber (3.4.10). É a tabela inteira de ativos de UM Espaço, de uma vez — a importação
+   * roda uma vez por carga, a volume de Contas a receber (centenas de clientes); sem página.
+   */
+  ativosParaCatalogo(workspaceId: string): Promise<Array<{ readonly id: string; readonly nome: string }>>;
   /** Somente leitura de `plataforma.negocios` — a escrita de Negócio é de 07-08. */
   negociosDoContato(workspaceId: string, contatoId: string, opcoes: { readonly incluirLixeira: boolean }): Promise<NegociosDoContato>;
   /** Somente leitura de `plataforma.conversas` (008): total e até 5 Conversas, as mais novas primeiro. */
   conversasDoContato(workspaceId: string, contatoId: string): Promise<ConversasDoContato>;
 }
 
+/** Um Contato como cliente de uma conta (3.4.10): o bastante para conferir, nomear e dar o direito de comentar ao dono. */
+export interface ClienteDoContato {
+  readonly id: string;
+  readonly nome: string;
+  readonly estado: string;
+  readonly proprietarioId: string;
+}
+
+/** O teto de ids de `resumidosPorIds`: a lista vem dos `args` de uma operação, nunca é a tabela inteira. */
+export const TETO_DE_CONTATOS_RESUMIDOS = 500;
+
 /** As colunas de `plataforma.contatos` na forma que `linhaParaContato` lê (data como texto). */
 const COLUNAS = `id, nome, sobrenome, data_nascimento::text as data_nascimento, idioma, fuso_horario,
   foto_url, descricao, enderecos, campos_adicionais, origem, qualificacao, modo_criacao, estado,
-  proprietario_id, criado_por, criado_em, atualizado_em`;
+  mesclado_em_id, mesclado_em, proprietario_id, criado_por, criado_em, atualizado_em`;
 
 interface LinhaDoBanco {
   readonly id: string;
@@ -114,7 +154,9 @@ interface LinhaDoBanco {
   readonly origem: string | null;
   readonly qualificacao: string | null;
   readonly modo_criacao: ModoDeCriacao;
-  readonly estado: EstadoCrm;
+  readonly estado: EstadoDoContato;
+  readonly mesclado_em_id: string | null;
+  readonly mesclado_em: Date | null;
   readonly proprietario_id: string;
   readonly criado_por: string;
   readonly criado_em: Date;
@@ -138,6 +180,8 @@ export function linhaParaContato(linha: LinhaDoBanco): Contato {
     qualificacao: linha.qualificacao,
     modoCriacao: linha.modo_criacao,
     estado: linha.estado,
+    mescladoEmId: linha.mesclado_em_id,
+    mescladoEm: linha.mesclado_em?.toISOString() ?? null,
     proprietarioId: linha.proprietario_id,
     criadoPor: linha.criado_por,
     criadoEm: linha.criado_em.toISOString(),
@@ -218,6 +262,7 @@ export function criarRepositorioDeContatosPg(cliente: Pool | PoolClient): Reposi
     },
 
     async listar(workspaceId, filtro) {
+      // `filtro.estado` é `EstadoCrm`: um Contato `mesclado` (011) nunca é listado — ele só abre pelo id.
       const parametros: unknown[] = [workspaceId, filtro.estado];
       let busca = "";
       const texto = filtro.q?.trim() ?? "";
@@ -228,6 +273,13 @@ export function criarRepositorioDeContatosPg(cliente: Pool | PoolClient): Reposi
                   or exists (select 1 from plataforma.contato_identificadores bi
                               where bi.workspace_id = c.workspace_id and bi.contato_id = c.id
                                 and bi.valor ilike ${p} ${CLAUSULA_ESCAPE}))`;
+      }
+      if (filtro.comIdentificador !== undefined) {
+        // O tipo vai por `$n` (T-15-90) e o `exists` amarra o Espaço (T-15-91).
+        parametros.push(filtro.comIdentificador);
+        busca += ` and exists (select 1 from plataforma.contato_identificadores ci
+                               where ci.workspace_id = c.workspace_id and ci.contato_id = c.id
+                                 and ci.tipo = $${parametros.length})`;
       }
       const total = await cliente.query<{ total: number }>(
         `select count(*)::int as total from plataforma.contatos c where c.workspace_id = $1 and c.estado = $2 ${busca}`,
@@ -255,7 +307,7 @@ export function criarRepositorioDeContatosPg(cliente: Pool | PoolClient): Reposi
           return {
             id: contato.id,
             nomeDeExibicao: nomeDeExibicaoDoContato(contato, linha.email_principal ?? linha.telefone_principal),
-            estado: contato.estado,
+            estado: filtro.estado,
             proprietarioId: contato.proprietarioId,
             emailPrincipal: linha.email_principal,
             telefonePrincipal: linha.telefone_principal,
@@ -377,6 +429,13 @@ export function criarRepositorioDeContatosPg(cliente: Pool | PoolClient): Reposi
       ]);
     },
 
+    async moverIdentificador(workspaceId, identificadorId, paraContatoId, principal) {
+      await cliente.query(
+        "update plataforma.contato_identificadores set contato_id = $3, principal = $4 where workspace_id = $1 and id = $2",
+        [workspaceId, identificadorId, paraContatoId, principal],
+      );
+    },
+
     async detentorDoIdentificador(workspaceId, tipo, valor) {
       const resultado = await cliente.query<{ contato_id: string; nome: string | null; sobrenome: string | null }>(
         `select i.contato_id, c.nome, c.sobrenome
@@ -388,6 +447,71 @@ export function criarRepositorioDeContatosPg(cliente: Pool | PoolClient): Reposi
       const linha = resultado.rows[0];
       if (!linha) return undefined;
       return { contatoId: linha.contato_id, nome: nomeDeExibicaoDoContato(linha, valor) };
+    },
+
+    async resumidosPorIds(workspaceId, ids) {
+      const unicos = [...new Set(ids)];
+      if (unicos.length > TETO_DE_CONTATOS_RESUMIDOS) {
+        throw new Error(`resumidosPorIds: no máximo ${TETO_DE_CONTATOS_RESUMIDOS} ids por consulta.`);
+      }
+      if (unicos.length === 0) return [];
+      const { rows } = await cliente.query<{ id: string; nome: string | null; sobrenome: string | null; estado: string; whatsapp: string | null }>(
+        `select c.id, c.nome, c.sobrenome, c.estado,
+                (select i.valor from plataforma.contato_identificadores i
+                  where i.workspace_id = c.workspace_id and i.contato_id = c.id and i.tipo = 'whatsapp'
+                  order by i.principal desc, i.criado_em, i.id
+                  limit 1) as whatsapp
+           from plataforma.contatos c
+          where c.workspace_id = $1 and c.id = any($2::text[])
+          order by c.criado_em, c.id`,
+        [workspaceId, unicos],
+      );
+      return rows.map((linha) => ({
+        id: linha.id,
+        nome: nomeDeExibicaoDoContato(linha, linha.whatsapp),
+        estado: linha.estado,
+        whatsapp: linha.whatsapp,
+      }));
+    },
+
+    async clientesPorIds(workspaceId, ids) {
+      const unicos = [...new Set(ids)];
+      if (unicos.length > TETO_DE_CONTATOS_RESUMIDOS) {
+        throw new Error(`clientesPorIds: no máximo ${TETO_DE_CONTATOS_RESUMIDOS} ids por consulta.`);
+      }
+      if (unicos.length === 0) return [];
+      const { rows } = await cliente.query<{ id: string; nome: string | null; sobrenome: string | null; estado: string; proprietario_id: string; whatsapp: string | null }>(
+        `select c.id, c.nome, c.sobrenome, c.estado, c.proprietario_id,
+                (select i.valor from plataforma.contato_identificadores i
+                  where i.workspace_id = c.workspace_id and i.contato_id = c.id and i.tipo = 'whatsapp'
+                  order by i.principal desc, i.criado_em, i.id
+                  limit 1) as whatsapp
+           from plataforma.contatos c
+          where c.workspace_id = $1 and c.id = any($2::text[])
+          order by c.criado_em, c.id`,
+        [workspaceId, unicos],
+      );
+      return rows.map((linha) => ({
+        id: linha.id,
+        nome: nomeDeExibicaoDoContato(linha, linha.whatsapp),
+        estado: linha.estado,
+        proprietarioId: linha.proprietario_id,
+      }));
+    },
+
+    async ativosParaCatalogo(workspaceId) {
+      const { rows } = await cliente.query<{ id: string; nome: string | null; sobrenome: string | null; whatsapp: string | null }>(
+        `select c.id, c.nome, c.sobrenome,
+                (select i.valor from plataforma.contato_identificadores i
+                  where i.workspace_id = c.workspace_id and i.contato_id = c.id and i.tipo = 'whatsapp'
+                  order by i.principal desc, i.criado_em, i.id
+                  limit 1) as whatsapp
+           from plataforma.contatos c
+          where c.workspace_id = $1 and c.estado = 'ativo'
+          order by c.criado_em, c.id`,
+        [workspaceId],
+      );
+      return rows.map((linha) => ({ id: linha.id, nome: nomeDeExibicaoDoContato(linha, linha.whatsapp) }));
     },
 
     async negociosDoContato(workspaceId, contatoId, opcoes) {

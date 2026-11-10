@@ -15,7 +15,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { carregarEnv, encerrar, pool } from "./conexao";
-import { backoff, criarOutboxWorker, sanitizarErro } from "./outbox-worker";
+import { backoff, criarOutboxWorker, sanitizarErro, type DesfechoDaEntrega, type LinhaOutbox } from "./outbox-worker";
 import { criarServidorFalso, type ServidorFalso } from "../testes/servidor-falso";
 import { relogioFixo } from "../testes/relogio";
 
@@ -50,6 +50,15 @@ describe("sanitizarErro (D-20/T-02-14, sem banco)", () => {
     expect(summary).not.toContain("segredo123");
     expect(summary.length).toBeLessThanOrEqual(200);
   });
+
+  it("(o) remove a apikey do provedor, em texto corrido, com `=` e em JSON (16-05, T-16-17)", () => {
+    expect(sanitizarErro("apikey: abc123 falhou").summary).not.toContain("abc123");
+    expect(sanitizarErro("chamada com apikey=abc123&x=1").summary).not.toContain("abc123");
+    expect(sanitizarErro('corpo {"apikey":"abc123","instancia":"i"}').summary).not.toContain("abc123");
+    expect(sanitizarErro(new Error("APIKEY: abc123")).summary).not.toContain("abc123");
+    // O resto da frase sobrevive: só o valor sai.
+    expect(sanitizarErro("apikey: abc123 falhou").summary).toContain("falhou");
+  });
 });
 
 /* ── (g)–(l) — precisam de Postgres real ─────────────────────────────────── */
@@ -78,7 +87,9 @@ async function inserirLinhaPendente(
         overrides.eventType ?? "solicitacao.criada.v1",
         JSON.stringify(overrides.payload ?? { taskId: "tar_1", readableId: "tar_1", listId: "lst_1", origin: "plataforma" }),
         overrides.attempts ?? 0,
-        (overrides.availableAt ?? new Date()).toISOString(),
+        // 2 s no passado: o relógio do Postgres de Docker pode estar alguns ms atrás do deste processo, e uma linha
+        // `available_at = agora` ainda não seria elegível (os casos (h) a (k) falhavam de vez em quando por isso).
+        (overrides.availableAt ?? new Date(Date.now() - 2_000)).toISOString(),
       ],
     );
     return r.rows[0]!.id;
@@ -257,5 +268,264 @@ d("worker de entrega (Postgres real)", () => {
 
     expect([a, b].filter(Boolean)).toHaveLength(1);
     expect(servidor.recebidas).toHaveLength(1);
+  });
+
+  describe("convivência com a fila da mensageria (16-04, Pitfall 1)", () => {
+    const PAYLOAD_DA_MENSAGEM = { mensagemId: "msg_1", conversaId: "cnv_1", canalId: "can_1" };
+    const haSegundos = (s: number) => new Date(Date.now() - s * 1000);
+
+    it("sem tiposDeEvento o worker nunca reivindica mensagem.%: a da Mensagem, mais antiga, continua pending com attempts 0", async () => {
+      const daMensagem = await inserirLinhaPendente({ eventType: "mensagem.enviar.v1", payload: PAYLOAD_DA_MENSAGEM, availableAt: haSegundos(10) });
+      const daSolicitacao = await inserirLinhaPendente({ availableAt: haSegundos(5) });
+      servidor.enfileirar({ kind: "ok", status: 202, corpo: { ok: true } });
+
+      const worker = criarOutboxWorker({ destinoUrl: servidor.url, token: "tok_teste", workerId: "worker_pitfall1", workspaceId: WORKSPACE, relogio: relogioFixo(new Date()) });
+      expect(await worker.processarUm()).toBe(true);
+      expect(await worker.processarUm()).toBe(false);
+
+      expect((await buscarLinha(daSolicitacao)).status).toBe("delivered");
+      const intacta = await buscarLinha(daMensagem);
+      expect(intacta).toMatchObject({ status: "pending", attempts: 0, last_error_code: null });
+      expect(servidor.recebidas).toHaveLength(1);
+    });
+
+    it("com tiposDeEvento: [mensagem.enviar.v1] o worker reivindica só a da Mensagem", async () => {
+      const daMensagem = await inserirLinhaPendente({ eventType: "mensagem.enviar.v1", payload: PAYLOAD_DA_MENSAGEM, availableAt: haSegundos(5) });
+      const daSolicitacao = await inserirLinhaPendente({ availableAt: haSegundos(10) });
+      // 503: a linha volta a `pending`, mas `attempts` já conta quem a reivindicou.
+      servidor.enfileirar({ kind: "ok", status: 503, corpo: { error: { code: "INDISPONIVEL" } } });
+
+      const worker = criarOutboxWorker({
+        destinoUrl: servidor.url,
+        token: "tok_teste",
+        workerId: "worker_so_mensagem",
+        workspaceId: WORKSPACE,
+        relogio: relogioFixo(new Date()),
+        tiposDeEvento: ["mensagem.enviar.v1"],
+      });
+      expect(await worker.processarUm()).toBe(true);
+
+      expect((await buscarLinha(daMensagem)).attempts).toBe(1);
+      expect(await buscarLinha(daSolicitacao)).toMatchObject({ status: "pending", attempts: 0 });
+    });
+  });
+});
+
+d("worker com entregador próprio (16-05, Postgres real)", () => {
+  const PAYLOAD = { mensagemId: "msg_1", conversaId: "cnv_1", canalId: "can_1" };
+  const haSegundos = (n: number) => new Date(Date.now() - n * 1000);
+
+  afterEach(async () => {
+    await pool().query("delete from plataforma.integration_outbox where workspace_id = $1", [WORKSPACE]);
+  });
+
+  afterAll(async () => {
+    await pool().query("delete from plataforma.integration_outbox where workspace_id = $1", [WORKSPACE]);
+  });
+
+  const criar = (entregador: (l: LinhaOutbox, c: { ultimaTentativa: boolean }) => Promise<DesfechoDaEntrega>, extras: { maxTentativas?: number; recuperarTravasVencidasMs?: number } = {}) =>
+    criarOutboxWorker({
+      workerId: "worker_entregador",
+      workspaceId: WORKSPACE,
+      tiposDeEvento: ["mensagem.enviar.v1"],
+      entregador,
+      relogio: relogioFixo(new Date()),
+      ...extras,
+    });
+
+  // `available_at` com o relógio do processo de teste: sem folga, um Postgres de Docker com o relógio alguns ms atrás
+  // ainda não a enxerga como disponível. Por isso o padrão é 5 s no passado.
+  const linhaDaMensagem = (opcoes: { availableAt?: Date } = {}) =>
+    inserirLinhaPendente({ eventType: "mensagem.enviar.v1", payload: PAYLOAD, availableAt: opcoes.availableAt ?? haSegundos(5) });
+
+  async function travar(id: string, segundosAtras: number, attempts: number): Promise<void> {
+    await pool().query(
+      "update plataforma.integration_outbox set status = 'delivering', locked_at = now() - make_interval(secs => $2), locked_by = 'caiu', attempts = $3 where id = $1",
+      [id, segundosAtras, attempts],
+    );
+  }
+
+  it("(p) aplica o desfecho do entregador à linha: entregue, tentar de novo (pending com espera) e desistir (failed)", async () => {
+    const entregue = await linhaDaMensagem({ availableAt: haSegundos(30) });
+    const adiada = await linhaDaMensagem({ availableAt: haSegundos(20) });
+    const desistida = await linhaDaMensagem({ availableAt: haSegundos(10) });
+    const resultados: DesfechoDaEntrega[] = [
+      { desfecho: "entregue" },
+      { desfecho: "tentar_de_novo", erro: { code: "HTTP_503", summary: "fora do ar" } },
+      { desfecho: "desistir", erro: { code: "CANAL_DESCONECTADO", summary: "caiu" } },
+    ];
+    const worker = criar(async () => resultados.shift()!);
+
+    expect(await worker.processarUm()).toBe(true);
+    expect(await worker.processarUm()).toBe(true);
+    expect(await worker.processarUm()).toBe(true);
+    expect(await worker.processarUm()).toBe(false);
+
+    expect((await buscarLinha(entregue)).status).toBe("delivered");
+    const pendente = await buscarLinha(adiada);
+    expect(pendente).toMatchObject({ status: "pending", attempts: 1, last_error_code: "HTTP_503" });
+    expect(new Date(pendente.available_at).getTime()).toBeGreaterThan(Date.now());
+    expect(await buscarLinha(desistida)).toMatchObject({ status: "failed", last_error_code: "CANAL_DESCONECTADO" });
+  });
+
+  it("(q) exceção do entregador vale tentar de novo com o erro sanitizado; na última tentativa vira failed", async () => {
+    const id = await linhaDaMensagem();
+    const worker = criar(async () => {
+      throw new Error("falha com apikey: segredo-do-provedor");
+    }, { maxTentativas: 2 });
+
+    expect(await worker.processarUm()).toBe(true);
+    const primeira = await buscarLinha(id);
+    expect(primeira).toMatchObject({ status: "pending", attempts: 1, last_error_code: "ERRO_DO_ENTREGADOR" });
+    expect(primeira.last_error_summary).not.toContain("segredo-do-provedor");
+
+    await marcarDisponivelAgora(id);
+    expect(await worker.processarUm()).toBe(true);
+    expect(await buscarLinha(id)).toMatchObject({ status: "failed", attempts: 2 });
+  });
+
+  it("(r) o entregador sabe quando é a última tentativa", async () => {
+    const id = await linhaDaMensagem();
+    const vistas: boolean[] = [];
+    const worker = criar(async (_l, { ultimaTentativa }) => {
+      vistas.push(ultimaTentativa);
+      return { desfecho: "tentar_de_novo", erro: { code: "X", summary: "x" } };
+    }, { maxTentativas: 2 });
+
+    await worker.processarUm();
+    await marcarDisponivelAgora(id);
+    await worker.processarUm();
+
+    expect(vistas).toEqual([false, true]);
+  });
+
+  it("(s) recuperação de trava: delivering com mais de 2 min volta a pending e é entregue; com 30 s fica como está", async () => {
+    const velha = await linhaDaMensagem();
+    const recente = await linhaDaMensagem();
+    await travar(velha, 180, 1);
+    await travar(recente, 30, 1);
+    const entregues: string[] = [];
+    const worker = criar(async (l) => {
+      entregues.push(l.id);
+      return { desfecho: "entregue" };
+    }, { recuperarTravasVencidasMs: 120_000 });
+
+    expect(await worker.processarUm()).toBe(true);
+    expect(await worker.processarUm()).toBe(false);
+
+    expect(entregues).toEqual([velha]);
+    expect((await buscarLinha(velha)).status).toBe("delivered");
+    expect((await buscarLinha(recente)).status).toBe("delivering");
+  });
+
+  it("(t) trava vencida de linha que já gastou as tentativas vira failed/TRAVA_VENCIDA, sem nova entrega", async () => {
+    const id = await linhaDaMensagem();
+    await travar(id, 300, 5);
+    let chamadas = 0;
+    const worker = criar(async () => {
+      chamadas += 1;
+      return { desfecho: "entregue" };
+    }, { recuperarTravasVencidasMs: 120_000, maxTentativas: 5 });
+
+    expect(await worker.processarUm()).toBe(false);
+
+    expect(chamadas).toBe(0);
+    expect(await buscarLinha(id)).toMatchObject({ status: "failed", last_error_code: "TRAVA_VENCIDA" });
+  });
+
+  it("(x) a trava vencida devolvida a pending chega ao entregador marcada com TRAVA_VENCIDA (WR-01, 16-20)", async () => {
+    const id = await linhaDaMensagem();
+    await travar(id, 180, 1);
+    const vistas: (string | null)[] = [];
+    const worker = criar(async (l) => {
+      vistas.push(l.last_error_code);
+      return { desfecho: "entregue" };
+    }, { recuperarTravasVencidasMs: 120_000 });
+
+    expect(await worker.processarUm()).toBe(true);
+
+    expect(vistas).toEqual(["TRAVA_VENCIDA"]);
+  });
+
+  it("(u) a recuperação só toca os tipos do worker: a trava vencida de outro tipo de evento não é mexida", async () => {
+    const daSolicitacao = await inserirLinhaPendente({ availableAt: haSegundos(5) });
+    await travar(daSolicitacao, 600, 1);
+    const worker = criar(async () => ({ desfecho: "entregue" }), { recuperarTravasVencidasMs: 120_000 });
+
+    expect(await worker.processarUm()).toBe(false);
+
+    expect((await buscarLinha(daSolicitacao)).status).toBe("delivering");
+  });
+
+  it("(v) acordar() num worker com intervalo de 60 s entrega a linha disponível em menos de 500 ms", async () => {
+    const id = await linhaDaMensagem();
+    // O intervalo é só a reserva: `iniciar()` com 60 s nunca rodaria dentro do teste.
+    const comIntervaloLongo = criarOutboxWorker({
+      workerId: "worker_acordar",
+      workspaceId: WORKSPACE,
+      tiposDeEvento: ["mensagem.enviar.v1"],
+      entregador: async () => ({ desfecho: "entregue" }),
+      intervaloMs: 60_000,
+    });
+    comIntervaloLongo.iniciar();
+    try {
+      const antes = Date.now();
+      comIntervaloLongo.acordar();
+      while ((await buscarLinha(id)).status !== "delivered" && Date.now() - antes < 2_000) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect((await buscarLinha(id)).status).toBe("delivered");
+      expect(Date.now() - antes).toBeLessThan(500);
+    } finally {
+      await comIntervaloLongo.parar();
+    }
+  });
+
+  it("(w) acordar() com uma volta em voo não abre outra em paralelo: pede mais uma e a segunda linha sai depois da primeira", async () => {
+    const primeira = await linhaDaMensagem({ availableAt: haSegundos(10) });
+    let emAndamento = 0;
+    let maximo = 0;
+    const ordem: string[] = [];
+    let liberar!: () => void;
+    const portao = new Promise<void>((resolve) => {
+      liberar = resolve;
+    });
+    const worker = criarOutboxWorker({
+      workerId: "worker_acordar_paralelo",
+      workspaceId: WORKSPACE,
+      tiposDeEvento: ["mensagem.enviar.v1"],
+      intervaloMs: 60_000,
+      entregador: async (l) => {
+        emAndamento += 1;
+        maximo = Math.max(maximo, emAndamento);
+        if (l.id === primeira) await portao;
+        ordem.push(l.id);
+        emAndamento -= 1;
+        return { desfecho: "entregue" };
+      },
+    });
+
+    worker.acordar();
+    // Espera a primeira estar em voo (presa no portão).
+    const espera = Date.now();
+    while (emAndamento === 0 && Date.now() - espera < 2_000) await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(emAndamento).toBe(1);
+    const segunda = await linhaDaMensagem({ availableAt: haSegundos(5) });
+    worker.acordar();
+    worker.acordar();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(maximo).toBe(1);
+    expect((await buscarLinha(segunda)).status).toBe("pending");
+
+    liberar();
+    const inicio = Date.now();
+    while ((await buscarLinha(segunda)).status !== "delivered" && Date.now() - inicio < 2_000) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    await worker.parar();
+
+    expect(maximo).toBe(1);
+    expect(ordem).toEqual([primeira, segunda]);
+    expect((await buscarLinha(segunda)).status).toBe("delivered");
   });
 });

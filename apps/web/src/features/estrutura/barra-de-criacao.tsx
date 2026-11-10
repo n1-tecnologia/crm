@@ -9,7 +9,6 @@
  *   10-16, o de rodar a agenda);
  * - **conversacional:** só «Nova Tarefa» (a Tarefa nasce do Contato, no diálogo)
  *   e o `fim`;
- * - **espelhoComercial** (Meus negócios no CRM): só «Iniciar conversa»;
  * - **financeira:** a `FinanceToolbar` sempre visível, com o `fim` no fim dela, e
  *   o campo de nova conta só sob demanda, com «Cancelar».
  *
@@ -28,7 +27,7 @@ import {
 } from "@/features/estrutura/financeiro/contas-view";
 import type { FinanceProfile } from "@/features/estrutura/financeiro/lens";
 
-export type LenteDaBarra = "comum" | "conversacional" | "espelhoComercial" | "financeira";
+export type LenteDaBarra = "comum" | "conversacional" | "financeira";
 
 /** O campo de título («Nova Tarefa» / «Nome da nova conta») e o que ele dispara. */
 export interface CampoDeCriacao {
@@ -59,7 +58,6 @@ export function BarraDeCriacao({
   listId,
   criacaoRecusada,
   fim,
-  aoIniciarConversa,
   aoNovaConversacional,
   campo,
   financeiro,
@@ -69,7 +67,6 @@ export function BarraDeCriacao({
   readonly criacaoRecusada?: string;
   /** O fim da barra: o botão de seleção em lote. */
   readonly fim?: ReactNode;
-  readonly aoIniciarConversa: () => void;
   readonly aoNovaConversacional: () => void;
   readonly campo: CampoDeCriacao;
   /** Obrigatório na lente financeira. */
@@ -77,23 +74,6 @@ export function BarraDeCriacao({
 }) {
   const state = useData((data) => data);
   const desligada = criacaoRecusada !== undefined;
-
-  if (lente === "espelhoComercial") {
-    return (
-      <BarraDeFiltros>
-        <Button
-          size="sm"
-          variant="primary"
-          onClick={aoIniciarConversa}
-          icon={<Icone de={MessageSquare} tamanho="xs" />}
-          disabled={desligada}
-          disabledReason={criacaoRecusada ?? ""}
-        >
-          Iniciar conversa
-        </Button>
-      </BarraDeFiltros>
-    );
-  }
 
   if (lente === "conversacional") {
     // C35 — sem campo de título: a Tarefa nasce do Contato, no diálogo.

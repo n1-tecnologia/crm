@@ -259,7 +259,9 @@ describeComBanco("010 — carga vira lista, Lista perde blocks (D-18) — Postgr
       // Sem o gatilho, a mesma 010 aplica e registra.
       await banco.pool.query("drop trigger m010_recusa on plataforma.registros");
       const aplicadas = await migrar(banco.pool);
-      expect(aplicadas.map((a) => a.nome)).toEqual([ARQUIVO_010]);
+      // `migrar()` aplica tudo o que está pendente, na ordem: a 010 vem primeiro e as migrações
+      // posteriores (a 011 em diante) não dependem deste teste.
+      expect(aplicadas.map((a) => a.nome)[0]).toBe(ARQUIVO_010);
       expect(await contagens(banco.pool)).toEqual([0, 0, 0]);
       expect(await revisoes(banco.pool)).toEqual({ ws_a: 2, ws_b: 1, ws_c: 2 });
       const agora = await banco.pool.query("select 1 from plataforma.migracoes where nome = $1", [ARQUIVO_010]);

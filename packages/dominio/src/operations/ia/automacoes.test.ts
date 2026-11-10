@@ -48,6 +48,11 @@ const registro = <T extends { readonly id: string }>(lista: readonly T[], id: st
   return item;
 };
 
+/** Os Funis do seed como `plataforma.funis` os devolveria ao servidor: só `id` e `estado` (15-39). */
+/** Os quatro Funis do demo (`bootstrap:crm-demo`) como `plataforma.funis` os devolveria: o seed não cria mais Funil (15-31). */
+const funisDoSeed = (_s: DataState) =>
+  ["fnl_sdr", "fnl_closer", "fnl_validacao", "fnl_venda_direta"].map((id) => ({ id, estado: "ativo" as const }));
+
 const valor = <T>(r: { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: string }): T => {
   if (!r.ok) throw new Error(r.error);
   return r.value;
@@ -82,6 +87,25 @@ describe("28 — criar Automação", () => {
     expect(r.value.versions[0]?.errorPolicy).toEqual({ onActionFailure: "interromper", retries: 0 });
     const atividade = state.activity.find((a) => a.objectId === r.value.id && a.action === "Automação criada");
     expect(atividade?.detail).toBe("Versão 1 em rascunho · escopo Lista");
+  });
+
+  it("o escopo Funil confere o Funil que o servidor leu: ativo e arquivado valem, na lixeira, ausente e sem a lista recusam (15-39, 3.4.9)", () => {
+    const entrada = (scopeId: string) => ({ name: `Qualificar ${scopeId}`, scopeType: "funnel" as const, scopeId });
+    const antes = state.automations.length;
+    // O Funil só existe na lista passada (nunca no estado): é a tabela quem responde.
+    const ativa = criarAutomacao(state, RAFAEL, entrada("fun_so_na_tabela"), [{ id: "fun_so_na_tabela", estado: "ativo" }]);
+    expect(ativa.ok).toBe(true);
+    if (ativa.ok) expect(ativa.value.scopeId).toBe("fun_so_na_tabela");
+    expect(criarAutomacao(state, RAFAEL, entrada("fun_arquivado"), [{ id: "fun_arquivado", estado: "arquivado" }]).ok).toBe(true);
+    expect(state.automations).toHaveLength(antes + 2);
+
+    const erroDoEscopo = { error: "O escopo indicado não existe.", field: "escopo" };
+    expect(erro(criarAutomacao(state, RAFAEL, entrada("fun_lixeira"), [{ id: "fun_lixeira", estado: "na_lixeira" }]))).toEqual(erroDoEscopo);
+    expect(erro(criarAutomacao(state, RAFAEL, entrada("fun_de_outro_espaco"), [{ id: "fun_so_na_tabela", estado: "ativo" }]))).toEqual(erroDoEscopo);
+    // Sem a lista, o Funil é desconhecido: recusa sem lançar — mesmo para um id que o seed antigo conhece.
+    expect(erro(criarAutomacao(state, RAFAEL, entrada("fnl_sdr")))).toEqual(erroDoEscopo);
+    expect(erro(criarAutomacao(state, RAFAEL, entrada("fnl_sdr"), []))).toEqual(erroDoEscopo);
+    expect(state.automations).toHaveLength(antes + 2);
   });
 
   it("recusa escopo inexistente, nome repetido no escopo (sem caixa nem espaços) e Evento incompatível — e o Convidado", () => {
@@ -206,7 +230,13 @@ describe("29b — a Disponibilidade da Concessão entra na validação e no inop
   it("nenhuma Automação publicada do seed nasce inoperante nem com problema por Habilidade indisponível", () => {
     for (const a of state.automations) {
       if (a.lifecycle !== "ativo") continue;
-      expect(inoperante(state, a), a.id).toBeUndefined();
+      // A Lista espelho do Funil saiu do seed com a Pasta "Meus negócios" (15-31): a Automação que a tem por escopo
+      // fica inoperante até alguém decidir o destino dela (linha aberta em .planning/WINDOWS.md).
+      if (a.scopeType === "list" && /^lst_funil_/.test(a.scopeId)) {
+        expect(inoperante(state, a, funisDoSeed(state)), a.id).toBe("escopo eliminado (Lista)");
+        continue;
+      }
+      expect(inoperante(state, a, funisDoSeed(state)), a.id).toBeUndefined();
       const vigente = a.versions.find((v) => v.state === "publicada");
       if (vigente) expect(validarAutomacao(state, a, vigente).map((p) => p.mensagem), a.id).toEqual([]);
     }

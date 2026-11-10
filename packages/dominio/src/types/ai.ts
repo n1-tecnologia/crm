@@ -365,6 +365,15 @@ export interface ChatAnchor {
   readonly nameAtTheTime: string;
 }
 
+/**
+ * Fase 15 (3.4.9) — o nome de cada registro do CRM novo que uma Âncora cita, por id,
+ * como o servidor o leu de `plataforma.negocios`, `contatos`, `empresas` e `conversas`.
+ * O navegador não tem mais Negócio, Contato, Empresa nem Conversa no estado de que
+ * possa tirar o nome: quem o entrega é a leitura do servidor (último parâmetro,
+ * opcional, de `createChatSession`, `configureChatSession` e `ensaiarAgente`).
+ */
+export type NomesDasAncoras = Readonly<Record<Id, string>>;
+
 export type ChatMessageRole = "usuario" | "assistente" | "sistema" | "ferramenta";
 
 /** B84 — immutable; correction and regeneration create a new message. */

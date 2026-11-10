@@ -7,6 +7,7 @@
 
 import { ID, MODELO_DE_TAREFA, opcional, type Esquemas } from "./fragmentos";
 import { z } from "zod";
+import { CANAIS_DO_NAVEGADOR } from "./tarefas-conversacionais";
 
 const TEMPLATE_INPUT = z.object({ name: z.string(), description: z.string().optional() }).strict();
 
@@ -39,7 +40,9 @@ export const PLANEJAMENTO = {
   saveListAsTemplate: z.tuple([ID, TEMPLATE_INPUT]),
   saveTaskAsTemplate: z.tuple([ID, TEMPLATE_INPUT]),
   instantiateTaskTemplate: z.tuple([ID, ID, opcional(z.string())]),
-  instantiateListTemplate: z.tuple([ID, INSTANTIATE_LIST_TEMPLATE_INPUT]),
+  // O 3º elemento é o `canais` que o navegador usa só na execução local: o servidor o descarta e o
+  // troca pelo que leu de `plataforma.canais` (`rotas/gesto-no-crm`, D-15-07).
+  instantiateListTemplate: z.tuple([ID, INSTANTIATE_LIST_TEMPLATE_INPUT, opcional(CANAIS_DO_NAVEGADOR)]),
   renameTemplate: z.tuple([ID, TEMPLATE_INPUT]),
   setTemplateArchived: z.tuple([ID, z.boolean()]),
 } satisfies Esquemas;

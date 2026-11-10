@@ -17,6 +17,11 @@ fictícias; este bootstrap é o oposto — só o que o Financeiro de verdade vai
 usar, sem nenhuma Tarefa, Contato, Negócio ou Registro de Atividade
 inventado.
 
+**Sem Funil (D-15-13).** Um Espaço novo nasce sem Funil e sem nada do CRM:
+`Workspace` não tem mais `defaultFunnelId`, e o Funil padrão do Espaço é o de
+`plataforma.funis.padrao`, criado pela tela de Funis. Rodar o bootstrap de
+novo recusa ("o Espaço já tem registros") e nunca cria Funil.
+
 ## Quando rodar
 
 Uma vez, depois de `npm run migrar -w @n1/api` (schema aplicado) e de
@@ -42,6 +47,96 @@ certo é filtrar `gravar()` por coleção, não este arquivo.
 e tem os próprios testes. Este módulo só grava o que ele monta, com
 `semear()` (`../persistencia/repositorio.ts`), a mesma escrita que qualquer
 importação usaria.
+
+## O demo do CRM (`bootstrap:crm-demo`, 15-29, D-15-13)
+
+Depois da 3.5.3 o seed não cria CRM: um Espaço novo nasce sem Contato, Empresa, Funil, Negócio, Canal e Conversa,
+e a Caixa de Entrada fica vazia. Para **desenvolvimento**, `crm-demo.ts` dá a um Espaço local o CRM de mentira
+que o seed antigo tinha, agora nas tabelas do CRM novo (39 Contatos, 12 Empresas, 4 Funis com 23 Etapas, 19
+Negócios, 3 Canais, 16 Conversas e 62 Mensagens):
+
+```
+DATABASE_URL=postgres://postgres:x@localhost:5432/postgres npm run bootstrap:crm-demo -w @n1/api -- --espaco ws_dev
+```
+
+**É só de desenvolvimento.** Nunca roda em produção nem em banco remoto:
+
+- o host de `DATABASE_URL` tem de ser `localhost`, `127.0.0.1` ou `[::1]`, e a URL **não pode ter query** (`?host=` e `?hostaddr=`
+  trocam o destino que o `pg` usa; a regra é `persistencia/host-local.ts`, a mesma de `testes/banco-crm.ts` e da CLI do corte,
+  15-44, M-01), conferido
+  **antes** de abrir o pool e de novo dentro de `carregarCrmDemo` antes da primeira consulta. O `apps/api/.env` aponta
+  para o banco real, então rode sempre com a `DATABASE_URL` local explícita; sem ela o script recusa;
+- `--espaco` é obrigatório, tem de casar `^ws_[a-z0-9_]+$` e **já existir** em `plataforma.workspaces` (o script não cria
+  Espaço: use `semear(buildSeed())`, o `bootstrap:gestao` ou o fluxo de dev que o criou);
+- o Espaço não pode ter **nenhum Contato**. Rodar de novo recusa ("o Espaço já tem Contatos") e não duplica nada: a
+  conferência roda dentro da transação, com a linha do Espaço travada.
+
+Saída: `0` ok, `2` recusa ou erro de uso, `1` erro inesperado. A recusa de banco remoto sai com `2` sem abrir conexão.
+
+**Como se prova que os ids preservados acham o registro (15-31).** O seed novo guarda só os Vínculos que sobraram; o
+teste dos Vínculos de `crm-demo.test.ts` lê, por isso, os 64 `links` da fixture congelada do seed de antes
+(`migracao-crm/fixtures/crm-antigo-do-seed.json`), confere que todo Vínculo do seed novo está nela e exige
+`procurados > 0`: assim a prova não passa vazia quando o seed deixa de ter CRM.
+
+**De onde vêm as linhas.** `crm-demo.json` foi gerado UMA vez pelo mapeador do 15-28 (`planejarMigracao` e
+`planejarFunis`) sobre a fixture sintética congelada do seed antigo (`migracao-crm/fixtures/crm-antigo-do-seed.json`),
+com um script descartável fora do repositório; nunca de dado de produção. Os ids antigos foram preservados, então os
+Vínculos de Tarefa, a `provenance` e os escopos que o seed novo ainda guarda em `registros` apontam para o que o demo
+carrega. As Etapas têm ids fixos no JSON. O que o mapeador deixou de fora (temperatura, Tags, Canal do chat do site e
+do LinkedIn e as Conversas deles...) está em `naoMigrados` do JSON, só como coleção, id e categoria. **Este arquivo não
+importa nada de `migracao-crm/`** (que sai do repositório depois do corte) nem do modelo antigo do domínio: só lê o JSON.
+
+**Como grava.** Uma lista de colunas constante por tabela (`COLUNAS_POR_TABELA`), um `insert ... select` por tabela e
+por pedaço de 500 linhas com `jsonb_to_recordset`, na ordem das chaves estrangeiras (Funis, Etapas, Canais, Contatos —
+sobreviventes antes dos mesclados —, Identificadores, Empresas, vínculos, Negócios, Conversas, Mensagens, consentimentos),
+numa transação só. Nome de tabela e de coluna vêm só de constantes, todo valor entra por `$n` e o `workspace_id` é o
+argumento, nunca um campo do JSON (T-15-73). `crm_de_para` fica vazio: o demo não é uma migração.
+
+**Os Canais do demo nascem `desconectada`**, como os da migração: a Caixa mostra as Conversas, mas nada envia nem
+recebe de verdade. Para refazer o demo num Espaço, apague o CRM do Espaço (ou crie outro); o script nunca apaga.
+
+## Os comandos dos Canais de mensageria (Fase 16)
+
+Dois comandos de linha cuidam do que a tela de conexão (Sessão 4) ainda não faz. Nenhum deles é de desenvolvimento
+só: os dois falam com o banco que o `DATABASE_URL` apontar, então rode-os sabendo qual é. Os testes rodam só contra
+Postgres local e contra a Evolution falsa de `testes/servidor-falso.ts`.
+
+**`canal:segredo-de-teste` (16-02, D-16-03).** `npm run canal:segredo-de-teste -w @n1/api -- --canal <id>` gera o
+segredo do webhook de um Canal **simulado**, guarda no cofre (`donoTipo: "canal"`, `tipo: "webhook_segredo"`), revoga o
+anterior e o mostra uma única vez, com o caminho, o cabeçalho e um `curl` de exemplo. Canal real é recusado (sai com 2):
+o WhatsApp de verdade se liga pelo comando abaixo.
+
+**`canal:ligar-evolution` (16-13, D-16-05, D-16-06, MSG-06).**
+`npm run canal:ligar-evolution -w @n1/api -- --canal <id> --instancia <nome> [--seco] [--url-publica <url>]` liga um
+Canal `whatsapp-nao-oficial` à instância da Evolution do dono. Lê a instância com a chave global
+(`GET /instance/fetchInstances?instanceName=`), exige `connectionState` `open`, confere o número conectado com o do
+Canal (`conferirNumeroConectado`, que tolera o nono dígito brasileiro), gera o segredo do webhook, aponta o webhook da
+instância para `<API_URL_PUBLICA>/webhooks/mensageria/<canalId>` com o segredo no cabeçalho `x-n1-webhook-segredo` e,
+numa transação, guarda no cofre o segredo e a credencial do Canal (`tipo: "whatsapp-nao-oficial"`, JSON
+`{ instancia, apikey }`), marca o Canal `conectada` com `conexao_simulada = false` (`conexao_confirmada`), sobe a
+revisão do Espaço e reenfileira as Mensagens `pendente` do Canal.
+
+- **Nunca liga a `numeropvmarcos`.** Essa instância é do `automation/` (extratos e avisos do Financeiro): o comando a
+  recusa, sem diferença de maiúsculas e espaços, antes de qualquer chamada à rede ou ao banco, com código 2. Nenhum
+  teste nem fixture configura webhook ou guarda credencial dela.
+- **O cofre guarda o token da instância, nunca a chave global.** A global cria e apaga instâncias, inclusive a do
+  Financeiro. Se `fetchInstances` não devolver o token, o comando recusa e explica; usar outra credencial no lugar é
+  decisão do dono (RESEARCH, A10), não do comando.
+- **Ordem e falha no meio.** Tudo o que pode recusar vem antes do `webhook/set`; ele vem antes da transação. Se o
+  `webhook/set` falha, nada é gravado. Se a transação falha depois dele, a instância já aponta para um segredo que o
+  banco não tem: as chamadas dela recebem 401 até o comando rodar de novo (a saída avisa), nunca um Canal `conectada`
+  sem webhook.
+- **Rodar de novo é seguro.** Troca o segredo (o anterior é revogado), reaponta o webhook e deixa o Canal `conectada`.
+- **`--seco`** percorre o mesmo caminho até a conferência do número e para: mostra a versão da Evolution (`GET /`), o
+  estado da instância, se o número confere (só os 4 últimos dígitos) e a URL do webhook que seria configurada, sem
+  escrever na Evolution, no banco nem no cofre (nem pede a `COFRE_CHAVE`).
+- **Saída.** Nenhuma linha mostra a chave global, o token da instância ou o segredo do webhook; do número, só o final.
+  Sai com `0` ok, `2` recusa ou erro de uso, `1` erro inesperado.
+- **Ambiente.** `EVOLUTION_URL` (base da Evolution), `EVOLUTION_API_KEY` (a chave **global** da Evolution: passe-a só na
+  linha de comando, não no `api.env` do runtime, que só precisa de `EVOLUTION_URL`), `API_URL_PUBLICA` (o endereço público
+  da API, ou `--url-publica`) e `COFRE_CHAVE`, que tem de ser **a mesma do `api.env` de produção**: o runtime decifra o
+  que o comando cifrou. O comando grava no banco do `DATABASE_URL`; para ligar o Canal de produção, rode-o com a
+  `DATABASE_URL` e a `COFRE_CHAVE` de produção, de uma máquina com acesso ao banco.
 
 ## Bootstrap × evolver (Plan 02-08)
 

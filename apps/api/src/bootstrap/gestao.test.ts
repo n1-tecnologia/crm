@@ -11,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildGestaoBootstrap } from "@n1/dominio/bootstrap-gestao";
 import { CP } from "@n1/dominio/operations/financeiro";
 import { createTask } from "@n1/dominio/operations/tasks";
+import { colecaoPelaChave } from "@n1/dominio/testes/crm-de-teste";
 import { carregarEnv, encerrar, pool } from "../persistencia/conexao";
 import { hidratar } from "../persistencia/repositorio";
 import { executar } from "../persistencia/unidade-de-trabalho";
@@ -73,8 +74,11 @@ d("bootstrapGestao — o Espaço 'Gestão' de produção", () => {
     try {
       const { state, revisao } = await hidratar(cliente2, WS);
       expect(state.tasks.length).toBe(0);
-      expect(state.contacts.length).toBe(0);
+      expect(colecaoPelaChave(state, "contacts")).toHaveLength(0);
       expect(state.activity.length).toBe(0);
+      // D-15-13: o Espaço nasce sem Funil; o padrão é o de plataforma.funis.
+      expect(colecaoPelaChave(state, "funnels")).toHaveLength(0);
+      expect(Object.keys(state.workspace).filter((chave) => /funnel/i.test(chave))).toEqual([]);
       expect(state.members.length).toBe(1);
       expect(state.members[0]!.id).toBe("mem_maryane");
       expect(state.members[0]!.roleId).toBe("role_prop");
@@ -99,8 +103,17 @@ d("bootstrapGestao — o Espaço 'Gestão' de produção", () => {
       cliente.release();
     }
     expect(resultado.criado).toBe(false);
-    expect(resultado.motivo).toBeDefined();
+    expect(resultado.motivo).toContain("já tem");
     expect(await contarLinhas()).toBe(antes);
+
+    // UCR-07 / UCR-11: repetir o bootstrap nunca cria Funil (nem no modelo antigo).
+    const cliente2 = await pool().connect();
+    try {
+      const { state } = await hidratar(cliente2, WS);
+      expect(colecaoPelaChave(state, "funnels")).toHaveLength(0);
+    } finally {
+      cliente2.release();
+    }
   });
 
   it("a Maryane cria uma Conta a pagar contra o banco de verdade", async () => {

@@ -99,6 +99,13 @@ export interface RepositorioDeEmpresas {
     valor: string,
   ): Promise<DetentoraDeIdentificador | undefined>;
 
+  /**
+   * As Empresas ATIVAS do Espaço, só id e nome de exibição (nome fantasia, senão razão social): o
+   * catálogo de clientes da importação de Contas a receber (Fase 15, 3.4.10). A tabela inteira de
+   * ativas de UM Espaço, de uma vez — a importação roda uma vez por carga; sem página.
+   */
+  ativasParaCatalogo(workspaceId: string): Promise<Array<{ readonly id: string; readonly nome: string }>>;
+
   /** Somente leitura de `plataforma.negocios` — a escrita de Negócio é de 07-08. */
   negociosDaEmpresa(
     workspaceId: string,
@@ -416,6 +423,17 @@ export function criarRepositorioDeEmpresasPg(cliente: Pool | PoolClient): Reposi
       );
       const linha = resultado.rows[0];
       return linha ? { empresaId: linha.empresa_id, nome: linha.nome } : undefined;
+    },
+
+    async ativasParaCatalogo(workspaceId) {
+      const { rows } = await cliente.query<{ id: string; nome: string }>(
+        `select e.id, ${NOME_SQL("e")} as nome
+           from plataforma.empresas e
+          where e.workspace_id = $1 and e.estado = 'ativo'
+          order by e.criado_em, e.id`,
+        [workspaceId],
+      );
+      return rows;
     },
 
     async negociosDaEmpresa(workspaceId, empresaId, opcoes) {

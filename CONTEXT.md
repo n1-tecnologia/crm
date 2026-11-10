@@ -52,9 +52,8 @@ fora de `POST /operacoes/:nome` e de `GET /estado`. As telas de
 `apps/web/src/app/(shell)/crm/` falam com essas rotas por HTTP
 (`src/dados/crm/`), enquanto o resto do app continua hidratando o Espaço
 inteiro por `GET /estado`. O modelo antigo do CRM em inglês (`Contact`,
-`Company`, `Deal`, `Pipeline`) continua vivo ao lado, porque Caixa de
-Entrada e Conversas ainda dependem dele: os dois convivem até a fase de
-unificação. Antes de aplicar a 007 num banco, `npm run migrar -w @n1/api --
+`Company`, `Deal`, `Pipeline`) conviveu ao lado até a Fase 15, a de
+unificação, que o tirou do código (ver "A partir da Fase 15"). Antes de aplicar a 007 num banco, `npm run migrar -w @n1/api --
 --seco` lista o que `migrar` faria sem escrever nada.
 
 A partir da Fase 8, o que faltava da Caixa de Entrada ganha tabelas próprias:
@@ -68,14 +67,146 @@ oficial, Instagram, E-mail — a tabela está em
 não só pelo tipo. O Canal criado pela página nova de conexão
 (`/crm/caixa-de-entrada/configuracoes/canais/conectar`) nasce `desconectada`
 e só conecta por "Simular conexão", sempre marcada, enquanto não há provedor
-real; o popup de adicionar Canal das Listas é o caminho legado e segue
-nascendo `conectada` em `plataforma.registros`. O chat continua no modelo
-antigo e enxerga os Canais da tabela por uma projeção — em `GET /estado` e em
-`executar()`, nunca em `hidratar()` (ver `apps/api/src/persistencia/CONTEXT.md`)
-— até a fase de unificação. O fio da Conversa tem uma aba por Canal e
-"Responder por"; o seed continua, marcado como demo. A 008 já está aplicada no
-banco da plataforma e é imutável: qualquer ajuste de schema daqui em diante é
-a `009`.
+real; o popup de adicionar Canal das Listas deixou de criar Canal (Fase 15,
+D-15-12): só escolhe entre os Canais de `plataforma.canais` e leva à página de
+conectar, o único caminho que cria Canal. A projeção que levava os Canais da tabela ao modelo
+antigo — em `GET /estado` e em `executar()` — saiu na Fase 15 (plano 15-33): o
+Canal só existe em `plataforma.canais` e se lê por `GET /canais` (ver
+`apps/api/src/persistencia/CONTEXT.md`). O fio da Conversa tem
+uma aba por Canal e "Responder por"; o seed continua, marcado como demo. A 008
+já está aplicada no banco da plataforma e é imutável: qualquer ajuste de
+schema daqui em diante é uma migração nova, depois da última aplicada.
+
+A partir da Fase 14, o modelo novo do CRM ganha o que só o antigo tinha, sem
+trocar nenhuma tela ainda. A `011` (`apps/api/migracoes/011-crm-o-que-faltava.sql`)
+acrescenta o estado `mesclado` ao Contato, as tabelas `contato_consentimentos`
+e `contato_notas` (só inserção), `conversa_marcacoes` (estrela e leitura por
+Membro), `na_lixeira_em` na Conversa e, vazias, `crm_de_para` e
+`registros_crm_antigo`, que o script da Fase 15 enche. Está aplicada no banco
+de produção desde 2026-11-05 (publicada com a API no commit `49f1b54`, depois de
+um backup manual do schema `plataforma`), e daí em diante é imutável como as
+outras. Um gesto que grava no CRM e em
+`plataforma.registros` no mesmo commit passa por `executarGestoMisto`, que lê
+o CRM dentro da transação do Espaço (`lerDoCrm`) e grava nas tabelas pelo
+`aoConfirmar` de `executar()` (ver `apps/api/src/persistencia/CONTEXT.md`).
+Sobre ele nasceram as rotas por recurso: notas e consentimentos do Contato,
+`POST /contatos/:id/mesclar`, transferir Identificador, mover, atribuir, lixeira,
+restaurar e marcar a Conversa, `GET /membros/:id/sucessao-no-crm` (a remoção de
+um Membro passa os registros do CRM ao Sucessor no mesmo commit e libera as
+Conversas dele) e `/tarefas-conversacionais`. A Tarefa conversacional passa a
+nascer nas tabelas: criá-la abre a Conversa em `plataforma.conversas`, trocar o
+Canal e ligar ou criar o Negócio vão por rota, e o cartão, a tabela e a ficha
+leem Contato, Canal, última Mensagem e Negócio de um resumo em lote
+(`POST /tarefas-conversacionais/resumo`), não do estado antigo. A única tela
+nova da fase é a ficha de Contato (mesclar, transferir, notas e
+consentimentos). O que a Fase 14 deixou para depois, a Fase 15 fez (ver adiante).
+
+O plano de deploy da Fase 14 previa cortá-la em dois (decisão de corte de uma
+vez, sem ponte entre as duas bases): os planos 14-01 a 14-14 são aditivos; os
+14-15 a 14-17, que trocam os chamadores da web e tiram as quatro operações
+antigas da Tarefa conversacional de `POST /operacoes/:nome`, só deveriam subir
+na Fase 15, junto com o script de migração dos dados. Por decisão do dono, em
+2026-11-05 a fase inteira subiu de uma vez (API na VM e `main` do
+`n1-tecnologia/crm` em `49f1b54`): em produção, os ids antigos de Tarefa
+conversacional respondem 404 e o fio da Conversa e o layout de três colunas da
+ficha da Tarefa ainda leem o modelo antigo (até o corte da Fase 15, abaixo). Grupo
+e Flow ficam no modelo antigo até as Sessões 6 e 7: o modelo antigo não saiu
+por inteiro na Fase 15. A fronteira exata, as suposições adotadas, o que o
+corte tira da tela e os itens abertos estão em
+`.planning/phases/14-unifica-o-do-crm-o-modelo-novo-ganha-o-que-falta-e-a-tarefa/14-PROVAS.md`.
+
+A partir da Fase 15, o CRM novo é o único no código: as telas do CRM (Caixa de
+Entrada e fio, fichas, Funis e Negócios, Busca, Lixeira, Notificações, Início,
+Painel, Ferramentas, IA e Contas a receber) leem e gravam só as tabelas, por
+HTTP (`apps/web/src/dados/crm/`), e o modelo antigo em inglês saiu do código. O
+`DataState` perdeu as oito coleções (`contacts`, `companies`, `deals`,
+`funnels`, os três tipos de Vínculo e `channels`); `conversations` ficou,
+restrita a `ConversaDeGrupo[]`, porque Grupo e Flow só passam às tabelas nas
+Sessões 6 e 7 (F14-D-05) e são os únicos leitores do que sobrou. Quarenta
+operações antigas (Contato, Empresa, Negócio, Conversa 1:1, iniciar conversa,
+criar e configurar Canal) saíram de `OPERACOES` e respondem 404 em
+`POST /operacoes/:nome`; cinco da Conversa de Grupo seguem lá. A projeção dos
+Canais em `GET /estado` e em `executar()` foi apagada: o Canal só chega à tela
+por `GET /canais`, e Grupo, Flow e Automação o leem da tabela dentro da
+transação. Um Espaço novo nasce com o CRM vazio e sem Funil padrão (D-15-13); a
+demonstração do CRM existe só para desenvolvimento, por
+`npm run bootstrap:crm-demo -w @n1/api -- --espaco <id>` (recusa banco que não
+seja local). "Meus negócios" é o filtro `?meus=1` de `/crm/negocios`; a Pasta
+de mesmo nome virou uma Pasta comum.
+
+A migração `012` (`apps/api/migracoes/012-atividade-do-crm.sql`) acrescenta
+`plataforma.crm_atividades`, o Registro de Atividade do CRM novo (só inserção,
+gravado no mesmo commit do gesto); `GET /atividades` e a Auditoria juntam essa
+linha do tempo com a de `state.activity`. A `012` entrou em produção no corte de
+2026-11-07 (abaixo). O script de dados é
+`npm run migrar:crm-antigo -w @n1/api -- --espaco <id> --seco|--guardar|--migrar|--verificar`
+(`apps/api/src/migracao-crm/CONTEXT.md`): copia o CRM antigo de um Espaço para
+`plataforma.registros_crm_antigo`, confere e só então o apaga de `registros`,
+e com `--migrar` leva o que cabe às tabelas novas com os ids antigos
+preservados. É temporário, e quem publica deve rodá-lo **antes** de subir esta
+versão: uma linha antiga que sobra em `registros` volta como chave desconhecida
+em `GET /estado` até ser apagada.
+
+**O corte em produção foi feito em 2026-11-07** e verificado: backup do schema
+`plataforma`, `--seco` nos 19 Espaços, `migrar` (a `012`), `--guardar` nos 17
+Espaços de teste e no vazio, `--migrar --funil=guardar` no `ws_n1`, `--verificar`
+(19 de 19 iguais), `publicar.sh` (API no SHA `20b4d01`) e push da web. Quem rodou
+foi o assistente, por pedido escrito do dono. O que ele **não** provou: nenhuma tela
+foi aberta num navegador autenticado e o 404 das operações antigas só está provado
+nos testes. O roteiro literal está em
+`.planning/phases/15-unifica-o-do-crm-telas-no-modelo-novo-e-remo-o-do-modelo-ant/15-CORTE.md`;
+o relato do corte, as suposições e o que o dono ainda decide, em `15-PROVAS.md` da
+mesma pasta (seção "Corte em produção"). Não existe script de desfazer: voltar é
+restaurar o backup do corte.
+
+A partir da Fase 16, a mensageria do CRM nasce em `apps/api/src/mensageria/`,
+sobre o domínio, e dá ao Canal o caminho de entrada e o de saída de uma Mensagem
+de verdade. A migração `013` (`apps/api/migracoes/013-mensageria.sql`) cria
+`plataforma.webhooks_recebidos`, a fila de entrada, e o índice único do
+`mensagem.enviar.v1` no outbox. A mensagem recebida entra por
+`POST /webhooks/mensageria/:canalId` (rota pública, um endereço por Canal, segredo
+do Canal no cabeçalho `x-n1-webhook-segredo`, a mesma 401 para toda recusa) e pelo
+**processador de entrada**, que cria Contato, Conversa e Mensagem por
+`receberMensagem` (o gesto `registrarRecebida` saiu) e também trata o status de
+entrega e o evento de conexão. A resposta escrita na Caixa nasce `pendente`, grava
+`mensagem.enviar.v1` no mesmo commit e sai pelo **worker de saída**, que entrega pelo
+provedor do Canal; resposta ambígua nunca é reenviada sozinha e "Tentar de novo" é
+`POST /mensagens/:id/reenviar`. Os dois workers sobem pela mesma flag,
+`MENSAGERIA_WORKER_ATIVO=true`, e a unidade de produção a fixa em `false`. O tempo
+real é `GET /eventos`, um fluxo SSE do próprio `apps/api` alimentado por
+`LISTEN/NOTIFY` do Postgres (D-16-01): cada aba só recebe o que o Membro pode ler, e
+a tela soma o fluxo à releitura por revisão de 5 s, que continua de reserva. O
+anexo da Mensagem aponta para um arquivo no bucket (áudio, vídeo, documento e
+imagem, com assinatura conferida; a mídia recebida é baixada e guardada em
+`entrada/`) e uma coleta diária apaga os órfãos (`COLETA_DE_ORFAOS_ATIVA`). O
+provedor de teste só vale para Canal simulado, com segredo próprio no cofre
+(D-16-03). Um adaptador mínimo da Evolution (`provedores/evolution/`, registrado só
+com `EVOLUTION_URL`) recebe e envia texto e mídia de um Canal real, e quem liga o
+Canal a uma instância é `npm run canal:ligar-evolution -w @n1/api -- --canal <id>
+--instancia <nome>`, que recusa a instância `numeropvmarcos` (é do `automation/`).
+Ficam para a Sessão 4 o QR code e o botão "Conectar", a mensagem que a pessoa
+digita no celular, o status de entrega e a conexão vindos da Evolution, e o nono
+dígito. Ver `apps/api/src/mensageria/CONTEXT.md`.
+
+Depois da verificação da fase (`16-VERIFICATION.md`), um plano de lacunas (16-17
+a 16-22) fechou o que ela achou: "Simular conexão" recusa o Canal já ligado a um
+provedor real e a ficha esconde o botão (CR-01); o `SIGTERM` encerra a api sozinho,
+com teto de 15 s (T-16-28); a saída nunca reenvia sozinha uma Mensagem que pode ter
+saído (trava vencida, aceite não gravado, volta do Canal) e responde pelo número por
+onde o Contato escreveu; e a aba reconecta quando o fluxo de eventos fica 60 s mudo.
+**Essas correções só valem em produção depois da publicação do dono**: o 16-22 as
+prova juntas e roda o gate no Postgres local, e entrega o roteiro de publicação e do
+que conferir depois (`apps/api/deploy/CONTEXT.md`).
+
+**A `013` está em produção desde 2026-11-10**, aplicada pelo `publicar.sh` sem backup
+manual do schema `plataforma`, por decisão do dono (R-16-04 em `16-SECURITY.md`); voltar
+a API é possível, voltar a `013` seria uma `014`. A prova ao vivo (`16-PROVAS.md`)
+mostrou o pooler de produção entregando `LISTEN/NOTIFY` (A9), a Evolution real
+recebendo texto, áudio e imagem do celular e a resposta de texto e de imagem chegando
+ao aparelho. **O que segue sem prova** (`16-VERIFICATION.md`, verificação humana): o
+cronômetro dos 2 s nas duas abas pelo SSE, o `/eventos` atrás do nginx, o áudio no
+Safari e o Supabase Storage real; e a rotação da chave global da Evolution (T-16-55)
+é do dono.
 
 ## Comandos
 

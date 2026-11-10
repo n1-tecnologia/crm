@@ -33,13 +33,13 @@ import { useId, useState } from "react";
 import { Lock, Megaphone, ShieldCheck, UserPlus, Link2 } from "lucide-react";
 import { useData, useRun } from "@/dados/store";
 import { CONFIGURACOES_PADRAO_DO_GRUPO, criarGrupo, enviarLinkDeConvite, recusaDoCanal, recusaExternaNaComunidade, type ImagemDoGrupo } from "@n1/dominio/operations";
-import { contactDisplayName } from "@n1/dominio/derive";
-import { contatosComWhatsApp, noLimiteDeGrupos } from "@n1/dominio/derive-ferramentas";
+import { noLimiteDeGrupos } from "@n1/dominio/derive-ferramentas";
 import type { ConfiguracoesDoGrupo } from "@n1/dominio/types";
 import { marcarChegada } from "@/features/shell/recente";
 import { ConfirmDialog, Field, MultiSelect, Select, TextArea, TextInput } from "@/features/shell/ui";
 import { CampoDeImagem, PreviaDoGrupo, type PapelNaPrevia } from "./aparencia-do-grupo";
 import { CaixaDeConfiguracoes } from "./caixa-de-configuracoes";
+import { montarCrmDasFerramentas, recusaSePronta, useCanaisDasFerramentas, useSeletorDeContatos } from "./crm-das-ferramentas";
 import { CONFIGURACAO_DO_GRUPO_LABEL } from "./rotulos";
 
 export function CriarGrupoDialog({ open, onClose, onCreated }: { readonly open: boolean; readonly onClose: () => void; readonly onCreated: (grupoId: string) => void }) {
@@ -57,10 +57,15 @@ const ICONE_DA_CONFIGURACAO = {
 function Formulario({ onClose, onCreated }: { readonly onClose: () => void; readonly onCreated: (grupoId: string) => void }) {
   const state = useData((data) => data);
   const run = useRun();
-  const canais = state.channels.filter((c) => c.channelType === "whatsapp" && c.lifecycle === "ativo");
+  // Canal e Contato vêm do CRM novo (GET /canais e GET /contatos), não do store (3.4.8).
+  const canaisDoCrm = useCanaisDasFerramentas();
+  const canais = canaisDoCrm.canaisDeWhatsApp;
   const [nome, setNome] = useState("");
   const [descricao, setDescricao] = useState("");
-  const [canalId, setCanalId] = useState(canais.find((c) => c.connection === "conectada")?.id ?? "");
+  // Enquanto a pessoa não escolheu, vale o primeiro Canal conectado (os Canais chegam depois da abertura).
+  const [canalEscolhido, setCanalEscolhido] = useState<string | null>(null);
+  const canalId = canalEscolhido ?? canais.find((c) => c.conexao === "conectada")?.id ?? "";
+  const setCanalId = (id: string) => setCanalEscolhido(id);
   const [comunidadeId, setComunidadeId] = useState("");
   const [configuracoes, setConfiguracoes] = useState<ConfiguracoesDoGrupo>(CONFIGURACOES_PADRAO_DO_GRUPO);
   const [captacaoAtiva, setCaptacaoAtiva] = useState(true);
@@ -94,26 +99,26 @@ function Formulario({ onClose, onCreated }: { readonly onClose: () => void; read
     setParticipantes(ids);
     setConvidados((atual) => sem(atual, ids));
   };
-  const contatos = contatosComWhatsApp(state).map((c) => ({
-    value: c.id,
-    label: contactDisplayName(c),
-    detail: c.identifiers.find((i) => i.type === "identidadeDeWhatsApp")?.displayValue ?? "",
-  }));
+  // Só Contatos com WhatsApp (`comIdentificador`); a busca vai à api como `q` (3.4.8).
+  const seletor = useSeletorDeContatos([...(criador ? [criador] : []), ...administradores, ...participantes, ...convidados]);
+  const { busca, setBusca } = seletor;
+  const crm = montarCrmDasFerramentas(canaisDoCrm, seletor.contatosDoCrm);
+  const contatos = seletor.opcoes;
   const livresPara = (fora: readonly string[]) => contatos.filter((c) => !fora.includes(c.value));
   const acimaDosParticipantes = [...(criador ? [criador] : []), ...administradores];
 
   // Quem a prévia lista: o Canal (o primeiro participante, administrador) e,
   // na ordem dos papéis, o criador, os administradores e os adicionados.
   const canal = canais.find((c) => c.id === canalId);
-  const nomeDe = (id: string) => contatos.find((c) => c.value === id)?.label ?? "Contato";
+  const nomeDe = seletor.nomeDoContato;
   const pessoasDaPrevia: Array<{ readonly id: string; readonly nome: string; readonly papel: PapelNaPrevia }> = [
-    ...(canal ? [{ id: canal.id, nome: canal.name, papel: "canal" as const }] : []),
+    ...(canal ? [{ id: canal.id, nome: canal.nome, papel: "canal" as const }] : []),
     ...(criador ? [{ id: criador, nome: nomeDe(criador), papel: "criador" as const }] : []),
     ...administradores.map((id) => ({ id, nome: nomeDe(id), papel: "administrador" as const })),
     ...participantes.map((id) => ({ id, nome: nomeDe(id), papel: "membro" as const })),
   ];
 
-  const recusaCanal = recusaDoCanal(state, canalId || undefined, "gruposAdministraveis");
+  const recusaCanal = recusaDoCanal(state, canalId || undefined, "gruposAdministraveis", crm);
   const comunidades = state.comunidades.filter((c) => c.lifecycle !== "naLixeira");
   const limiteNumero = limite.trim() === "" ? undefined : Number(limite);
   const limiteInvalido = limiteNumero !== undefined && !(Number.isInteger(limiteNumero) && limiteNumero >= 0);
@@ -133,7 +138,7 @@ function Formulario({ onClose, onCreated }: { readonly onClose: () => void; read
         ...(foto ? { foto } : {}),
         ...(capa ? { capa } : {}),
         captacao: { estado: captacaoAtiva ? "ativa" : "inativa", ...(limiteNumero !== undefined && limiteNumero > 0 ? { limiteDeCliques: limiteNumero } : {}) },
-      }),
+      }, crm),
     );
     if (!r.ok) {
       setErro(r.error);
@@ -143,7 +148,7 @@ function Formulario({ onClose, onCreated }: { readonly onClose: () => void; read
     // dentro da ficha que abre em seguida (um aviso da página ficaria atrás
     // do véu dela).
     if (convidados.length > 0) {
-      const envio = run((data, me) => enviarLinkDeConvite(data, me, r.value.id, convidados));
+      const envio = run((data, me) => enviarLinkDeConvite(data, me, r.value.id, convidados, crm));
       const texto = !envio.ok
         ? `Grupo criado, mas o link de convite não saiu: ${envio.error}`
         : envio.value.falhas.length === 0
@@ -208,8 +213,8 @@ function Formulario({ onClose, onCreated }: { readonly onClose: () => void; read
                 onChange={setCanalId}
                 placeholder="Escolher o Canal"
                 options={canais.map((c) => {
-                  const recusa = recusaDoCanal(state, c.id, "gruposAdministraveis");
-                  return { value: c.id, label: c.name, detail: c.connection === "conectada" ? "conectado" : c.connection, ...(recusa ? { disabledReason: recusa } : {}) };
+                  const recusa = recusaDoCanal(state, c.id, "gruposAdministraveis", crm);
+                  return { value: c.id, label: c.nome, detail: c.conexao === "conectada" ? "conectado" : c.conexao, ...(recusa ? { disabledReason: recusa } : {}) };
                 })}
               />
             )}
@@ -224,7 +229,7 @@ function Formulario({ onClose, onCreated }: { readonly onClose: () => void; read
                 options={[
                   { value: "", label: "Nenhuma" },
                   ...comunidades.map((c) => {
-                    const motivoC = c.lifecycle !== "ativo" ? "A Comunidade não está ativa." : (recusaExternaNaComunidade(state, c, "administrador") ?? (c.canalId !== canalId ? "Administrada por outro Canal (INV-COM-03)." : noLimiteDeGrupos(state, c) ? `No limite de ${c.limiteDeGruposDoProvedor} Grupos (INV-COM-05).` : undefined));
+                    const motivoC = c.lifecycle !== "ativo" ? "A Comunidade não está ativa." : (recusaSePronta(canaisDoCrm, () => recusaExternaNaComunidade(state, c, "administrador", crm)) ?? (c.canalId !== canalId ? "Administrada por outro Canal (INV-COM-03)." : noLimiteDeGrupos(state, c) ? `No limite de ${c.limiteDeGruposDoProvedor} Grupos (INV-COM-05).` : undefined));
                     return { value: c.id, label: c.nome, ...(motivoC ? { disabledReason: motivoC } : {}) };
                   }),
                 ]}
@@ -238,6 +243,9 @@ function Formulario({ onClose, onCreated }: { readonly onClose: () => void; read
           <p id="novo-grupo-quem-entra" className="app-coluna">
             Quem entra no grupo
           </p>
+          <Field label="Buscar Contato" hint="Só aparecem Contatos com WhatsApp. A busca filtra por nome, e-mail ou telefone.">
+            {(id) => <TextInput id={id} value={busca} onChange={setBusca} placeholder="Nome, e-mail ou telefone" />}
+          </Field>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Criador do grupo" hint="Opcional. Entra como administrador e fica registrado como criador. No WhatsApp, quem cria o grupo é o Canal administrador.">
               {(id) => (

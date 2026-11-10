@@ -743,5 +743,238 @@ Plans:
 
 **Ondas de execução:** 1 → [12-01] · 2 → [12-02] · 3 → [12-03] · 4 → [12-04] · 5 → [12-05] · 6 → [12-06] · 7 → [12-07] · 8 → [12-08] · 9 → [12-09] · 10 → [12-10]
 
+### Phase 13: Gravação em menos idas e voltas ao banco
+
+**Goal:** Cortar as idas ao banco de cada gravação: cada uma custa cerca de 52 ms (API na VM de Chicago, pooler do Supabase em Oregon, `us-west-2`). Continuação da 2.2 (Fase 12), fora do cronograma das sessões; registrada aqui em 2026-11-04 porque os commits já a chamam de Fase 13.
+**Já feito (passo 1, fora do fluxo do GSD):** commit `1d0c554` — `executar()` no regime travado faz 2 idas em vez de 7; publicado na VM em 2026-11-04; a linha `gravacao medida` ganhou `idasEVoltas` (esperado: 2). Ainda não medido em produção.
+**Abertos:** medir o depois (`idasEVoltas` e o total no journal); passo 2 — cache em processo que pula a releitura quando a revisão devolvida pela trava não mudou (a hidratação em uso real custa 500–800 ms, o item que mais importa); passo 3 — mover a API para perto do banco (decisão de infra do dono).
+**Requirements**: TBD (derivar em `13-CONTEXT.md` se a fase for retomada)
+**Depends on:** Phase 12
+**Plans:** 0 plans (o passo 1 saiu direto no commit `1d0c554`)
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 13 to break down)
+
+### Phase 14: Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional
+
+**Goal:** Dar ao modelo novo do CRM (as tabelas das migrações 007 e 008) tudo o que hoje só o modelo antigo tem, e levar a Tarefa conversacional para essas tabelas, para que as telas possam trocar de base sem perder gesto. Sessão 3 do cronograma, parte A, dividida em três fases (14, 15 e 16) por decisão do dono em 2026-11-04. Fonte: `docs/09-planejamento/TAREFAS-POR-SESSAO.md`, Sessão 3, tarefas 3.1 a 3.3.
+**Entra (20 subtarefas):** 3.1.1–3.1.5 decidir o corte e dar ao modelo novo o que falta · 3.2.1–3.2.8 operações que só existem no antigo (mesclar Contatos, transferir Identificador, consentimento, mover Conversa, notas, sucessor) · 3.3.1–3.3.7 Tarefa conversacional nas tabelas novas.
+**Decisões do dono (tomadas em 2026-11-04, ver `14-CONTEXT.md`):** corte de uma vez, ensaiado numa cópia local dos dados reais (sem homologação); só o essencial entra no modelo novo; Conversa de Grupo e Mensagens de Flow ficam no antigo até as Sessões 6 e 7; Meus negócios aposenta as Listas espelho; a Tarefa conversacional pede a primeira Mensagem.
+**Ordem interna:** as decisões da 3.1 primeiro; a migração nova da 3.1.5 (a próxima depois da `010`) antes das operações da 3.2; a 3.2.1 (gesto que grava nas tabelas do CRM e em `plataforma.registros` no mesmo commit) antes das demais da 3.2; a 3.3 depois da 3.2. Domínio antes de api antes de tela.
+**Requirements**: UNI-01 a UNI-17 (IDs locais da fase, tabela "Phase Requirements" de `14-RESEARCH.md`)
+**Depends on:** Phase 9 (a Sessão 3 depende só da Sessão 1)
+**Plans:** 19/19 plans complete
+**Fronteira de deploy (D-01):** 14-01 a 14-14 são aditivos e podem subir; 14-15, 14-16 e 14-17 só sobem no deploy da Fase 15; o ensaio 14-19 da 011 sobre a cópia dos dados reais foi feito em 2026-11-05 (`14-ENSAIO.md`) e não segura nada.
+
+Plans:
+**Wave 1**
+- [x] 14-01-PLAN.md — Traçador: a migração 011 e o Contato `mesclado` do banco à tela; a 011 provada; guardas de D-06 (UNI-01, UNI-02)
+- [x] 14-02-PLAN.md — Domínio da Tarefa conversacional por ids: `vinculosDoCrmDaTarefa` e as operações `…NasTabelas` fora de `OPERACOES` (UNI-12, 13, 15, 16)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [x] 14-03-PLAN.md — Gesto misto: `lerDoCrm` em `executar()`, `executarGestoMisto` tudo ou nada, recorte da resposta compartilhado (UNI-04)
+- [x] 14-04-PLAN.md — Contato `mesclado` somente leitura em todo serviço do CRM novo (UNI-05)
+- [x] 14-05-PLAN.md — Conversa: mover para outro Contato e atribuir (UNI-08, UNI-09)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [x] 14-06-PLAN.md — Notas do Contato e transferir Identificador na api (UNI-10, UNI-06)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [x] 14-07-PLAN.md — Conversa: lixeira, restaurar, estrela e leitura por Membro, filtros de `GET /conversas` (UNI-09)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+- [x] 14-08-PLAN.md — Consentimento: regra, rotas só de inserção e `SEM_CONSENTIMENTO` no envio (UNI-07)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+- [x] 14-09-PLAN.md — Mesclar Contatos pelo gesto misto (UNI-05)
+
+**Wave 7** *(blocked on Wave 6 completion)*
+- [x] 14-10-PLAN.md — Sucessão do Membro removido nas tabelas e a prévia em números (UNI-11)
+- [x] 14-11-PLAN.md — Ficha nova de Contato: notas, consentimentos, mesclar e transferir (UNI-05, 06, 07, 10)
+
+**Wave 8** *(blocked on Wave 7 completion)*
+- [x] 14-12-PLAN.md — Canais da Lista conversacional conferidos na tabela (UNI-17)
+
+**Wave 9** *(blocked on Wave 8 completion)*
+- [x] 14-13-PLAN.md — Tarefa conversacional nasce nas tabelas e o resumo em lote (UNI-12, UNI-14)
+
+**Wave 10** *(blocked on Wave 9 completion)*
+- [x] 14-14-PLAN.md — Trocar o Canal e ligar/criar o Negócio da Tarefa pela api (UNI-15, UNI-16)
+- [x] 14-15-PLAN.md — Só no deploy da Fase 15: cartão, tabela, Reunião e ficha da Tarefa pelo resumo (UNI-14)
+
+**Wave 11** *(blocked on Wave 10 completion)*
+- [x] 14-16-PLAN.md — Só no deploy da Fase 15: diálogo da Lista, fio, ficha da Tarefa e Membros pelas rotas novas (UNI-11, 12, 15, 16)
+
+**Wave 12** *(blocked on Wave 11 completion)*
+- [x] 14-17-PLAN.md — Só no deploy da Fase 15: as quatro operações antigas fora de `OPERACOES` e as leituras antigas sem chamador (UNI-12, UNI-13)
+
+**Wave 13** *(blocked on Wave 12 completion)*
+- [x] 14-18-PLAN.md — Fechamento: gate `npm run check` em Docker migrado, `14-PROVAS.md`, `CONTEXT.md` da raiz
+
+**Wave 14** *(blocked on Wave 13 completion)*
+- [x] 14-19-PLAN.md — Ensaio D-02 da 011 sobre a cópia dos dados reais (UNI-03; espera a cópia do dono)
+
+**Ondas de execução:** 1 → [14-01, 14-02] · 2 → [14-03, 14-04, 14-05] · 3 → [14-06] · 4 → [14-07] · 5 → [14-08] · 6 → [14-09] · 7 → [14-10, 14-11] · 8 → [14-12] · 9 → [14-13] · 10 → [14-14, 14-15] · 11 → [14-16] · 12 → [14-17] · 13 → [14-18] · 14 → [14-19]
+
+### Phase 15: Unificação do CRM: telas no modelo novo e remoção do modelo antigo
+
+**Goal:** Trocar todas as telas e leituras para o modelo novo do CRM, migrar os dados antigos e remover o modelo antigo (`state.contacts`, `state.conversations`, `state.deals`, `state.funnels`, `state.channels`), exceto o resto de `Conversation` que guarda só Grupo e Flow até as Sessões 6 e 7 (decisão D-05 da Fase 14). Sessão 3 do cronograma, parte B. Fonte: `docs/09-planejamento/TAREFAS-POR-SESSAO.md`, Sessão 3, tarefas 3.4 e 3.5.
+**Entra (14 subtarefas):** 3.4.1–3.4.10 Caixa de Entrada (lista, fio e envio, configurações), fichas, Meus negócios e Reuniões, Busca/Lixeira/Notificações, Início/Configurações/Painel, Ferramentas, IA e Contas a receber · 3.5.1–3.5.4 script de migração, rodar em homologação e produção, tirar o CRM antigo do seed, remover o modelo antigo.
+**Atenção ao planejar:** a 3.5.2 pede a migração em homologação, e o ambiente de homologação não existe (plano 09-17 pulado por decisão do dono em 2026-10-23); o ensaio será local, com uma cópia dos dados reais (decisão D-02 da Fase 14); o backup diário também não está ligado, então o backup manual antes de produção é obrigatório. A remoção do modelo antigo (3.5.4) é a porta de uma via só desta fase.
+**Requirements**: UCR-01 a UCR-12 (IDs locais da fase, tabela "Phase Requirements" de `15-RESEARCH.md`; os UNI-04 a UNI-08 do `15-CONTEXT.md` colidem com a Fase 14 e ficam só como equivalência)
+**Depends on:** Phase 14
+**Plans:** 44/44 plans complete (17 ondas; 15-30, 15-32, 15-33 e 15-35 têm checkpoint do dono — a do 15-33 cobre também 15-41 a 15-43; nenhum plano toca produção — o corte é do dono no 15-35)
+
+Plans:
+- [x] 15-44-PLAN.md
+
+**Wave 1**
+- [x] 15-01-PLAN.md — Dívida F14 (D-15-07): `LER_DO_CRM`/`AO_CONFIRMAR` por módulo em `rotas/gesto-no-crm/`, `instantiateListTemplate` com Canais da tabela, `operacoes.test.ts` só com banco local
+- [x] 15-02-PLAN.md — Dívida F14 (D-15-07): WR-01, WR-02, WR-05, WR-06 e `40P01` → 409
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [x] 15-03-PLAN.md — D-15-08 (1/2): contrato emendado (ontologia), domínio e api — Conversas do Membro removido passam ao Sucessor
+- [x] 15-04-PLAN.md — D-15-09 (1/2): migração `012` (`crm_atividades`), repositório só-inserção, Nota grava Atividade
+- [x] 15-05-PLAN.md — D-15-05/D-15-10: resumo da Tarefa com Empresa, qualificação, estado e Atribuído; "Mesclar com…" pede o nome
+- [x] 15-06-PLAN.md — Base das telas: `dados/crm/conversas.ts` e `mensagens.ts`, filtro `naoLidas`, avatar novo, guardas `sem-crm-antigo`
+- [x] 15-07-PLAN.md — 3.4.8 (1/4): Ferramentas conferem Canal e Contato pelo CRM novo (`crm` opcional no fim)
+- [x] 15-08-PLAN.md — 3.4.9 domínio+api (1/2): âncoras de Chat e ensaio e Conversas do Agente pelo CRM novo
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [x] 15-11-PLAN.md — 3.4.1 (1/2): lista da Caixa e estrela pelo CRM novo
+- [x] 15-12-PLAN.md — 3.4.3 + D-15-12: configurações, Filas, Canais e o popup que só liga Canal
+- [x] 15-13-PLAN.md — 3.4.4: fichas de Contato, Empresa e Negócio sem recuo; legado apagado
+- [x] 15-14-PLAN.md — 3.4.6: Busca, Lixeira, Notificações e o selo global
+- [x] 15-16-PLAN.md — 3.4.7 (1/2) + D-15-13: Configurações e Espaço novo sem Funil padrão
+- [x] 15-17-PLAN.md — 3.4.8 (3/4): Ferramentas criam Contato de Participante nas tabelas (ids pré-gerados)
+- [x] 15-36-PLAN.md — D-15-08 (2/2): diálogo e página do Membro, e o resto de Grupo no modelo antigo com a regra nova
+- [x] 15-37-PLAN.md — D-15-09 (2/2): `GET /atividades` por Espaço e Papel, e `useAtividades` juntando as duas fontes
+- [x] 15-38-PLAN.md — 3.4.8 (2/4): `GET /contatos?comIdentificador=` e `useContatos` com o filtro
+- [x] 15-39-PLAN.md — 3.4.9 domínio+api (2/2): escopo Funil das Automações e `derive-ia` com Funis por argumento
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [x] 15-09-PLAN.md — D-15-09: gestos do CRM novo e a sucessão gravam Atividade; Auditoria com as duas fontes
+- [x] 15-10-PLAN.md — `POST /crm/nomes` e `useNomesDoCrm`
+- [x] 15-15-PLAN.md — 3.4.5 (1/2): Reunião pelo CRM novo, com as duas fontes de Atividade
+- [x] 15-20-PLAN.md — 3.4.2 (1/2) + D-15-11: o fio lê, abre e responde pelo CRM novo, sem rascunho
+
+**Wave 5** *(blocked on Wave 4 completion)*
+- [x] 15-18-PLAN.md — 3.4.7 api: agregados do Início (`/crm/inicio/*`)
+- [x] 15-19-PLAN.md — 3.4.10: Contas a receber pelo CRM novo
+- [x] 15-21-PLAN.md — 3.4.9 tela: IA pelo CRM novo
+- [x] 15-22-PLAN.md — 3.4.8 (4/4): telas das Ferramentas pelo CRM novo
+- [x] 15-24-PLAN.md — 3.4.1 (2/2): página da Conversa, gestos, coluna do Contato e mover
+- [x] 15-25-PLAN.md — 3.4.2 (2/2): nota e consentimento no fio; ficha da Tarefa conversacional com fio para ids novos
+- [x] 15-26-PLAN.md — 3.4.5 (2/3): "Meus negócios" vira filtro do Funil; rotas e árvore fora
+
+**Wave 6** *(blocked on Wave 5 completion)*
+- [x] 15-23-PLAN.md — 3.4.7 (2/2): Início e Painel pelo CRM novo
+- [x] 15-40-PLAN.md — 3.4.5 (3/3): espelho da Lista apagado (quadro, cartão, iniciar conversa, ficha antiga de Negócio), depois do 15-26
+
+**Wave 7** *(blocked on Wave 6 completion)*
+- [x] 15-27-PLAN.md — 3.5.1 caminho crítico: `migrar:crm-antigo` (`--seco`, `--guardar`, `--migrar`, `--verificar`, `--funil`), Pasta (D-15-14)
+
+**Wave 8** *(blocked on Wave 7 completion)*
+- [x] 15-28-PLAN.md — 3.5.1 mapeador de entidades e fixture congelada do seed
+
+**Wave 9** *(blocked on Wave 8 completion)*
+- [x] 15-29-PLAN.md — 3.5.3 demo: `bootstrap:crm-demo` só em banco local
+- [x] 15-30-PLAN.md — 3.5.2 ensaio sobre a cópia real em `~/n1-ensaio` (checkpoint do dono)
+
+**Wave 10** *(blocked on Wave 9 completion)*
+- [x] 15-31-PLAN.md — 3.5.3: seed sem CRM antigo (testes medidos nas três camadas)
+
+**Wave 11** *(blocked on Wave 10 completion)*
+- [x] 15-32-PLAN.md — 3.5.4 (1/5): operações antigas fora (checkpoint de uma via)
+
+**Wave 12** *(blocked on Wave 11 completion)*
+- [x] 15-33-PLAN.md — 3.5.4 (2/5): checkpoint do resto da remoção; ponte dos Canais fora; guardas finais da api e da web
+
+**Wave 13** *(blocked on Wave 12 completion)*
+- [x] 15-41-PLAN.md — 3.5.4 (3/5): a Pasta "Meus negócios" deixa de ser estrutura fixa
+
+**Wave 14** *(blocked on Wave 13 completion)*
+- [x] 15-42-PLAN.md — 3.5.4 (4/5): leituras antigas do domínio fora (derivações, ramos de operações) e testes das três camadas sem as oito coleções
+
+**Wave 15** *(blocked on Wave 14 completion)*
+- [x] 15-43-PLAN.md — 3.5.4 (5/5): construtor `seed-crm-antigo.ts`, `DataState` e tipos antigos fora, `hidratar()` provado com linha antiga, guarda final do domínio
+
+**Wave 16** *(blocked on Wave 15 completion)*
+- [x] 15-34-PLAN.md — Gate, ensaio final, `15-CORTE.md`, `CONTEXT.md` da raiz e os de camada que citam o que a fase tirou
+
+**Wave 17** *(blocked on Wave 16 completion)*
+- [x] 15-35-PLAN.md — O corte em produção, pelo dono (D-15-03), e o registro
+
+### Phase 16: Base da mensageria: entrada, saída, tempo real e mídia
+
+**Goal:** Construir uma vez só o que os quatro provedores de Canal (Sessões 4, 7, 8 e 9) usam: porta de entrada, porta de saída, tempo real e mídia das mensagens. Sessão 3 do cronograma, parte C. Fonte: `docs/09-planejamento/TAREFAS-POR-SESSAO.md`, Sessão 3, tarefas 3.6 a 3.9.
+**Entra (18 subtarefas):** 3.6.1–3.6.5 porta de entrada (interface do provedor, recebimento completo, webhook por Canal, fila de entrada, status de entrega) · 3.7.1–3.7.3 porta de saída (fila na mesma transação, entrega pelo provedor, tentar de novo) · 3.8.1–3.8.4 tempo real · 3.9.1–3.9.6 mídia (anexo ligado a arquivo, áudio e vídeo, rotas de upload e download, baixar do provedor, tocar no fio, limpeza de órfãos).
+**Decisão do dono antes de planejar:** 3.8.1 (como mandar as novidades para a tela).
+**Pronto quando (da sessão):** uma chamada simulada ao webhook de um Canal cria (ou acha) o Contato em `plataforma.contatos`, abre ou reabre a Conversa em `plataforma.conversas` e aparece na Caixa de Entrada de outra aba em menos de 2 s, com o áudio tocando; a resposta escrita na tela passa pela fila e chega ao provedor de teste.
+**Ajuste (D-16-04):** a fase inclui um adaptador mínimo da Evolution (fronteira em `COVERAGE.md`) e uma prova ao vivo com a instância do dono; o "Pronto quando" da fase passa a ter as duas partes de `16-CONTEXT.md` (provedor de teste nos testes automáticos; WhatsApp real ao vivo).
+**Requirements**: MSG-01 a MSG-06 (IDs locais da fase, definidos em `16-CONTEXT.md` `<domain>`)
+**Depends on:** Phase 15 (a ordem do plano: unificar o CRM primeiro, mensageria depois)
+**Plans:** 21/22 plans executed — 16/16 originais executados (14 ondas; 16-15 e 16-16 têm checkpoints do dono — pré-voo, publicação, prova ao vivo e a decisão do áudio; nenhum plano autônomo toca produção) e 6 de lacuna (16-17 a 16-22, 4 ondas, da verificação de 2026-11-10: CR-01, T-16-28, WR-01, WR-02, WR-04 e WR-08; a publicação é checkpoint do dono no 16-22)
+
+Plans:
+
+**Wave 1**
+- [x] 16-01-PLAN.md — 3.6.2: recebimento completo (`destinoDaRecebida`, `receberMensagem`), `registrarRecebida` fora
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [x] 16-02-PLAN.md — 3.6.1 + D-16-03: interface do provedor, provedor de teste só para Canal simulado, contrato, `canal:segredo-de-teste`
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [x] 16-03-PLAN.md — 3.6.3 + 3.6.4: migração `013`, `POST /webhooks/mensageria/:canalId`, processador de entrada
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [x] 16-04-PLAN.md — 3.7.1: `mensagem.enviar.v1` na mesma transação nos três pontos; worker antigo sem `mensagem.%`
+
+**Wave 5** *(blocked on Wave 4 completion)*
+- [x] 16-05-PLAN.md — 3.7.2: worker de saída entrega pelo provedor; tentativas sem duplicar
+
+**Wave 6** *(blocked on Wave 5 completion)*
+- [x] 16-06-PLAN.md — 3.6.5 + 3.7.1 item 5 + 3.7.3 api: status só avança, "reenviar", Canal que volta reenfileira
+
+**Wave 7** *(blocked on Wave 6 completion)*
+- [x] 16-07-PLAN.md — 3.8.2 + 3.8.3 (D-16-01): `avisarCrm`, `LISTEN`, hub e `GET /eventos`
+
+**Wave 8** *(blocked on Wave 7 completion)*
+- [x] 16-08-PLAN.md — 3.8.4 (D-16-02): tempo real na tela
+- [x] 16-09-PLAN.md — 3.9.1 a 3.9.3 (D-16-08, D-16-09): tipos e tetos da Mensagem, ticket, envio com anexo e download
+
+**Wave 9** *(blocked on Wave 8 completion)*
+- [x] 16-10-PLAN.md — 3.9.4 + 3.9.6: mídia recebida guardada, medição por etapa, URL assinada no envio, coleta de órfãos
+- [x] 16-11-PLAN.md — 3.7.3 web + 3.9.5 (D-16-10): estado da entrega, "Tentar de novo", mídia no fio e anexar
+
+**Wave 10** *(blocked on Wave 9 completion)*
+- [x] 16-12-PLAN.md — D-16-04 + D-16-06: adaptador da Evolution (cliente, tradutor, provedor)
+
+**Wave 11** *(blocked on Wave 10 completion)*
+- [x] 16-13-PLAN.md — D-16-05: `canal:ligar-evolution`, `conexao_confirmada`, `conferirNumeroConectado`
+
+**Wave 12** *(blocked on Wave 11 completion)*
+- [x] 16-14-PLAN.md — Cronograma (`andamento.mjs`), `CONTEXT.md`, `.env.example`, unidade systemd e o gate `npm run check`
+
+**Wave 13** *(blocked on Wave 12 completion)*
+- [x] 16-15-PLAN.md — `tempo-real:provar`, SSE no `provar-nginx.sh`, roteiro e pré-voo do dono (checkpoint)
+
+**Wave 14** *(blocked on Wave 13 completion)*
+- [x] 16-16-PLAN.md — Prova ao vivo em produção pelo dono, decisão do áudio e `16-PROVAS.md` (checkpoints)
+
+**Lacunas — Wave 1** *(gap closure, `/gsd-execute-phase 16 --gaps-only`)*
+- [x] 16-17-PLAN.md — CR-01 (MSG-05, D-16-03): "Simular conexão" recusa o Canal já ligado a um provedor real (domínio, 409 na api, ficha sem o botão)
+- [x] 16-18-PLAN.md — T-16-28 / WR-03: tratador único de SIGTERM/SIGINT (fluxos, workers, servidor, pool, saída; teto de 15 s), com teste num processo real
+
+**Lacunas — Wave 2** *(blocked on Wave 1 completion)*
+- [x] 16-19-PLAN.md — WR-08: a aba percebe o fluxo SSE mudo em 60 s (contrato da batida no domínio) e a espera só zera depois de conexão estável
+- [x] 16-20-PLAN.md — WR-01 + WR-02: a linha sem desfecho nunca reenvia sozinha; o aceite não gravado fecha a Mensagem; a volta do Canal só reabre `CANAL_DESCONECTADO`
+
+**Lacunas — Wave 3** *(blocked on Wave 2 completion)*
+- [x] 16-21-PLAN.md — WR-04: a resposta sai pelo Identificador por onde o Contato escreveu (`identificadorDeResposta` no domínio)
+
+**Lacunas — Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 16-22-PLAN.md — Provas juntas, `npm run check` no Postgres local, `CONTEXT.md` da raiz e a publicação pelo dono (checkpoint)
+
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*

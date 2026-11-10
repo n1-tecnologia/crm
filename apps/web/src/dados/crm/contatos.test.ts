@@ -39,8 +39,10 @@ import {
   editarIdentificador,
   enviarContatoParaLixeira,
   excluirContatoPermanentemente,
+  mesclarContatos,
   removerIdentificador,
   restaurarContato,
+  transferirIdentificador,
   useContatos,
 } from "./contatos";
 import { useMembrosAtivos, useNomeDoMembro, usePodeNoCrm } from "./sessao";
@@ -142,6 +144,35 @@ describe("mutações de Contato — a rota certa", () => {
   });
 });
 
+describe("lista de Contatos com Identificador (15-38, 3.4.8)", () => {
+  const envoltorio = ({ children }: { readonly children: ReactNode }) =>
+    createElement(SWRConfig, { value: { provider: () => new Map(), dedupingInterval: 0 } }, children);
+
+  it("(a) comIdentificador entra na chave só quando presente, e a chave muda com o filtro", () => {
+    const sem = chaveDeContatos({});
+    const com = chaveDeContatos({ comIdentificador: "whatsapp" });
+    expect(sem).toBe("/contatos?estado=ativo&limite=50&deslocamento=0");
+    expect(com).toBe("/contatos?estado=ativo&comIdentificador=whatsapp&limite=50&deslocamento=0");
+    expect(com).not.toBe(sem);
+    expect(chaveDeContatos({ comIdentificador: undefined })).toBe(sem);
+  });
+
+  it("(a) useContatos({ comIdentificador }) chama /contatos?...&comIdentificador=whatsapp; sem o filtro, a chave sem o parâmetro", async () => {
+    fetchMock.mockResolvedValue(resposta(200, { ok: true, itens: [], total: 0 }));
+    const { result, rerender } = renderHook(
+      ({ comIdentificador }: { readonly comIdentificador?: "whatsapp" }) =>
+        useContatos(comIdentificador ? { comIdentificador } : {}),
+      { wrapper: envoltorio, initialProps: { comIdentificador: "whatsapp" } as { readonly comIdentificador?: "whatsapp" } },
+    );
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toBe("http://api/contatos?estado=ativo&comIdentificador=whatsapp&limite=50&deslocamento=0");
+
+    // Desligar o filtro troca de chave e volta à lista de hoje.
+    rerender({});
+    await waitFor(() => expect(fetchMock.mock.calls.at(-1)?.[0]).toBe("http://api/contatos?estado=ativo&limite=50&deslocamento=0"));
+  });
+});
+
 describe("mutações de Contato — invalidação e recusa", () => {
   it("(b) depois do sucesso, invalidarCrm('/contatos') é chamado", async () => {
     fetchMock.mockResolvedValueOnce(resposta(200, { ok: true, dados: DETALHADO }));
@@ -159,6 +190,50 @@ describe("mutações de Contato — invalidação e recusa", () => {
     expect((erro as ErroDeApi).codigo).toBe("CONTATO_BLOQUEADO");
     expect((erro as ErroDeApi).bloqueios).toEqual(bloqueios);
     expect(invalidarCrm).not.toHaveBeenCalled();
+  });
+});
+
+describe("mutações de Contato — mesclar e transferir Identificador (14-09, 14-06)", () => {
+  it("(d) mesclarContatos('b', 'a') manda POST /contatos/b/mesclar com { absorvidoId } e invalida /contatos", async () => {
+    fetchMock.mockResolvedValueOnce(resposta(200, { ok: true, dados: DETALHADO }));
+    const dados = await mesclarContatos("b", "a");
+    const { url, init } = chamadaFeita();
+    expect(url).toBe("http://api/contatos/b/mesclar");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(JSON.stringify({ absorvidoId: "a" }));
+    expect(dados).toEqual(DETALHADO);
+    expect(invalidarCrm).toHaveBeenCalledWith("/contatos");
+  });
+
+  it("(d) transferirIdentificador('a', 'i1', 'b') manda POST /contatos/a/identificadores/i1/transferir com { paraContatoId }", async () => {
+    fetchMock.mockResolvedValueOnce(resposta(200, { ok: true, dados: DETALHADO }));
+    await transferirIdentificador("a", "i1", "b");
+    const { url, init } = chamadaFeita();
+    expect(url).toBe("http://api/contatos/a/identificadores/i1/transferir");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(JSON.stringify({ paraContatoId: "b" }));
+    expect(invalidarCrm).toHaveBeenCalledWith("/contatos");
+  });
+
+  it("(d) um 409 da mesclagem vira ErroDeApi com status, codigo e campo, e nada é invalidado", async () => {
+    fetchMock.mockResolvedValueOnce(
+      resposta(409, { ok: false, error: "Este Contato já foi mesclado.", codigo: "MESCLAGEM_RECUSADA", campo: "absorvidoId" }),
+    );
+    const erro = (await mesclarContatos("b", "a").catch((e: unknown) => e)) as ErroDeApi;
+    expect(erro).toBeInstanceOf(ErroDeApi);
+    expect(erro.status).toBe(409);
+    expect(erro.codigo).toBe("MESCLAGEM_RECUSADA");
+    expect(erro.campo).toBe("absorvidoId");
+    expect(invalidarCrm).not.toHaveBeenCalled();
+  });
+
+  it("(d) um 409 da transferência chega com a frase da api", async () => {
+    fetchMock.mockResolvedValueOnce(
+      resposta(409, { ok: false, error: "O destino já tem 20 Identificadores.", codigo: "TRANSFERENCIA_RECUSADA", campo: "paraContatoId" }),
+    );
+    const erro = (await transferirIdentificador("a", "i1", "b").catch((e: unknown) => e)) as ErroDeApi;
+    expect(erro.status).toBe(409);
+    expect(erro.message).toBe("O destino já tem 20 Identificadores.");
   });
 });
 

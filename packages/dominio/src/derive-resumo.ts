@@ -1,29 +1,27 @@
 /**
  * O resumo do Membro no Início: mensagens novas, Leads a atender e as
- * estatísticas do período. Tudo derivado dos registros que já existem —
- * nada aqui é gravado (B100: o que se mostra é recalculado a cada leitura).
+ * estatísticas do período. Tudo derivado — nada aqui é gravado (B100: o que se
+ * mostra é recalculado a cada leitura).
+ *
+ * Desde o 15-23 (3.4.7, UCR-07) o que é do CRM NÃO sai do store: as linhas de
+ * Conversa, os Leads e as ocorrências por dia chegam por argumento, lidas das
+ * rotas (`GET /conversas`, `GET /crm/inicio/*`). Do store só ficam o Catálogo (as
+ * Qualificações "Lead") e as Tarefas. As funções `naoLidas` e `ultimaAtividade`
+ * seguem sobre a Conversa do modelo antigo porque a Caixa de Entrada ainda as usa.
  *
  * Funções puras, sem React: `agora` vem de fora, para o teste fixar o relógio
  * e para o HTML do servidor não depender da hora de quem renderiza.
  */
 
 import { diaCivilNoFuso } from "./recortes-de-tarefas";
-import { effectiveLifecycleOfTask, lastInteraction, memberSeesTask } from "./derive";
+import type { ConversaNaLista } from "./crm/conversas";
+import type { EstatisticasDoCrm } from "./crm/inicio";
+import { effectiveLifecycleOfTask, memberSeesTask } from "./derive";
 import type { DataState } from "./state";
-import type { ActorRef, Contact, Conversation, Id, Instant, Message, Money } from "./types";
+import type { ActorRef, ConversaDeGrupo, Id, Instant, Money } from "./types";
 
 const doMembro = (ator: ActorRef | undefined, memberId: Id): boolean =>
   ator?.kind === "member" && ator.id === memberId;
-
-/** A última Mensagem trocada com o Contato na Conversa: nota interna não conta (mesma leitura de `lastInteraction`). */
-function ultimaMensagemExterna(conversa: Conversation): Message | undefined {
-  let ultima: Message | undefined;
-  for (const mensagem of conversa.messages) {
-    if (mensagem.direction === "interna") continue;
-    if (!ultima || mensagem.createdAt >= ultima.createdAt) ultima = mensagem;
-  }
-  return ultima;
-}
 
 /* ───────────────────────────── Mensagens novas ───────────────────────────── */
 
@@ -33,7 +31,7 @@ function ultimaMensagemExterna(conversa: Conversation): Message | undefined {
  * Mensagens, e aí a Caixa mentiria para quem atende. É a MESMA conta da Caixa
  * de Entrada — ela lê daqui.
  */
-export function naoLidas(conversa: Conversation, memberId: Id): number {
+export function naoLidas(conversa: ConversaDeGrupo, memberId: Id): number {
   return conversa.messages.filter(
     (mensagem) =>
       mensagem.direction === "recebida" &&
@@ -42,114 +40,84 @@ export function naoLidas(conversa: Conversation, memberId: Id): number {
 }
 
 /** O instante da Mensagem mais recente (de qualquer direção); sem Mensagem, o nascimento da Conversa. */
-export function ultimaAtividade(conversa: Conversation): Instant {
+export function ultimaAtividade(conversa: ConversaDeGrupo): Instant {
   const ultima = [...conversa.messages].sort((a, b) => a.createdAt.localeCompare(b.createdAt)).at(-1);
   return ultima?.createdAt ?? conversa.createdAt;
 }
 
-export interface ConversaComNovas {
-  readonly conversa: Conversation;
-  readonly contato: Contact | undefined;
+/** Uma Conversa do bloco "Mensagens novas", como `GET /conversas?naoLidas=true` a devolve. */
+export interface MensagemNovaDaConversa {
+  readonly conversaId: string;
+  /** `null` só quando o Contato não é achado neste Espaço. */
+  readonly contatoNome: string | null;
+  /** As Mensagens recebidas que o Membro ainda não leu nesta Conversa. */
   readonly naoLidas: number;
-  /** A última Mensagem trocada com o Contato (recebida ou enviada; nota interna não conta). */
-  readonly ultima: Message | undefined;
+  /** Quando chegou a Mensagem recebida mais recente; sem ela, a última mudança da Conversa (ISO 8601 UTC). */
   readonly ultimaAtividade: Instant;
 }
 
+export interface MensagensNovasDoMembro {
+  /** A mais recente primeiro. */
+  readonly linhas: readonly MensagemNovaDaConversa[];
+  /** Soma das não lidas das linhas lidas. Com `parcial`, é um piso, não o total do Espaço. */
+  readonly naoLidas: number;
+  /** Quantas Conversas têm Mensagem nova: o `total` da api, não o tamanho da página. */
+  readonly conversas: number;
+  /** A api tem mais Conversas do que as linhas lidas: o número de mensagens é só das lidas. */
+  readonly parcial: boolean;
+}
+
 /**
- * As Conversas que esperam por quem olha: ativas, atribuídas a ele e com
- * Mensagem recebida que ele ainda não leu — a mais recente primeiro. Uma
- * resolvida com não lida CONTA: é a mesma conta da aba "Não lidos" da Caixa
- * de Entrada, o destino do atalho — os dois números têm de bater
- * (PENDENCIAS-FRONTEND P32). Ser Atribuído exige `ver` na Conversa (a Fila é a origem da
- * permissão por referência operacional, B70), então não há filtro de
- * permissão a mais aqui.
+ * As Conversas que esperam por quem olha, como a api as listou
+ * (`naoLidas=true&atribuidoId=<Membro>`: ativas, atribuídas a ele e com Mensagem
+ * recebida depois do ponto de leitura dele). Uma resolvida com não lida CONTA: é
+ * a mesma conta da aba "Não lidos" da Caixa de Entrada, o destino do atalho — os
+ * dois números têm de bater (PENDENCIAS-FRONTEND P32).
+ *
+ * Ninguém soma páginas no navegador sem dizer: a soma das não lidas é só das
+ * linhas lidas, e `parcial` avisa quando a api tem mais Conversas do que veio
+ * (`total` maior que as linhas).
  */
-export function conversasComMensagensNovas(state: DataState, memberId: Id): ConversaComNovas[] {
-  const encontradas: ConversaComNovas[] = [];
-  for (const conversa of state.conversations) {
-    if (conversa.lifecycle !== "ativo") continue;
-    if (!doMembro(conversa.assignee, memberId)) continue;
-    const novas = naoLidas(conversa, memberId);
-    if (novas === 0) continue;
-    encontradas.push({
-      conversa,
-      contato: state.contacts.find((c) => c.id === conversa.contactId),
-      naoLidas: novas,
-      ultima: ultimaMensagemExterna(conversa),
-      ultimaAtividade: ultimaAtividade(conversa),
-    });
-  }
-  return encontradas.sort(
-    (a, b) => b.ultimaAtividade.localeCompare(a.ultimaAtividade) || a.conversa.id.localeCompare(b.conversa.id),
-  );
+export function mensagensNovasDasConversas(itens: readonly ConversaNaLista[], total: number): MensagensNovasDoMembro {
+  const linhas = itens
+    .filter((conversa) => conversa.naoLidas > 0)
+    .map(
+      (conversa): MensagemNovaDaConversa => ({
+        conversaId: conversa.id,
+        contatoNome: conversa.contatoNome,
+        naoLidas: conversa.naoLidas,
+        ultimaAtividade: conversa.ultimaRecebidaEm ?? conversa.atualizadoEm,
+      }),
+    )
+    .sort((a, b) => b.ultimaAtividade.localeCompare(a.ultimaAtividade) || a.conversaId.localeCompare(b.conversaId));
+  return {
+    linhas,
+    naoLidas: linhas.reduce((soma, linha) => soma + linha.naoLidas, 0),
+    conversas: total,
+    parcial: total > itens.length,
+  };
 }
 
 /* ───────────────────────────── Leads a atender ───────────────────────────── */
-
-export type MotivoDoLead = "semContato" | "aguardandoResposta";
-
-export interface LeadAAtender {
-  readonly contato: Contact;
-  readonly motivo: MotivoDoLead;
-  /** Só em `aguardandoResposta`: a Conversa em que a bola está com a organização. */
-  readonly conversa: Conversation | undefined;
-  /** Desde quando espera: o nascimento do Contato, ou a Mensagem recebida sem resposta. */
-  readonly desde: Instant;
-}
 
 const normalizar = (texto: string): string =>
   texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("pt-BR");
 
 /**
- * As Definições de Qualificação chamadas "Lead". Lead não é entidade nem
+ * Os ids das Definições de Qualificação chamadas "Lead". Lead não é entidade nem
  * Etapa de Negócio: é uma Qualificação do Contato (contatos.md, seção 6;
  * negocios.md; Glossário; DO-CON-05). Sem categoria fixa de Qualificação
  * ainda (C23 aberta), a única leitura possível é pelo NOME — sem distinguir
  * maiúsculas nem acentos. A Definição arquivada continua valendo para quem já
  * a tem.
- */
-function qualificacoesDeLead(state: DataState): ReadonlySet<Id> {
-  return new Set(
-    state.catalog.filter((item) => item.kind === "qualificacao" && normalizar(item.name) === "lead").map((item) => item.id),
-  );
-}
-
-/**
- * Os Leads do Membro que pedem ação dele: Contatos ativos de que ele é o
- * Proprietário, com Qualificação "Lead", e
- * - `semContato`: ninguém falou com eles ainda — nenhuma Mensagem (fora nota
- *   interna) em Conversa nenhuma (a "Última interação" vazia, documento 10);
- *   esperam desde o nascimento do Contato; ou
- * - `aguardandoResposta`: têm Conversa ativa `aberta` cuja última Mensagem é
- *   `recebida` — a bola está com a organização (DO-CXE-07); esperam desde essa
- *   Mensagem, e com várias Conversas assim vale a que espera há mais tempo.
  *
- * O Lead cuja última Mensagem é `enviada` espera pelo Contato, não por nós, e
- * fica fora. A ordem é de quem espera há mais tempo primeiro.
+ * Os Leads em si (Contatos do Membro com essa Qualificação que nunca tiveram
+ * Mensagem ou esperam resposta nossa) saem do servidor:
+ * `GET /crm/inicio/leads-a-atender?qualificacao=<id>` (15-18). O Catálogo é a
+ * única parte que a tela ainda lê do store.
  */
-export function leadsAAtender(state: DataState, memberId: Id): LeadAAtender[] {
-  const lead = qualificacoesDeLead(state);
-  const encontrados: LeadAAtender[] = [];
-  for (const contato of state.contacts) {
-    if (contato.lifecycle !== "ativo" || contato.ownerMemberId !== memberId) continue;
-    if (contato.qualificationId === undefined || !lead.has(contato.qualificationId)) continue;
-
-    if (lastInteraction(state, contato.id) === null) {
-      encontrados.push({ contato, motivo: "semContato", conversa: undefined, desde: contato.createdAt });
-      continue;
-    }
-
-    let esperando: { readonly conversa: Conversation; readonly desde: Instant } | undefined;
-    for (const conversa of state.conversations) {
-      if (conversa.contactId !== contato.id || conversa.lifecycle !== "ativo" || conversa.state !== "aberta") continue;
-      const ultima = ultimaMensagemExterna(conversa);
-      if (ultima?.direction !== "recebida") continue;
-      if (!esperando || ultima.createdAt < esperando.desde) esperando = { conversa, desde: ultima.createdAt };
-    }
-    if (esperando) encontrados.push({ contato, motivo: "aguardandoResposta", ...esperando });
-  }
-  return encontrados.sort((a, b) => a.desde.localeCompare(b.desde) || a.contato.id.localeCompare(b.contato.id));
+export function qualificacoesDeLead(state: DataState): readonly Id[] {
+  return state.catalog.filter((item) => item.kind === "qualificacao" && normalizar(item.name) === "lead").map((item) => item.id);
 }
 
 /* ───────────────────────────── Estatísticas do período ───────────────────────────── */
@@ -348,16 +316,10 @@ export interface EstatisticasDoMembro {
   readonly metricas: Readonly<Record<MetricaDoResumo, LeituraDaMetrica>>;
 }
 
-/**
- * A ação que o Registro de Atividade grava quando um Membro resolve uma
- * Conversa (`resolveConversation` e a resolução no ato de mover Conversa,
- * `operations/conversations.ts`). A Conversa guarda `resolvedAt` mas não
- * quem resolveu: o Ator do Registro é a única atribuição.
- */
-const ACAO_CONVERSA_RESOLVIDA = "Conversa resolvida";
-
 interface Ocorrencia {
   readonly instante: number;
+  /** Quantas ocorrências este ponto representa; o CRM entrega a contagem do dia, não uma linha por ato. */
+  readonly quantidade?: number;
   readonly valor?: Money;
 }
 
@@ -368,31 +330,39 @@ function somaNumaMoeda(ocorrencias: readonly Ocorrencia[]): Money | null {
   return { amount: valores.reduce((soma, v) => soma + v.amount, 0), currency: moeda };
 }
 
-function lerMetrica(metrica: MetricaDoResumo, ocorrencias: readonly Ocorrencia[], janela: JanelaDoResumo): LeituraDaMetrica {
+function lerMetrica(
+  metrica: MetricaDoResumo,
+  ocorrencias: readonly Ocorrencia[],
+  janela: JanelaDoResumo,
+  /** Onde a janela anterior começa; as contagens por dia a abrem no início do dia que contém `anteriorInicio`. */
+  anteriorDesde: number = janela.anteriorInicio.getTime(),
+): LeituraDaMetrica {
   const inicio = janela.inicio.getTime();
   const fim = janela.fim.getTime();
-  const anteriorInicio = janela.anteriorInicio.getTime();
   const porBalde = janela.baldes.map(() => 0);
   const contadas: Ocorrencia[] = [];
+  let valor = 0;
   let anterior = 0;
   for (const ocorrencia of ocorrencias) {
     const t = ocorrencia.instante;
+    const quantidade = ocorrencia.quantidade ?? 1;
     if (t >= inicio && t <= fim) {
       contadas.push(ocorrencia);
+      valor += quantidade;
       // Os baldes são contíguos a partir de `inicio`: o do instante é o último que já começou.
       for (let i = janela.baldes.length - 1; i >= 0; i -= 1) {
         if (t >= (janela.baldes[i]?.inicio.getTime() ?? Number.POSITIVE_INFINITY)) {
-          porBalde[i] = (porBalde[i] ?? 0) + 1;
+          porBalde[i] = (porBalde[i] ?? 0) + quantidade;
           break;
         }
       }
-    } else if (t >= anteriorInicio && t < inicio) {
-      anterior += 1;
+    } else if (t >= anteriorDesde && t < inicio) {
+      anterior += quantidade;
     }
   }
   return {
     metrica,
-    valor: contadas.length,
+    valor,
     anterior,
     porBalde,
     valorMonetario: metrica === "negociosGanhos" ? somaNumaMoeda(contadas) : null,
@@ -404,27 +374,37 @@ function lerMetrica(metrica: MetricaDoResumo, ocorrencias: readonly Ocorrencia[]
  * comparar. Um registro conta quando o seu instante está em `[inicio, agora]`
  * e vai para "anterior" quando está em `[anteriorInicio, inicio)`. A lixeira
  * nunca conta (INV-PAI-04).
- * - `tarefasConcluidas`: Tarefas com Momento de conclusão, das quais ele é
- *   Responsável, fora da lixeira (estado efetivo, B36) e que ele VÊ hoje —
+ * - `tarefasConcluidas` (do store): Tarefas com Momento de conclusão, das quais
+ *   ele é Responsável, fora da lixeira (estado efetivo, B36) e que ele VÊ hoje —
  *   nunca se conta o que quem olha não vê (RN-PAI-10; B103);
- * - `mensagensEnviadas`: Mensagens `enviada` cujo Ator é ele, pelo momento de
- *   criação, em Conversas fora da lixeira;
- * - `conversasResolvidas`: Registros de Atividade "Conversa resolvida" com
- *   resultado `ok` e Ator = ele, pelo instante do Registro — cada ato de
- *   resolver conta (resolver, reabrir e resolver de novo são dois). O
- *   Registro de uma Conversa hoje na lixeira ou eliminada não entra
- *   (INV-PAI-04; RN-PAI-30);
- * - `negociosGanhos`: Negócios `ganho` de que ele é o Proprietário (o Negócio
- *   tem Proprietário, nunca Responsável), pelo Momento de encerramento, fora
- *   da lixeira; com a soma dos Valores numa moeda só (RN-PAI-13).
+ * - as outras três vêm do servidor (`GET /crm/inicio/estatisticas`, 15-18), já
+ *   somadas por dia no fuso do Espaço e SÓ do Membro da sessão, e entram por
+ *   `crm` (3.4.7, UCR-07):
+ *   - `mensagensEnviadas`: Mensagens `enviada` de que ele é o Ator, em Conversas
+ *     fora da lixeira;
+ *   - `conversasResolvidas`: Conversas `resolvida` de que ele é o Atribuído, pelo
+ *     momento de resolução (o modelo novo não guarda quem clicou em resolver);
+ *   - `negociosGanhos`: Negócios `ganho` de que ele é o Proprietário, pelo
+ *     Momento de encerramento, fora da lixeira; com a soma dos Valores numa moeda
+ *     só (RN-PAI-13).
+ *
+ * `crm` é `undefined` enquanto a api não respondeu (ou se recusou) e uma série é
+ * `null` quando o Papel não lê o recurso: as duas leituras valem zero, nunca um
+ * número inventado. Um dia do CRM é um ponto só, no início do dia civil no fuso do
+ * Espaço: entra na janela atual quando esse início está em `[inicio, agora]` e na
+ * anterior quando está entre o início do dia que contém `anteriorInicio` e `inicio`
+ * (a comparação é por dia inteiro; as janelas de `janelasDeConsultaDoCrm` pedem ao
+ * servidor exatamente esses dias).
  */
 export function estatisticasDoMembro(
   state: DataState,
   memberId: Id,
   periodo: PeriodoDoResumo,
   agora: Date,
+  crm: EstatisticasDoCrm | undefined,
 ): EstatisticasDoMembro {
-  const janela = janelaDoResumo(periodo, agora, state.workspace.locale.timezone);
+  const fuso = state.workspace.locale.timezone;
+  const janela = janelaDoResumo(periodo, agora, fuso);
   const desde = janela.anteriorInicio.getTime();
   const ate = janela.fim.getTime();
   // Recorte barato primeiro: só o que cai numa das duas janelas passa às
@@ -444,41 +424,88 @@ export function estatisticasDoMembro(
     tarefasConcluidas.push({ instante: t });
   }
 
-  const mensagensEnviadas: Ocorrencia[] = [];
-  for (const conversa of state.conversations) {
-    if (conversa.lifecycle === "naLixeira") continue;
-    for (const mensagem of conversa.messages) {
-      if (mensagem.direction !== "enviada" || !doMembro(mensagem.actor, memberId)) continue;
-      const t = noAlcance(mensagem.createdAt);
-      if (t !== null) mensagensEnviadas.push({ instante: t });
-    }
-  }
+  const inicioDoDiaDoCrm = (dia: string): number | null =>
+    /^\d{4}-\d{2}-\d{2}$/.test(dia) ? inicioDoDiaNoFuso(dia, fuso).getTime() : null;
+  const doCrm = <T extends { readonly dia: string; readonly quantidade: number }>(
+    linhas: readonly T[] | null | undefined,
+    comoOcorrencia: (linha: T) => Omit<Ocorrencia, "instante">,
+  ): Ocorrencia[] =>
+    (linhas ?? []).flatMap((linha) => {
+      const instante = inicioDoDiaDoCrm(linha.dia);
+      return instante === null ? [] : [{ instante, ...comoOcorrencia(linha) }];
+    });
+  const anteriorDesdeDoCrm = inicioDoDiaNoFuso(diaCivilNoFuso(janela.anteriorInicio, fuso), fuso).getTime();
 
-  const conversasResolvidas: Ocorrencia[] = [];
-  for (const registro of state.activity) {
-    if (registro.action !== ACAO_CONVERSA_RESOLVIDA || registro.objectType !== "conversation") continue;
-    if (registro.result !== "ok" || !doMembro(registro.actor, memberId)) continue;
-    const t = noAlcance(registro.at);
-    if (t === null) continue;
-    const conversa = state.conversations.find((c) => c.id === registro.objectId);
-    if (!conversa || conversa.lifecycle === "naLixeira") continue;
-    conversasResolvidas.push({ instante: t });
-  }
-
-  const negociosGanhos: Ocorrencia[] = [];
-  for (const deal of state.deals) {
-    if (deal.ownerMemberId !== memberId || deal.situation !== "ganho" || deal.lifecycle === "naLixeira") continue;
-    const t = noAlcance(deal.closedAt);
-    if (t !== null) negociosGanhos.push(deal.value ? { instante: t, valor: deal.value } : { instante: t });
-  }
+  const mensagensEnviadas = doCrm(crm?.mensagensEnviadas, (linha) => ({ quantidade: linha.quantidade }));
+  const conversasResolvidas = doCrm(crm?.conversasResolvidas, (linha) => ({ quantidade: linha.quantidade }));
+  // Negócio ganho sem Valor soma 0 e não escolhe moeda: só o Valor positivo entra na soma de uma moeda só (RN-PAI-13).
+  const negociosGanhos = doCrm(crm?.negociosGanhos, (linha) => ({
+    quantidade: linha.quantidade,
+    ...(linha.valor > 0 ? { valor: { amount: linha.valor, currency: linha.moeda } } : {}),
+  }));
 
   return {
     janela,
     metricas: {
       tarefasConcluidas: lerMetrica("tarefasConcluidas", tarefasConcluidas, janela),
-      mensagensEnviadas: lerMetrica("mensagensEnviadas", mensagensEnviadas, janela),
-      conversasResolvidas: lerMetrica("conversasResolvidas", conversasResolvidas, janela),
-      negociosGanhos: lerMetrica("negociosGanhos", negociosGanhos, janela),
+      mensagensEnviadas: lerMetrica("mensagensEnviadas", mensagensEnviadas, janela, anteriorDesdeDoCrm),
+      conversasResolvidas: lerMetrica("conversasResolvidas", conversasResolvidas, janela, anteriorDesdeDoCrm),
+      negociosGanhos: lerMetrica("negociosGanhos", negociosGanhos, janela, anteriorDesdeDoCrm),
     },
+  };
+}
+
+/** Uma janela de consulta de `GET /crm/inicio/estatisticas`: instantes ISO 8601. */
+export interface JanelaDeConsultaDoCrm {
+  readonly desde: string;
+  readonly ate: string;
+}
+
+/**
+ * As duas consultas que as estatísticas pedem ao servidor: a janela ATUAL e a
+ * ANTERIOR, cada uma sozinha. Duas e não uma porque a api aceita no máximo 400
+ * dias entre `desde` e `ate`, e o "ano" com o ano anterior para comparar passa de
+ * 700. As duas são estáveis o dia inteiro (viram a chave do SWR): a atual vai do
+ * início do primeiro balde ao fim do dia de hoje (não ao "agora", que muda a cada
+ * minuto) e a anterior começa no início de um dia do fuso e termina um milissegundo
+ * antes da atual. `agora` mexe em `anteriorInicio` só quando cruza a meia-noite
+ * local, e nesse instante `desde` também troca de dia.
+ */
+export function janelasDeConsultaDoCrm(
+  janela: JanelaDoResumo,
+  fuso: string,
+): { readonly atual: JanelaDeConsultaDoCrm; readonly anterior: JanelaDeConsultaDoCrm } {
+  const hoje = diaCivilNoFuso(janela.fim, fuso);
+  const fimDeHoje = inicioDoDiaNoFuso(somarDias(hoje, 1), fuso).getTime() - 1;
+  return {
+    atual: { desde: janela.inicio.toISOString(), ate: new Date(fimDeHoje).toISOString() },
+    anterior: {
+      desde: inicioDoDiaNoFuso(diaCivilNoFuso(janela.anteriorInicio, fuso), fuso).toISOString(),
+      ate: new Date(janela.inicio.getTime() - 1).toISOString(),
+    },
+  };
+}
+
+const juntarSeries = <T>(anterior: readonly T[] | null, atual: readonly T[] | null): readonly T[] | null =>
+  anterior === null ? atual : atual === null ? anterior : [...anterior, ...atual];
+
+/**
+ * As respostas das duas janelas numa só, para `estatisticasDoMembro`. Janelas que
+ * não se encostam não repetem dia, então basta concatenar. Sem uma das respostas
+ * (ainda carregando, ou recusada), vale a outra; sem nenhuma, `undefined`.
+ */
+export function juntarEstatisticasDoCrm(
+  atual: EstatisticasDoCrm | undefined,
+  anterior: EstatisticasDoCrm | undefined,
+): EstatisticasDoCrm | undefined {
+  if (atual === undefined) return anterior;
+  if (anterior === undefined) return atual;
+  return {
+    desde: anterior.desde < atual.desde ? anterior.desde : atual.desde,
+    ate: anterior.ate > atual.ate ? anterior.ate : atual.ate,
+    fuso: atual.fuso,
+    mensagensEnviadas: juntarSeries(anterior.mensagensEnviadas, atual.mensagensEnviadas),
+    conversasResolvidas: juntarSeries(anterior.conversasResolvidas, atual.conversasResolvidas),
+    negociosGanhos: juntarSeries(anterior.negociosGanhos, atual.negociosGanhos),
   };
 }

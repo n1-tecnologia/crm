@@ -9,13 +9,12 @@ import type { DataState } from "./state";
 import type {
   ComponenteDeFlow,
   Comunidade,
-  Contact,
-  Conversation,
+  ConversaDeGrupo,
   Flow,
   Grupo,
   Id,
   LinkDeCaptacao,
-  Message,
+  MensagemDeGrupo,
   ParticipacaoDeGrupo,
   PedidoDeEntrada,
   TelaDeFlow,
@@ -142,7 +141,7 @@ export function proximoGrupoDoLink(state: DataState, link: LinkDeCaptacao): Grup
 }
 
 /** INV-GRP-05 — a única Conversa não eliminada com o Identificador de grupo no Canal administrador. */
-export const conversaDoGrupo = (state: DataState, grupo: Grupo): Conversation | undefined =>
+export const conversaDoGrupo = (state: DataState, grupo: Grupo): ConversaDeGrupo | undefined =>
   grupo.identificadorExterno === undefined
     ? undefined
     : state.conversations.find(
@@ -272,8 +271,8 @@ export function camposDaTela(tela: TelaDeFlow): CampoDeFlow[] {
 export const camposDeFlow = (versao: VersaoDeFlow): CampoDeFlow[] => telasOrdenadas(versao).flatMap(camposDaTela);
 
 /** Toda Mensagem `enviada` que leva este Flow (por Versão quando pedido). */
-export function enviosDoFlow(state: DataState, flowId: Id, versaoId?: Id): Array<{ readonly conversa: Conversation; readonly mensagem: Message }> {
-  const saida: Array<{ readonly conversa: Conversation; readonly mensagem: Message }> = [];
+export function enviosDoFlow(state: DataState, flowId: Id, versaoId?: Id): Array<{ readonly conversa: ConversaDeGrupo; readonly mensagem: MensagemDeGrupo }> {
+  const saida: Array<{ readonly conversa: ConversaDeGrupo; readonly mensagem: MensagemDeGrupo }> = [];
   for (const conversa of state.conversations) {
     for (const mensagem of conversa.messages) {
       if (mensagem.direction !== "enviada" || mensagem.flow?.flowId !== flowId) continue;
@@ -284,8 +283,8 @@ export function enviosDoFlow(state: DataState, flowId: Id, versaoId?: Id): Array
   return saida.sort((a, b) => b.mensagem.createdAt.localeCompare(a.mensagem.createdAt));
 }
 
-export function respostasDoFlow(state: DataState, flowId: Id, versaoId?: Id): Array<{ readonly conversa: Conversation; readonly mensagem: Message }> {
-  const saida: Array<{ readonly conversa: Conversation; readonly mensagem: Message }> = [];
+export function respostasDoFlow(state: DataState, flowId: Id, versaoId?: Id): Array<{ readonly conversa: ConversaDeGrupo; readonly mensagem: MensagemDeGrupo }> {
+  const saida: Array<{ readonly conversa: ConversaDeGrupo; readonly mensagem: MensagemDeGrupo }> = [];
   for (const conversa of state.conversations) {
     for (const mensagem of conversa.messages) {
       if (mensagem.direction !== "recebida" || mensagem.respostaDeFlow?.flowId !== flowId) continue;
@@ -303,19 +302,12 @@ export function metricasDoFlow(state: DataState, flowId: Id, versaoId?: Id): { r
   return { envios, respostas, taxa: envios === 0 ? null : Math.min(1, respostas / envios) };
 }
 
-export const respostasDeFlowDoContato = (state: DataState, contactId: Id): Message[] =>
+export const respostasDeFlowDoContato = (state: DataState, contactId: Id): MensagemDeGrupo[] =>
   state.conversations
     .filter((c) => c.contactId === contactId)
     .flatMap((c) => c.messages.filter((m) => m.respostaDeFlow !== undefined))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
-/** Contatos com Identificador que o WhatsApp resolve — os que podem entrar num Grupo ou receber um Flow. */
 /** O endereço de uma imagem do Espaço (a foto e a capa de um Grupo), quando ela tem conteúdo local. */
 export const urlDoArquivo = (state: DataState, fileId: string | undefined): string | undefined =>
   fileId ? state.files.find((f) => f.id === fileId)?.url : undefined;
-
-export const contatosComWhatsApp = (state: DataState): Contact[] =>
-  state.contacts.filter((c) => c.lifecycle === "ativo" && c.identifiers.some((i) => i.type === "identidadeDeWhatsApp"));
-
-export const identidadeDeWhatsApp = (contact: Contact): string | undefined =>
-  contact.identifiers.find((i) => i.type === "identidadeDeWhatsApp")?.value;

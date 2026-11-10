@@ -210,16 +210,17 @@ interface ResolvedResource {
   readonly label: string;
 }
 
-/** The Resource types B38b reaches — Chat Sessions are deliberately absent. */
-function resolveResource(state: DataState, resourceId: string): ResolvedResource | null {
+/**
+ * The Resource types B38b reaches — Chat Sessions are deliberately absent. O Funil também: o Funil
+ * novo (tabela) é governado por `privado` e pelo Papel (`podeNoCrm`), não por concessão deste ato.
+ */
+export function resolveResource(state: DataState, resourceId: string): ResolvedResource | null {
   const space = state.spaces.find((s) => s.id === resourceId);
   if (space) return { type: "space", id: space.id, name: space.name, label: "Espaço" };
   const folder = state.folders.find((f) => f.id === resourceId);
   if (folder) return { type: "folder", id: folder.id, name: folder.name, label: "Pasta" };
   const list = state.lists.find((l) => l.id === resourceId);
   if (list) return { type: "list", id: list.id, name: list.name, label: "Lista" };
-  const funnel = state.funnels.find((f) => f.id === resourceId);
-  if (funnel) return { type: "funnel", id: funnel.id, name: funnel.name, label: "Funil" };
   const collection = state.collections.find((c) => c.id === resourceId);
   if (collection) return { type: "collection", id: collection.id, name: collection.name, label: "Coleção" };
   return null;

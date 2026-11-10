@@ -11,7 +11,16 @@ import {
   ehProvedorDeCanal,
   provedorDoCanal,
 } from "../provedores-de-canal";
-import { proximaConexao, validarArquivamento, validarEdicaoDeCanal, validarNovoCanal } from "./canais";
+import {
+  FRASE_DO_CANAL_REAL,
+  FRASE_SEM_FATOS_DA_CONEXAO,
+  conferirNumeroConectado,
+  podeSimularConexao,
+  proximaConexao,
+  validarArquivamento,
+  validarEdicaoDeCanal,
+  validarNovoCanal,
+} from "./canais";
 
 describe("validarNovoCanal", () => {
   it.each(["whatsapp-cloud", "whatsapp-nao-oficial"] as const)("%s deriva o tipo whatsapp e o número canônico", (provedor) => {
@@ -96,21 +105,21 @@ describe("tabela de provedores (D-01)", () => {
 
 describe("proximaConexao (D-08, ontologia 12.2)", () => {
   it.each(["desconectada", "com_erro"] as const)("simular a partir de %s conecta, marcando a conexão como simulada", (conexao) => {
-    expect(proximaConexao({ conexao, estado: "ativo" }, "simular_conexao")).toEqual({
+    expect(proximaConexao({ conexao, estado: "ativo" }, "simular_conexao", { ligadoAoProvedor: false })).toEqual({
       ok: true,
       value: { conexao: "conectada", conexaoSimulada: true },
     });
   });
 
   it("simular um Canal já conectado falha", () => {
-    expect(proximaConexao({ conexao: "conectada", estado: "ativo" }, "simular_conexao")).toMatchObject({
+    expect(proximaConexao({ conexao: "conectada", estado: "ativo" }, "simular_conexao", { ligadoAoProvedor: false })).toMatchObject({
       ok: false,
       error: "O Canal já está conectado.",
     });
   });
 
   it("simular um Canal arquivado falha", () => {
-    expect(proximaConexao({ conexao: "desconectada", estado: "arquivado" }, "simular_conexao")).toMatchObject({
+    expect(proximaConexao({ conexao: "desconectada", estado: "arquivado" }, "simular_conexao", { ligadoAoProvedor: false })).toMatchObject({
       ok: false,
       error: "Um Canal arquivado não se conecta.",
     });
@@ -128,6 +137,112 @@ describe("proximaConexao (D-08, ontologia 12.2)", () => {
       ok: false,
       error: "O Canal já está desconectado.",
     });
+  });
+});
+
+describe("CR-01 (16-17): o Canal ligado a um provedor real não volta a simulado", () => {
+  it("simular um Canal ligado a um provedor recusa com a frase do Canal real", () => {
+    expect(proximaConexao({ conexao: "desconectada", estado: "ativo" }, "simular_conexao", { ligadoAoProvedor: true })).toEqual({
+      ok: false,
+      error: FRASE_DO_CANAL_REAL,
+    });
+  });
+
+  it("sem o fato da ligação, simular recusa (falha fechada)", () => {
+    expect(proximaConexao({ conexao: "desconectada", estado: "ativo" }, "simular_conexao")).toEqual({
+      ok: false,
+      error: FRASE_SEM_FATOS_DA_CONEXAO,
+    });
+  });
+
+  it("arquivado e já conectada são recusados ANTES da checagem do fato", () => {
+    expect(proximaConexao({ conexao: "desconectada", estado: "arquivado" }, "simular_conexao")).toMatchObject({
+      ok: false,
+      error: "Um Canal arquivado não se conecta.",
+    });
+    expect(proximaConexao({ conexao: "conectada", estado: "ativo" }, "simular_conexao", { ligadoAoProvedor: true })).toMatchObject({
+      ok: false,
+      error: "O Canal já está conectado.",
+    });
+  });
+
+  it.each([undefined, { ligadoAoProvedor: true }, { ligadoAoProvedor: false }])(
+    "desconectar e conexao_confirmada dão o mesmo resultado com ou sem o fato (%j)",
+    (fatos) => {
+      expect(proximaConexao({ conexao: "conectada", estado: "ativo" }, "desconectar", fatos)).toEqual({
+        ok: true,
+        value: { conexao: "desconectada", conexaoSimulada: false },
+      });
+      expect(proximaConexao({ conexao: "desconectada", estado: "ativo" }, "conexao_confirmada", fatos)).toEqual({
+        ok: true,
+        value: { conexao: "conectada", conexaoSimulada: false },
+      });
+    },
+  );
+
+  it("podeSimularConexao é a mesma regra para a tela", () => {
+    expect(podeSimularConexao({ conexao: "desconectada", estado: "ativo", ligadoAoProvedor: false })).toBe(true);
+    expect(podeSimularConexao({ conexao: "com_erro", estado: "ativo", ligadoAoProvedor: false })).toBe(true);
+    expect(podeSimularConexao({ conexao: "desconectada", estado: "ativo", ligadoAoProvedor: true })).toBe(false);
+    expect(podeSimularConexao({ conexao: "conectada", estado: "ativo", ligadoAoProvedor: false })).toBe(false);
+    expect(podeSimularConexao({ conexao: "desconectada", estado: "arquivado", ligadoAoProvedor: false })).toBe(false);
+  });
+});
+
+describe("conexao_confirmada (16-13, D-16-05): a Evolution confirmou a instância aberta", () => {
+  it.each(["desconectada", "com_erro", "conectada"] as const)("a partir de %s leva a conectada, e NÃO simulada", (conexao) => {
+    expect(proximaConexao({ conexao, estado: "ativo" }, "conexao_confirmada")).toEqual({
+      ok: true,
+      value: { conexao: "conectada", conexaoSimulada: false },
+    });
+  });
+
+  it("recusa um Canal arquivado", () => {
+    expect(proximaConexao({ conexao: "desconectada", estado: "arquivado" }, "conexao_confirmada")).toMatchObject({
+      ok: false,
+      error: "Um Canal arquivado não se conecta.",
+    });
+  });
+});
+
+describe("conferirNumeroConectado (16-13, D-16-05)", () => {
+  const canal = { identificadorExterno: "+5511987654321" };
+
+  it("aceita o mesmo número", () => {
+    expect(conferirNumeroConectado(canal, "5511987654321").ok).toBe(true);
+  });
+
+  it("aceita o mesmo número com a máscara e o @s.whatsapp.net que a Evolution manda", () => {
+    expect(conferirNumeroConectado(canal, "5511987654321@s.whatsapp.net").ok).toBe(true);
+    expect(conferirNumeroConectado(canal, "+55 (11) 98765-4321").ok).toBe(true);
+  });
+
+  it("aceita o mesmo número sem o nono dígito brasileiro", () => {
+    expect(conferirNumeroConectado(canal, "551187654321").ok).toBe(true);
+  });
+
+  it("aceita o Canal cadastrado sem o nono dígito e o provedor com ele", () => {
+    expect(conferirNumeroConectado({ identificadorExterno: "+551187654321" }, "5511987654321").ok).toBe(true);
+  });
+
+  it("recusa outro número, com a frase pronta", () => {
+    const r = conferirNumeroConectado(canal, "5511999998888");
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.error).toBe("O número conectado na instância (final 8888) não é o deste Canal (final 4321).");
+  });
+
+  it("recusa o mesmo final com DDD diferente", () => {
+    expect(conferirNumeroConectado(canal, "5521987654321").ok).toBe(false);
+  });
+
+  it("recusa número vazio ou sem dígitos", () => {
+    expect(conferirNumeroConectado(canal, "").ok).toBe(false);
+    expect(conferirNumeroConectado(canal, "abc").ok).toBe(false);
+  });
+
+  it("nono dígito só se tolera no Brasil: número de outro país com 13 dígitos não perde um dígito", () => {
+    expect(conferirNumeroConectado({ identificadorExterno: "+14155550123" }, "14155550123").ok).toBe(true);
+    expect(conferirNumeroConectado({ identificadorExterno: "+14155550123" }, "1415550123").ok).toBe(false);
   });
 });
 

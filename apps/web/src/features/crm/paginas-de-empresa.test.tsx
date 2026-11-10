@@ -3,8 +3,8 @@
  * 07-09 Task 3 — as páginas de Empresa leem e gravam só pela api (D-04): a lista
  * com abas Ativas/Arquivadas/Lixeira, a Lixeira que restaura pedindo o Contato
  * admin (D-08), o popup `?empresa=<id>` com a ficha nova e o recuo da página
- * `[empresa]` para a ficha antiga quando a api responde 404 para um id do modelo
- * antigo (D-15). O teste mora em `features/crm/` porque `app/` só guarda
+ * `[empresa]` que, sem recuo para o modelo antigo (UCR-06), mostra "não encontrada"
+ * quando a api responde 404, mesmo para um id que o seed antigo conhece. O teste mora em `features/crm/` porque `app/` só guarda
  * convenção de arquivo do Next. Nenhuma rede: `fetch` roteado, sessão falsa,
  * `StoreProvider` de verdade com o seed.
  */
@@ -185,7 +185,7 @@ describe("página /crm/empresas — a lista pela api", () => {
   });
 });
 
-describe("página /crm/empresas/[empresa] — a ficha e o recuo para o modelo antigo (D-15)", () => {
+describe("página /crm/empresas/[empresa] — a ficha nova e o não encontrado (UCR-06)", () => {
   async function montarPagina(id: string) {
     const params = Promise.resolve({ empresa: id });
     let resultado!: ReturnType<typeof render>;
@@ -214,11 +214,11 @@ describe("página /crm/empresas/[empresa] — a ficha e o recuo para o modelo an
     expect(container.textContent).toContain("Ela pode ter sido excluída permanentemente.");
   });
 
-  it("(g) 404 da api para um id do modelo antigo abre a ficha antiga, sem o que é só da nova", async () => {
-    const antiga = buildSeed().companies[0]!;
+  it("(g) 404 da api para um id que existe no modelo antigo também mostra Empresa não encontrada (sem recuo, UCR-06)", async () => {
+    // O seed não cria mais Empresa (15-31): basta o id e o nome da Empresa do modelo antigo (do demo).
+    const antiga = { id: "cmp_1", tradeName: "Clínica Sorriso Vivo" };
     const container = await montarPagina(antiga.id);
-    await vi.waitFor(() => expect(container.textContent).toContain("Grupo"), { timeout: 3000 });
-    expect(container.textContent).not.toContain("Empresa não encontrada.");
-    expect(container.textContent).not.toContain("Matriz e filiais");
+    await vi.waitFor(() => expect(container.textContent).toContain("Empresa não encontrada."), { timeout: 3000 });
+    expect(container.textContent).not.toContain(antiga.tradeName);
   });
 });

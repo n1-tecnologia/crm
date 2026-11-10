@@ -55,6 +55,26 @@ describe("rotas de Conversas — serviço falso, sem banco", () => {
         chamadas.push(["reabrir", ...a]);
         return resposta();
       },
+      mover: (...a) => {
+        chamadas.push(["mover", ...a]);
+        return resposta();
+      },
+      atribuir: (...a) => {
+        chamadas.push(["atribuir", ...a]);
+        return resposta();
+      },
+      enviarParaLixeira: (...a) => {
+        chamadas.push(["enviarParaLixeira", ...a]);
+        return resposta();
+      },
+      restaurar: (...a) => {
+        chamadas.push(["restaurar", ...a]);
+        return resposta();
+      },
+      marcar: (...a) => {
+        chamadas.push(["marcar", ...a]);
+        return Promise.resolve(sucesso({ estrela: true, lidaAte: null }));
+      },
     };
     return { servico, chamadas };
   }
@@ -178,6 +198,180 @@ describe("rotas de Conversas — serviço falso, sem banco", () => {
       codigo: "CONVERSA_JA_ABERTA",
       bloqueios,
     });
+  });
+
+  it.each(["workspaceId", "estado", "situacao", "canalId"])(
+    "POST /conversas/x/mover com %s no corpo responde 400 e o serviço não é chamado",
+    async (campo) => {
+      const { servico, chamadas } = novoFalso();
+      const resposta = await appCom(servico).inject({
+        method: "POST",
+        url: "/conversas/x/mover",
+        headers: AUTORIZACAO,
+        payload: { contatoId: "p2", [campo]: "x" },
+      });
+      expect(resposta.statusCode).toBe(400);
+      expect(chamadas).toEqual([]);
+    },
+  );
+
+  it("POST /conversas/x/mover sem contatoId responde 400", async () => {
+    const { servico, chamadas } = novoFalso();
+    const resposta = await appCom(servico).inject({ method: "POST", url: "/conversas/x/mover", headers: AUTORIZACAO, payload: {} });
+    expect(resposta.statusCode).toBe(400);
+    expect(chamadas).toEqual([]);
+  });
+
+  it("POST /conversas/x/mover repassa o Membro da sessão, o id e o corpo; resolverExistente ausente vira false", async () => {
+    const { servico, chamadas } = novoFalso();
+    const app = appCom(servico);
+    const sem = await app.inject({ method: "POST", url: "/conversas/x/mover", headers: AUTORIZACAO, payload: { contatoId: "p2" } });
+    expect(sem.statusCode).toBe(200);
+    expect(chamadas[0]?.[0]).toBe("mover");
+    expect(chamadas[0]?.[1]).toMatchObject({ id: "mem_maryane" });
+    expect(chamadas[0]?.[2]).toBe("x");
+    expect(chamadas[0]?.[3]).toEqual({ contatoId: "p2", resolverExistente: false });
+    const com = await app.inject({
+      method: "POST",
+      url: "/conversas/x/mover",
+      headers: AUTORIZACAO,
+      payload: { contatoId: "p2", resolverExistente: true },
+    });
+    expect(com.statusCode).toBe(200);
+    expect(chamadas[1]?.[3]).toEqual({ contatoId: "p2", resolverExistente: true });
+  });
+
+  it.each([
+    ["campo a mais no objeto atribuido", { atribuido: { tipo: "membro", id: "x", extra: 1 } }],
+    ["corpo vazio", {}],
+    ["tipo desconhecido", { atribuido: { tipo: "fila", id: "x" } }],
+    ["workspaceId no corpo", { atribuido: null, workspaceId: "ws_outro" }],
+    ["estado no corpo", { atribuido: null, estado: "ativo" }],
+  ])("POST /conversas/x/atribuir com %s responde 400 e o serviço não é chamado", async (_rotulo, payload) => {
+    const { servico, chamadas } = novoFalso();
+    const resposta = await appCom(servico).inject({ method: "POST", url: "/conversas/x/atribuir", headers: AUTORIZACAO, payload });
+    expect(resposta.statusCode).toBe(400);
+    expect(chamadas).toEqual([]);
+  });
+
+  it.each([{ tipo: "membro", id: "mem_ana" }, { tipo: "agente", id: "agt_1" }, null])(
+    "POST /conversas/x/atribuir com %j repassa o Membro da sessão, o id e o corpo",
+    async (atribuido) => {
+      const { servico, chamadas } = novoFalso();
+      const resposta = await appCom(servico).inject({ method: "POST", url: "/conversas/x/atribuir", headers: AUTORIZACAO, payload: { atribuido } });
+      expect(resposta.statusCode).toBe(200);
+      expect(chamadas[0]?.[0]).toBe("atribuir");
+      expect(chamadas[0]?.[1]).toMatchObject({ id: "mem_maryane" });
+      expect(chamadas[0]?.[2]).toBe("x");
+      expect(chamadas[0]?.[3]).toEqual({ atribuido });
+    },
+  );
+
+  it.each([
+    ["lixeira", "enviarParaLixeira"],
+    ["restaurar", "restaurar"],
+  ])("POST /conversas/x/%s sem corpo e sem content-type responde 200 e chama o serviço", async (acao, metodo) => {
+    const { servico, chamadas } = novoFalso();
+    const app = appCom(servico);
+    const resposta = await app.inject({ method: "POST", url: `/conversas/x/${acao}`, headers: AUTORIZACAO });
+    expect(resposta.statusCode).toBe(200);
+    expect(resposta.json()).toMatchObject({ ok: true, dados: { conversa: { id: "v1" } } });
+    expect(chamadas[0]?.[0]).toBe(metodo);
+    expect(chamadas[0]?.[1]).toMatchObject({ id: "mem_maryane" });
+    expect(chamadas[0]?.[2]).toBe("x");
+    // Sem `body` no schema, um `{}` com content-type json também passa (o Fastify 5
+    // recusa o JSON de corpo vazio, não o objeto vazio).
+    const comJson = await app.inject({
+      method: "POST",
+      url: `/conversas/x/${acao}`,
+      headers: { ...AUTORIZACAO, "content-type": "application/json" },
+      payload: {},
+    });
+    expect(comJson.statusCode).toBe(200);
+  });
+
+  it("GET /conversas repassa atribuidoId, filaId, comEstrela (texto vira boolean) e q", async () => {
+    const { servico, chamadas } = novoFalso();
+    const app = appCom(servico);
+    const ok = await app.inject({
+      method: "GET",
+      url: "/conversas?atribuidoId=mem_ana&filaId=fila_1&comEstrela=true&q=jo%C3%A3o",
+      headers: AUTORIZACAO,
+    });
+    expect(ok.statusCode).toBe(200);
+    expect(chamadas[0]?.[2]).toEqual({
+      estado: "ativo",
+      limite: 50,
+      deslocamento: 0,
+      atribuidoId: "mem_ana",
+      filaId: "fila_1",
+      comEstrela: true,
+      q: "joão",
+    });
+    const falso = await app.inject({ method: "GET", url: "/conversas?comEstrela=false", headers: AUTORIZACAO });
+    expect(falso.statusCode).toBe(200);
+    expect(chamadas[1]?.[2]).toMatchObject({ comEstrela: false });
+  });
+
+  it("GET /conversas repassa naoLidas (texto vira boolean) ao serviço", async () => {
+    const { servico, chamadas } = novoFalso();
+    const app = appCom(servico);
+    const ok = await app.inject({ method: "GET", url: "/conversas?naoLidas=true", headers: AUTORIZACAO });
+    expect(ok.statusCode).toBe(200);
+    expect(chamadas[0]?.[2]).toMatchObject({ naoLidas: true });
+    const falso = await app.inject({ method: "GET", url: "/conversas?naoLidas=false", headers: AUTORIZACAO });
+    expect(falso.statusCode).toBe(200);
+    expect(chamadas[1]?.[2]).toMatchObject({ naoLidas: false });
+    const sem = await app.inject({ method: "GET", url: "/conversas", headers: AUTORIZACAO });
+    expect(sem.statusCode).toBe(200);
+    expect(chamadas[2]?.[2]).not.toHaveProperty("naoLidas");
+  });
+
+  it.each(["naoLidas=talvez", "naoLidas=1", "naoLidas="])("GET /conversas?%s responde 400 e o serviço não é chamado", async (consulta) => {
+    const { servico, chamadas } = novoFalso();
+    const resposta = await appCom(servico).inject({ method: "GET", url: `/conversas?${consulta}`, headers: AUTORIZACAO });
+    expect(resposta.statusCode).toBe(400);
+    expect(chamadas).toEqual([]);
+  });
+
+  it.each(["comEstrela=talvez", "comEstrela=1", `q=${"a".repeat(201)}`, "membroId=mem_outro"])("GET /conversas?%s responde 400", async (consulta) => {
+    const { servico, chamadas } = novoFalso();
+    const resposta = await appCom(servico).inject({ method: "GET", url: `/conversas?${consulta}`, headers: AUTORIZACAO });
+    expect(resposta.statusCode).toBe(400);
+    expect(chamadas).toEqual([]);
+  });
+
+  it.each([
+    ["corpo vazio", {}],
+    ["membroId no corpo", { estrela: true, membroId: "mem_outro" }],
+    ["workspaceId no corpo", { estrela: true, workspaceId: "ws_outro" }],
+    ["lidaAte que não é data", { lidaAte: "ontem" }],
+    ["estrela que não é boolean", { estrela: "sim" }],
+  ])("PUT /conversas/x/marcacao com %s responde 400 e o serviço não é chamado", async (_rotulo, payload) => {
+    const { servico, chamadas } = novoFalso();
+    const resposta = await appCom(servico).inject({ method: "PUT", url: "/conversas/x/marcacao", headers: AUTORIZACAO, payload });
+    expect(resposta.statusCode).toBe(400);
+    expect(chamadas).toEqual([]);
+  });
+
+  it("PUT /conversas/x/marcacao repassa o Membro da sessão, o id e só os campos enviados", async () => {
+    const { servico, chamadas } = novoFalso();
+    const app = appCom(servico);
+    const so = await app.inject({ method: "PUT", url: "/conversas/x/marcacao", headers: AUTORIZACAO, payload: { estrela: true } });
+    expect(so.statusCode).toBe(200);
+    expect(so.json()).toEqual({ ok: true, dados: { estrela: true, lidaAte: null } });
+    expect(chamadas[0]?.[0]).toBe("marcar");
+    expect(chamadas[0]?.[1]).toMatchObject({ id: "mem_maryane" });
+    expect(chamadas[0]?.[2]).toBe("x");
+    expect(chamadas[0]?.[3]).toEqual({ estrela: true });
+    const lida = await app.inject({
+      method: "PUT",
+      url: "/conversas/x/marcacao",
+      headers: AUTORIZACAO,
+      payload: { lidaAte: "2026-11-04T10:00:00.000Z" },
+    });
+    expect(lida.statusCode).toBe(200);
+    expect(chamadas[1]?.[3]).toEqual({ lidaAte: "2026-11-04T10:00:00.000Z" });
   });
 
   it("não há DELETE /conversas/:id nesta fase", async () => {

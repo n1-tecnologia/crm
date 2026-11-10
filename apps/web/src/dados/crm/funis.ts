@@ -64,6 +64,34 @@ export function chaveDoFunil(id: string): string {
   return `/funis/${id}`;
 }
 
+/** A Etapa como o Painel a usa: só o que nomeia a barra do gráfico. */
+export interface EtapaDoFunil {
+  readonly id: string;
+  readonly funilId: string;
+  readonly nome: string;
+}
+
+/**
+ * As Etapas de vários Funis, uma ficha por Funil (`GET /funis/:id`), para o Painel nomear a
+ * Etapa de cada Negócio (15-23): a lista de Funis não traz as Etapas. Um Funil que a api recusa
+ * (um id do cadastro anterior, 404) simplesmente não contribui. A chave começa por `/funis`, então
+ * `invalidarCrm("/funis")` a renova junto com as demais; `null` sem Funis, sem rede.
+ */
+export function useEtapasDosFunis(funilIds: readonly string[], opcoes: { readonly pausado?: boolean } = {}) {
+  const ids = [...new Set(funilIds)].sort();
+  const chave = ids.length === 0 || opcoes.pausado ? null : `/funis/etapas-do-painel?ids=${ids.join(",")}`;
+  return useSWR<readonly EtapaDoFunil[], Error>(
+    chave,
+    async () => {
+      const fichas = await Promise.allSettled(ids.map((id) => chamarCrm<{ ok: true; dados: FunilDetalhado }>(chaveDoFunil(id))));
+      return fichas.flatMap((ficha) =>
+        ficha.status === "fulfilled" ? ficha.value.dados.etapas.map((etapa) => ({ id: etapa.id, funilId: etapa.funilId, nome: etapa.nome })) : [],
+      );
+    },
+    { keepPreviousData: true },
+  );
+}
+
 /** Recusa 4xx não melhora ao repetir (um 404 de Funil do modelo antigo, por exemplo): só rede e 5xx tentam de novo. */
 function valeRepetir(erro: Error): boolean {
   return !(erro instanceof ErroDeApi) || erro.status === 0 || erro.status >= 500;

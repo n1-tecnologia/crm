@@ -106,6 +106,23 @@ describeComBanco("RepositorioDeMensagens — Postgres local", () => {
     expect(await mensagens.cargaBruta(ws, gravada!.id)).toEqual(carga);
   });
 
+  it("desempata o mesmo criadoEm por `seq` como NÚMERO, não como texto (99999 antes de 100000)", async () => {
+    // `seq` sai como texto (`seq::text as seq`); um `order by ... seq` solto liga a esse alias e ordena "100000" antes de "99999".
+    // Os valores são postos à mão e na ordem inversa, para o teste não depender de onde o contador da sequência está.
+    const { ws, comercial } = await cenario("seq-numerico");
+    const mesmoInstante = "2026-10-12T09:00:00.000Z";
+    await pool().query(
+      `insert into plataforma.mensagens (workspace_id, conversa_id, canal_id, seq, direcao, ator_tipo, ator_id, conteudo, criado_em)
+       overriding system value
+       values ($1, $2, $3, 100000, 'interna', 'member', 'mem_ana', 'seis dígitos', $4),
+              ($1, $2, $3, 99999, 'interna', 'member', 'mem_ana', 'cinco dígitos', $4)`,
+      [ws, comercial.conversaId, comercial.canalId, mesmoInstante],
+    );
+
+    const pagina = await mensagens.listar(ws, { conversaId: comercial.conversaId, limite: 50, deslocamento: 0 });
+    expect(pagina.itens.map((m) => m.seq)).toEqual([99999, 100000]);
+  });
+
   it("lista por (criado_em, seq) — mesmo criadoEm sai na ordem de inserção — e sem cargaBruta", async () => {
     const { ws, comercial } = await cenario("lista");
     const mesmoInstante = "2026-10-12T09:00:00.000Z";
@@ -141,6 +158,18 @@ describeComBanco("RepositorioDeMensagens — Postgres local", () => {
     expect(await mensagens.ultimaRecebidaEm(ws, suporte.conversaId)).toBeNull();
   });
 
+  it("WR-04: identificadorDaUltimaRecebida devolve o Identificador da recebida mais recente que tem um, ou null", async () => {
+    const { ws, comercial, suporte } = await cenario("identificador");
+    expect(await mensagens.identificadorDaUltimaRecebida(ws, comercial.conversaId)).toBeNull();
+
+    await mensagens.inserirRecebida(ws, recebida(comercial.conversaId, comercial.canalId, { idExterno: "i.1", criadoEm: "2026-10-10T10:00:00.000Z", identificadorId: "ident_a" }));
+    await mensagens.inserirRecebida(ws, recebida(comercial.conversaId, comercial.canalId, { idExterno: "i.2", criadoEm: "2026-10-11T11:30:00.000Z", identificadorId: "ident_b" }));
+    // A mais nova não tem Identificador (Contato novo sem vínculo): a leitura salta para a anterior que tem.
+    await mensagens.inserirRecebida(ws, recebida(comercial.conversaId, comercial.canalId, { idExterno: "i.3", criadoEm: "2026-10-12T12:00:00.000Z", identificadorId: null }));
+    expect(await mensagens.identificadorDaUltimaRecebida(ws, comercial.conversaId)).toBe("ident_b");
+    expect(await mensagens.identificadorDaUltimaRecebida(ws, suporte.conversaId)).toBeNull();
+  });
+
   it("não enxerga Mensagens de outro Espaço", async () => {
     const um = await cenario("iso1");
     const outro = await cenario("iso2");
@@ -149,5 +178,6 @@ describeComBanco("RepositorioDeMensagens — Postgres local", () => {
     expect(pagina).toEqual({ itens: [], total: 0 });
     expect(await mensagens.obterPorIdExterno(outro.ws, um.comercial.canalId, "wamid.1")).toBeUndefined();
     expect(await mensagens.ultimaRecebidaEm(outro.ws, um.comercial.conversaId)).toBeNull();
+    expect(await mensagens.identificadorDaUltimaRecebida(outro.ws, um.comercial.conversaId)).toBeNull();
   });
 });

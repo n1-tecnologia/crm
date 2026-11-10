@@ -12,9 +12,59 @@
  */
 
 import type { DataState } from "../../state";
-import type { Channel, Comunidade, Flow, Grupo, Id } from "../../types";
+import type { Canal } from "../../crm/canais";
+import { CRM_DAS_FERRAMENTAS_VAZIO, type ChannelType, type Comunidade, type ContactIdentifierType, type ContatoDaFerramenta, type CrmDasFerramentas, type Flow, type Grupo, type Id, type ParticipacaoDeGrupo } from "../../types";
 import { versaoPublicada } from "../../derive-ferramentas";
 import { CAPACIDADES_DE_ATIVOS } from "./capacidades";
+
+/**
+ * A forma canônica do Identificador de Contato do modelo antigo: a chave de unicidade é (tipo, valor
+ * canônico) — B13. As Ferramentas só a usam para comparar números de WhatsApp. Era de
+ * `operations/contacts.ts`, que saiu com o CRM antigo (15-32).
+ */
+export function canonicalIdentifier(type: ContactIdentifierType, value: string): string {
+  const trimmed = value.trim();
+  if (type === "email") return trimmed.toLowerCase();
+  if (type === "telefone" || type === "identidadeDeWhatsApp") return trimmed.replace(/\D/g, "");
+  return trimmed;
+}
+
+/**
+ * O Canal que as Ferramentas conferem vem do CRM novo: o servidor lê
+ * `plataforma.canais` na transação e entrega como `crm` (último parâmetro,
+ * opcional) — o que o navegador mandar ali é descartado (Fase 15, 3.4.8).
+ */
+export const canalNoCrm = (crm: CrmDasFerramentas | undefined, canalId: Id | undefined): Canal | undefined =>
+  canalId === undefined ? undefined : (crm ?? CRM_DAS_FERRAMENTAS_VAZIO).canais.find((c) => c.id === canalId);
+
+/** O Canal como as recusas o enxergam. */
+interface CanalConferido {
+  readonly nome: string;
+  readonly tipo: ChannelType;
+  readonly ativo: boolean;
+  readonly conexao: "conectada" | "desconectada" | "comErro";
+}
+
+function canalConferido(canalId: Id | undefined, crm: CrmDasFerramentas | undefined): CanalConferido | undefined {
+  const c = canalNoCrm(crm, canalId);
+  return c && { nome: c.nome, tipo: c.tipo, ativo: c.estado === "ativo", conexao: c.conexao === "com_erro" ? "comErro" : c.conexao };
+}
+
+/** O Contato que a operação cita, lido do CRM novo (ausente = vazio). */
+export const contatoNoCrm = (crm: CrmDasFerramentas | undefined, contatoId: Id | undefined): ContatoDaFerramenta | undefined =>
+  contatoId === undefined ? undefined : (crm ?? CRM_DAS_FERRAMENTAS_VAZIO).contatos.find((c) => c.id === contatoId);
+
+/** RN-GRP-11 — o número é de um Canal do Espaço de Trabalho? Então nunca vira Contato. */
+export const canalPeloNumeroNoCrm = (crm: CrmDasFerramentas | undefined, numero: string): Canal | undefined =>
+  (crm ?? CRM_DAS_FERRAMENTAS_VAZIO).canais.find(
+    (c) => c.tipo === "whatsapp" && canonicalIdentifier("identidadeDeWhatsApp", c.identificadorExterno) === canonicalIdentifier("identidadeDeWhatsApp", numero),
+  );
+
+/** O nome que o Registro mostra de quem participa: o Canal ou o Contato do CRM novo, senão o número. */
+export function nomeDoParticipanteNoCrm(crm: CrmDasFerramentas | undefined, p: ParticipacaoDeGrupo): string {
+  if (p.canalParticipanteId) return canalNoCrm(crm, p.canalParticipanteId)?.nome ?? "o Canal";
+  return contatoNoCrm(crm, p.contactId)?.nome || p.identificadorExternoDoParticipante;
+}
 
 /** Só um Membro ativo age; um Convidado só alcança o que foi compartilhado. */
 export function recusaDeMembroAtivo(state: DataState, memberId: Id): string | undefined {
@@ -35,20 +85,19 @@ export function recusaDeAdministracao(state: DataState, memberId: Id): string | 
   return undefined;
 }
 
-export const canalDoAtivo = (state: DataState, ativo: { readonly canalId?: Id }): Channel | undefined =>
-  ativo.canalId === undefined ? undefined : state.channels.find((c) => c.id === ativo.canalId);
+export const canalDoAtivo = (ativo: { readonly canalId?: Id }, crm?: CrmDasFerramentas): Canal | undefined => canalNoCrm(crm, ativo.canalId);
 
 /** Um Canal ativo, conectado e cujo Tipo tem a Capacidade pedida. */
-export function recusaDoCanal(state: DataState, canalId: Id | undefined, capacidade: "gruposAdministraveis" | "comunidades" | "formulariosInterativos"): string | undefined {
+export function recusaDoCanal(state: DataState, canalId: Id | undefined, capacidade: "gruposAdministraveis" | "comunidades" | "formulariosInterativos", crm?: CrmDasFerramentas): string | undefined {
   if (canalId === undefined) return "Escolha o Canal.";
-  const canal = state.channels.find((c) => c.id === canalId);
+  const canal = canalConferido(canalId, crm);
   if (!canal) return "Canal não encontrado.";
-  if (canal.lifecycle !== "ativo") return `O Canal ${canal.name} está arquivado.`;
-  if (!CAPACIDADES_DE_ATIVOS[canal.channelType][capacidade]) {
+  if (!canal.ativo) return `O Canal ${canal.nome} está arquivado.`;
+  if (!CAPACIDADES_DE_ATIVOS[canal.tipo][capacidade]) {
     const nome = capacidade === "gruposAdministraveis" ? "grupos administráveis" : capacidade === "comunidades" ? "comunidades" : "formulários interativos";
-    return `O Tipo de Canal ${canal.channelType} não tem a Capacidade “${nome}”.`;
+    return `O Tipo de Canal ${canal.tipo} não tem a Capacidade “${nome}”.`;
   }
-  if (canal.connection !== "conectada") return `O Canal ${canal.name} está ${canal.connection === "comErro" ? "com erro" : "desconectado"}: a Ferramenta não chega ao provedor.`;
+  if (canal.conexao !== "conectada") return `O Canal ${canal.nome} está ${canal.conexao === "comErro" ? "com erro" : "desconectado"}: a Ferramenta não chega ao provedor.`;
   return undefined;
 }
 
@@ -58,11 +107,11 @@ export type ExigenciaDePapel = "administrador" | "participante";
  * Uma Ferramenta EXTERNA sobre o Grupo: chega ao provedor pelo Canal
  * administrador, então precisa de tudo que o caminho até lá exige.
  */
-export function recusaExternaNoGrupo(state: DataState, grupo: Grupo, exige: ExigenciaDePapel = "administrador"): string | undefined {
+export function recusaExternaNoGrupo(state: DataState, grupo: Grupo, exige: ExigenciaDePapel = "administrador", crm?: CrmDasFerramentas): string | undefined {
   if (grupo.lifecycle === "naLixeira") return "O Grupo está na lixeira.";
   if (grupo.lifecycle === "arquivado") return "O Grupo está arquivado: restaure-o antes.";
   if (grupo.canalId === undefined || grupo.sincronizacao.estado === "orfao") return "O Grupo está sem Canal administrador (órfão).";
-  const canal = recusaDoCanal(state, grupo.canalId, "gruposAdministraveis");
+  const canal = recusaDoCanal(state, grupo.canalId, "gruposAdministraveis", crm);
   if (canal) return canal;
   if (grupo.sincronizacao.estado === "nuncaConferido") return "Sincronize o Grupo antes de qualquer Ferramenta externa (RN-ATV-08).";
   if (grupo.sincronizacao.estado === "inacessivel" || grupo.sincronizacao.papelDoCanal === "ausente") return "O Grupo está inacessível: o Canal não está mais nele.";
@@ -70,11 +119,11 @@ export function recusaExternaNoGrupo(state: DataState, grupo: Grupo, exige: Exig
   return undefined;
 }
 
-export function recusaExternaNaComunidade(state: DataState, comunidade: Comunidade, exige: ExigenciaDePapel = "administrador"): string | undefined {
+export function recusaExternaNaComunidade(state: DataState, comunidade: Comunidade, exige: ExigenciaDePapel = "administrador", crm?: CrmDasFerramentas): string | undefined {
   if (comunidade.lifecycle === "naLixeira") return "A Comunidade está na lixeira.";
   if (comunidade.lifecycle === "arquivado") return "A Comunidade está arquivada: restaure-a antes.";
   if (comunidade.canalId === undefined || comunidade.sincronizacao.estado === "orfao") return "A Comunidade está sem Canal administrador (órfã).";
-  const canal = recusaDoCanal(state, comunidade.canalId, "comunidades");
+  const canal = recusaDoCanal(state, comunidade.canalId, "comunidades", crm);
   if (canal) return canal;
   if (comunidade.sincronizacao.estado === "nuncaConferido") return "Sincronize a Comunidade antes de qualquer Ferramenta externa (RN-ATV-08).";
   if (comunidade.sincronizacao.estado === "inacessivel" || comunidade.sincronizacao.papelDoCanal === "ausente") return "A Comunidade está inacessível: o Canal não está mais nela.";
@@ -87,11 +136,11 @@ export function recusaExternaNaComunidade(state: DataState, comunidade: Comunida
  * Canal no Grupo (participante basta), e, se só administradores enviam, do
  * Papel `administrador`.
  */
-export function recusaDeEnvioAoGrupo(state: DataState, grupo: Grupo): string | undefined {
+export function recusaDeEnvioAoGrupo(state: DataState, grupo: Grupo, crm?: CrmDasFerramentas): string | undefined {
   if (grupo.lifecycle === "naLixeira") return "O Grupo está na lixeira.";
   if (grupo.canalId === undefined || grupo.sincronizacao.estado === "orfao") return "O Grupo está sem Canal: não há por onde enviar.";
-  const canal = state.channels.find((c) => c.id === grupo.canalId);
-  if (!canal || canal.lifecycle !== "ativo") return "O Canal do Grupo está arquivado.";
+  const canal = canalConferido(grupo.canalId, crm);
+  if (!canal?.ativo) return "O Canal do Grupo está arquivado.";
   if (grupo.sincronizacao.estado === "nuncaConferido") return "Sincronize o Grupo antes de enviar (RN-ATV-08).";
   if (grupo.sincronizacao.estado === "inacessivel" || grupo.sincronizacao.papelDoCanal === "ausente") return "O Canal não está mais no Grupo.";
   if (grupo.configuracoes.somenteAdministradoresEnviam && grupo.sincronizacao.papelDoCanal !== "administrador") {
@@ -101,25 +150,25 @@ export function recusaDeEnvioAoGrupo(state: DataState, grupo: Grupo): string | u
 }
 
 /** RN-FLW-06 / RN-FLW-13 — publicar exige Flow ativo, Canal publicador do mesmo Tipo, ativo e conectado. */
-export function recusaDePublicacao(state: DataState, flow: Flow): string | undefined {
+export function recusaDePublicacao(state: DataState, flow: Flow, crm?: CrmDasFerramentas): string | undefined {
   if (flow.lifecycle === "naLixeira") return "O Flow está na lixeira.";
   if (flow.lifecycle === "arquivado") return "Um Flow arquivado não publica (RN-FLW-13).";
   if (flow.canalId === undefined) return "Escolha o Canal publicador antes de publicar.";
-  const canal = recusaDoCanal(state, flow.canalId, "formulariosInterativos");
+  const canal = recusaDoCanal(state, flow.canalId, "formulariosInterativos", crm);
   if (canal) return canal;
-  const publicador = state.channels.find((c) => c.id === flow.canalId);
-  if (publicador && publicador.channelType !== flow.tipoDeCanal) return "O Canal publicador precisa ser do mesmo Tipo do Flow.";
+  const publicador = canalConferido(flow.canalId, crm);
+  if (publicador && publicador.tipo !== flow.tipoDeCanal) return "O Canal publicador precisa ser do mesmo Tipo do Flow.";
   if (flow.estadoNoProvedor === "bloqueadoPeloProvedor") return "O provedor bloqueou este Flow.";
   return undefined;
 }
 
 /** RN-FLW-01 / INV-FLW-02 / RN-FLW-13 — só uma Versão `publicada` de um Flow ativo é enviável. */
-export function recusaDeEnvioDeFlow(state: DataState, flow: Flow): string | undefined {
+export function recusaDeEnvioDeFlow(state: DataState, flow: Flow, crm?: CrmDasFerramentas): string | undefined {
   if (flow.lifecycle !== "ativo") return "Um Flow arquivado ou na lixeira não é enviável (RN-FLW-13).";
   if (!versaoPublicada(flow)) return "O Flow não tem Versão publicada: publique antes de enviar (RN-FLW-01).";
   if (flow.canalId === undefined) return "O Flow está sem Canal publicador.";
-  const canal = state.channels.find((c) => c.id === flow.canalId);
-  if (!canal || canal.lifecycle !== "ativo") return "O Canal publicador está arquivado: o Flow ficou órfão (20.3).";
+  const canal = canalConferido(flow.canalId, crm);
+  if (!canal?.ativo) return "O Canal publicador está arquivado: o Flow ficou órfão (20.3).";
   if (flow.estadoNoProvedor === "bloqueadoPeloProvedor") return "O provedor bloqueou este Flow: não enviável.";
   if (flow.estadoNoProvedor === "descontinuado") return "A Versão de esquema foi descontinuada pelo provedor: migre o rascunho e publique.";
   if (flow.estadoNoProvedor === "removido") return "O Flow foi removido no provedor.";

@@ -14,6 +14,7 @@ import {
   TIPOS_IDENTIFICADOR_CONTATO,
   validarContato,
   validarIdentificadorDeContato,
+  validarTransferenciaDeIdentificador,
 } from "./contatos";
 
 const endereco = (principal: boolean): Endereco => ({ rotulo: "comercial", cidade: "São Paulo", principal });
@@ -122,5 +123,58 @@ describe("frases de recusa (i)", () => {
     expect(frase).toContain("Ana Souza");
     expect(frase).toContain("a@b.com");
     expect(frase).toContain("E-mail");
+  });
+});
+
+describe("validarTransferenciaDeIdentificador (DO-CON-12, INV-CON-01)", () => {
+  const origem = { id: "a", estado: "ativo", nome: "Ana", sobrenome: null } as const;
+  const destino = { id: "b", estado: "ativo" } as const;
+  const restante = [{ tipo: "email", valor: "ana@x.com" }] as const;
+
+  it("aceita o destino ativo ou arquivado quando a origem segue sendo alguém", () => {
+    expect(validarTransferenciaDeIdentificador({ origem, destino, restantesDaOrigem: restante }).ok).toBe(true);
+    expect(validarTransferenciaDeIdentificador({ origem, destino: { id: "b", estado: "arquivado" }, restantesDaOrigem: [] }).ok).toBe(true);
+  });
+
+  it("recusa transferir para o mesmo Contato, no campo paraContatoId", () => {
+    expect(validarTransferenciaDeIdentificador({ origem, destino: { id: "a", estado: "ativo" }, restantesDaOrigem: restante })).toEqual({
+      ok: false,
+      error: "Escolha outro Contato: o Identificador já é deste.",
+      field: "paraContatoId",
+    });
+  });
+
+  it("recusa o destino mesclado, mandando para o Contato que ficou", () => {
+    expect(validarTransferenciaDeIdentificador({ origem, destino: { id: "b", estado: "mesclado" }, restantesDaOrigem: restante })).toEqual({
+      ok: false,
+      error: "Este Contato foi mesclado: transfira para o Contato que ficou.",
+      field: "paraContatoId",
+    });
+  });
+
+  it("recusa o destino na lixeira, no campo paraContatoId", () => {
+    const r = validarTransferenciaDeIdentificador({ origem, destino: { id: "b", estado: "na_lixeira" }, restantesDaOrigem: restante });
+    expect(!r.ok && r.field).toBe("paraContatoId");
+    expect(!r.ok && r.error).toBe("O Contato de destino está na lixeira. Restaure-o ou escolha outro.");
+  });
+
+  it("recusa a origem mesclada: ela é somente leitura", () => {
+    const r = validarTransferenciaDeIdentificador({ origem: { ...origem, estado: "mesclado" }, destino, restantesDaOrigem: restante });
+    expect(!r.ok && r.error).toBe("Este Contato foi mesclado e agora é somente leitura. Abra o Contato que ficou.");
+  });
+
+  it("recusa a origem que ficaria sem nome e sem Identificador, com a frase de INV-CON-01", () => {
+    const semNome = { ...origem, nome: null };
+    const r = validarTransferenciaDeIdentificador({ origem: semNome, destino, restantesDaOrigem: [] });
+    expect(r).toEqual(validarContato({ nome: null, identificadores: [] }));
+    expect(!r.ok && r.field).toBe("nome");
+  });
+
+  it("deixa a origem sem nome ficar com os outros Identificadores", () => {
+    expect(validarTransferenciaDeIdentificador({ origem: { ...origem, nome: null }, destino, restantesDaOrigem: restante }).ok).toBe(true);
+  });
+
+  it("deixa a origem com nome ficar sem nenhum Identificador", () => {
+    expect(validarTransferenciaDeIdentificador({ origem, destino, restantesDaOrigem: [] }).ok).toBe(true);
   });
 });

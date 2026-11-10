@@ -17,12 +17,23 @@ import { buildSeed } from "@n1/dominio/seed";
 import { setContainerDefaultViews } from "@n1/dominio/operations/configuration";
 import { saveView, setDefaultView } from "@n1/dominio/operations";
 import type { DataState } from "@n1/dominio/state";
+import type { List } from "@n1/dominio/types";
+import type { Canal } from "@n1/dominio/crm/canais";
 import { StoreProvider, useRun } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
 import ListaPage from "@/app/(shell)/estrutura/listas/[lista]/page";
 
+/** O caminho que o `usePathname` devolve; um teste de 15-40 o põe sob `/crm/` (onde o espelho vivia). */
+let caminho = "/estrutura/listas/x";
+
+/** 15-40: os Canais das tabelas (`GET /canais`) que a página da Lista lê; o teste escolhe quais. */
+let canaisDasTabelas: Canal[] = [];
+vi.mock("@/dados/crm/canais", () => ({
+  useCanais: () => ({ data: { ok: true, itens: canaisDasTabelas, total: canaisDasTabelas.length } }),
+}));
+
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/estrutura/listas/x",
+  usePathname: () => caminho,
   useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
 }));
@@ -45,6 +56,8 @@ beforeEach(() => {
   );
   state = buildSeed();
   dono = state.workspace.ownerMemberId;
+  caminho = "/estrutura/listas/x";
+  canaisDasTabelas = [];
 });
 
 afterEach(() => {
@@ -202,5 +215,115 @@ describe("Página da Lista — uma só aba, sem a aba Lista e a aba que some (A1
 
     expect(nomesDasAbas()).not.toContain("Calendário");
     expect(abaAtiva()).toBe("Quadro");
+  });
+});
+
+/** Um Canal das tabelas novas, `ativo` (o que `GET /canais` devolve por padrão). */
+const canalDasTabelas = (id: string, nome: string): Canal =>
+  ({ id, nome, tipo: "whatsapp", provedor: "whatsapp-nao-oficial", identificadorExterno: "5511999990000", conexao: "conectada", estado: "ativo" }) as unknown as Canal;
+
+describe("Página da Lista — os Canais da Lista conversacional vêm das tabelas (15-40, 3.4.5)", () => {
+  it("sem Canal ativo nas tabelas para a Lista, mostra o aviso e a criação fica recusada", async () => {
+    await montar("lst_pos_venda");
+
+    // O aviso aparece no cabeçalho e de novo como motivo do botão desligado.
+    expect(screen.getAllByText(/ainda não tem canais de atendimento/).length).toBeGreaterThan(0);
+    expect(screen.getByRole("link", { name: "Configurar os canais" })).toBeTruthy();
+    expect(screen.queryByText("Atende por")).toBeNull();
+    expect(screen.getByRole("button", { name: /Nova Tarefa/ }).getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("com um Canal ativo das tabelas entre os da Lista, nomeia o Canal e não mostra o aviso (o Canal antigo do estado não conta)", async () => {
+    const lista = state.lists.find((l) => l.id === "lst_pos_venda");
+    if (!lista) throw new Error("o seed não tem a Lista de pós-venda");
+    // Um id que o estado antigo não conhece: só as tabelas o enxergam.
+    (lista as { canaisDeAtendimento?: string[] }).canaisDeAtendimento = ["cnl_das_tabelas"];
+    canaisDasTabelas = [canalDasTabelas("cnl_das_tabelas", "WhatsApp das tabelas")];
+
+    await montar("lst_pos_venda");
+
+    expect(screen.getByText("Atende por")).toBeTruthy();
+    expect(screen.getByText("WhatsApp das tabelas")).toBeTruthy();
+    expect(screen.queryByText(/ainda não tem canais de atendimento/)).toBeNull();
+    expect(screen.getByRole("button", { name: /Nova Tarefa/ }).getAttribute("aria-disabled")).toBe("false");
+  });
+});
+
+describe("Página da Lista — o espelho de Meus negócios saiu (15-40, F14-D-06)", () => {
+  it("a Lista espelho sob /crm/ é uma Lista como as outras: sem «Iniciar conversa», sem «valor declarado» e sem o caminho do CRM", async () => {
+    // O seed não cria mais as Listas espelho dos Funis (15-31): a que o caso usa é montada aqui, como era (Comercial).
+    const espelho: List = {
+      id: "lst_funil_closer",
+      workspaceId: state.workspace.id,
+      createdBy: { kind: "member", id: "mem_julia" },
+      createdAt: "2026-01-01T00:00:00.000Z",
+      lifecycle: "ativo",
+      name: "Closer",
+      order: 0,
+      isPrivate: false,
+      modeloDeTarefa: "conversacional",
+      canaisDeAtendimento: ["chn_wpp"],
+      modes: {},
+      parentType: "space",
+      parentId: "spc_com",
+    };
+    state.lists.push(espelho);
+    caminho = `/crm/lista/${espelho.id}`;
+    canaisDasTabelas = [canalDasTabelas("chn_wpp", "WhatsApp")];
+
+    await montar(espelho.id);
+
+    expect(screen.queryByRole("button", { name: /Iniciar conversa/ })).toBeNull();
+    expect(screen.queryByText(/valor declarado/)).toBeNull();
+    // O caminho é o da Estrutura (a Pasta), não o «Negócios › Meus negócios» do CRM.
+    expect(document.querySelector('a[href^="/crm/negocios"]')).toBeNull();
+  });
+});
+
+describe("Página da Lista — a Pasta Meus negócios é uma Pasta comum (15-43, WINDOWS #69)", () => {
+  it("a Lista dentro da Pasta que ainda se chama Meus negócios mostra as Tarefas com proveniência de Negócio, como qualquer Lista", async () => {
+    const origem = { kind: "member", id: "mem_julia" } as const;
+    state.folders.push({
+      id: "fld_meus_negocios",
+      workspaceId: state.workspace.id,
+      createdBy: origem,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      lifecycle: "ativo",
+      name: "Meus negócios",
+      order: 3,
+      isPrivate: false,
+      modes: {},
+      blocks: {},
+      parentType: "space",
+      parentId: "spc_com",
+    });
+    state.lists.push({
+      id: "lst_funil_closer",
+      workspaceId: state.workspace.id,
+      createdBy: origem,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      lifecycle: "ativo",
+      name: "Closer",
+      order: 0,
+      isPrivate: false,
+      modeloDeTarefa: "operacional",
+      modes: {},
+      parentType: "folder",
+      parentId: "fld_meus_negocios",
+    });
+    // Uma Tarefa de uma Lista comum do Comercial vira a Tarefa nascida de um Negócio, dentro da Lista da Pasta.
+    const modelo = state.tasks.find((t) => t.listId === LISTA && t.parentTaskId === undefined && t.lifecycle === "ativo");
+    if (!modelo) throw new Error("o seed não tem uma Tarefa ativa em Prospecção");
+    state.tasks.push({
+      ...modelo,
+      id: "tsk_nascida_de_negocio",
+      listId: "lst_funil_closer",
+      title: "Call de fechamento do Negócio",
+      provenance: { kind: "deal", sourceId: "deal_x", sourceName: "Negócio X", at: "2026-01-01T00:00:00.000Z" },
+    });
+
+    await montar("lst_funil_closer");
+
+    expect(screen.getAllByText("Call de fechamento do Negócio").length).toBeGreaterThan(0);
   });
 });

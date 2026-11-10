@@ -11,11 +11,12 @@ import Link from "next/link";
 import { useState } from "react";
 import { useData, useRun } from "@/dados/store";
 import { aprovarPedidoDeEntrada, receberPedidoDeEntrada, recusaExternaNoGrupo, recusarPedidoDeEntrada } from "@n1/dominio/operations";
-import { contactDisplayName } from "@n1/dominio/derive";
 import type { Grupo, PedidoDeEntrada } from "@n1/dominio/types";
 import type { Report } from "@/features/shell/ficha";
 import { useFormat } from "@/features/shell/use-format";
 import { ActorAvatar, Button, ConfirmDialog, EmptyState, Field, Pilula, ReguaDeSecao, Select, TextInput } from "@/features/shell/ui";
+import { nomeDe, useNomesDoCrm } from "@/dados/crm/nomes";
+import { crmParaSimular, recusaSePronta, useCanaisDasFerramentas, useCrmDasFerramentas } from "./crm-das-ferramentas";
 import { ESTADO_DO_PEDIDO_LABEL, ESTADO_DO_PEDIDO_TOM, ORIGEM_DA_PARTICIPACAO_LABEL } from "./rotulos";
 
 export function SecaoDePedidosDeEntrada({ grupo, report }: { readonly grupo: Grupo; readonly report: Report }) {
@@ -27,7 +28,11 @@ export function SecaoDePedidosDeEntrada({ grupo, report }: { readonly grupo: Gru
   const [simulando, setSimulando] = useState(false);
   const [numero, setNumero] = useState("");
   const [erro, setErro] = useState<string | null>(null);
-  const externa = recusaExternaNoGrupo(state, grupo, "administrador");
+  // O Canal e o nome do Contato do solicitante vêm do CRM novo (GET /canais e POST /crm/nomes, 3.4.8).
+  const canaisDoCrm = useCanaisDasFerramentas();
+  const crm = useCrmDasFerramentas(canaisDoCrm);
+  const nomes = useNomesDoCrm(grupo.pedidosDeEntrada.map((p) => ({ tipo: "contact" as const, id: p.contactId })));
+  const externa = recusaSePronta(canaisDoCrm, () => recusaExternaNoGrupo(state, grupo, "administrador", crm));
   const pendentes = grupo.pedidosDeEntrada.filter((p) => p.estado === "pendente");
   const lista = [...grupo.pedidosDeEntrada].sort((a, b) => (a.estado === "pendente" ? 0 : 1) - (b.estado === "pendente" ? 0 : 1) || b.solicitadoEm.localeCompare(a.solicitadoEm));
   const motivos = state.catalog.filter((c) => c.kind === "motivoPerda" && c.lifecycle === "ativo");
@@ -57,8 +62,10 @@ export function SecaoDePedidosDeEntrada({ grupo, report }: { readonly grupo: Gru
       ) : (
         <ul className="pilha-solta">
           {lista.map((p) => {
-            const contato = state.contacts.find((c) => c.id === p.contactId);
-            const nome = contato ? contactDisplayName(contato) : p.identificadorExternoDoSolicitante;
+            // `null` = a api não nomeou (outro Espaço ou sem permissão): mostra o número do solicitante.
+            const nomeDoContato = nomeDe(nomes, "contact", p.contactId);
+            const contato = nomeDoContato ? { id: p.contactId } : undefined;
+            const nome = nomeDoContato ?? p.identificadorExternoDoSolicitante;
             const decisor = p.decididoPor?.kind === "member" ? state.members.find((m) => m.id === p.decididoPor?.id)?.displayName : undefined;
             return (
               <li key={p.id} className="item-solto">
@@ -83,7 +90,7 @@ export function SecaoDePedidosDeEntrada({ grupo, report }: { readonly grupo: Gru
                 </span>
                 {p.estado === "pendente" ? (
                   <>
-                    <Button size="sm" variant="primary" onClick={() => report(run((data, me) => aprovarPedidoDeEntrada(data, me, grupo.id, p.id)), `${nome} entrou no Grupo.`)} disabled={externa !== undefined} {...(externa ? { disabledReason: externa } : {})}>
+                    <Button size="sm" variant="primary" onClick={() => report(run((data, me) => aprovarPedidoDeEntrada(data, me, grupo.id, p.id, crm)), `${nome} entrou no Grupo.`)} disabled={externa !== undefined} {...(externa ? { disabledReason: externa } : {})}>
                       Aprovar
                     </Button>
                     <Button size="sm" onClick={() => setRecusando(p)} disabled={externa !== undefined} {...(externa ? { disabledReason: externa } : {})}>
@@ -105,7 +112,7 @@ export function SecaoDePedidosDeEntrada({ grupo, report }: { readonly grupo: Gru
         destructive
         onConfirm={() => {
           if (!recusando) return;
-          report(run((data, me) => recusarPedidoDeEntrada(data, me, grupo.id, recusando.id, motivoId || undefined)), "Pedido recusado.");
+          report(run((data, me) => recusarPedidoDeEntrada(data, me, grupo.id, recusando.id, motivoId || undefined, crm)), "Pedido recusado.");
           setRecusando(null);
           setMotivoId("");
         }}
@@ -123,7 +130,11 @@ export function SecaoDePedidosDeEntrada({ grupo, report }: { readonly grupo: Gru
         confirmLabel="Receber Pedido"
         {...(numero.replace(/\D/g, "").length < 10 ? { confirmDisabledReason: "Informe um número com DDD." } : {})}
         onConfirm={() => {
-          const r = run((data) => receberPedidoDeEntrada(data, grupo.id, numero.replace(/\D/g, "")));
+          const r = run((data) => {
+            const digitos = numero.replace(/\D/g, "");
+            // O evento do provedor ainda não tem rota em POST /operacoes: só a execução local o recebe, com um Contato só dela (15-17).
+            return receberPedidoDeEntrada(data, grupo.id, digitos, {}, crmParaSimular("receberPedidoDeEntrada", data, [grupo.id, digitos], canaisDoCrm));
+          });
           if (!r.ok) {
             setErro(r.error);
             return;

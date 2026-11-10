@@ -101,6 +101,8 @@ function contatoDetalhado(): ContatoDetalhado {
       qualificacao: null,
       modoCriacao: "manual",
       estado: "ativo",
+      mescladoEmId: null,
+      mescladoEm: null,
       proprietarioId: "mem_julia",
       criadoPor: "mem_julia",
       criadoEm: "2026-10-01T10:00:00.000Z",

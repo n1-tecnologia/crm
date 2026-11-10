@@ -17,10 +17,10 @@
  * os schemas usam `z.date()`, não a forma serializada `{ $tipo: "Date", iso }`
  * que só existe no corpo HTTP.
  *
- * Cobertura: TODAS as operações de `OPERACOES` (264) — um arquivo por módulo
+ * Cobertura: TODAS as operações de `OPERACOES` — um arquivo por módulo
  * do domínio em `esquemas/`, ver `esquemas/CONTEXT.md`, composto aqui sob o
  * portão de completude abaixo: registrar uma operação nova em `OPERACOES`
- * sem acrescentar o schema correspondente a algum dos 29 arquivos de
+ * sem acrescentar o schema correspondente a algum dos arquivos de
  * `esquemas/` é erro de COMPILAÇÃO, apontando o nome que falta — não existe
  * mais fallback estrutural, nem operação alcançável por HTTP sem schema
  * próprio.
@@ -49,23 +49,24 @@
  * Ferramentas do Canal — Grupos, Comunidades, Flows, Links de Captação,
  * Notas — e `iniciarConversa` (200): a mesma disciplina, seis arquivos
  * novos em `esquemas/` (`notas`, `captacao`, `comunidades`, `grupos`,
- * `flows`, `iniciar-conversa`). Metas saiu (5 operações, 197); o frontend
+ * `flows`, `iniciar conversa`). Metas saiu (5 operações, 197); o frontend
  * do main (2026-09-25) trouxe mais 67 operações e sete arquivos novos
  * (`canais`, `tarefas-conversacionais`, `ia-agentes`,
  * `ia-automacoes-editor`, `ia-conhecimento`, `ia-habilidades`,
- * `ia-integracoes`) — 264.
+ * `ia-integracoes`) — 264. A 15-32 tirou as 40 operações do CRM antigo (os
+ * arquivos de esquema de Contato, Negócio, Canal e Iniciar conversa saíram e `conversas`
+ * ficou com as cinco da Conversa de grupo): 245. A contagem de verdade é a
+ * de `Object.keys(OPERACOES).length`, conferida em `esquemas-de-argumentos.test.ts`.
  */
 
 import type { NomeDeOperacao } from "@n1/dominio/operations/registro";
 import { z } from "zod";
 import { AUTOMACOES } from "./esquemas/automacoes";
-import { CANAIS } from "./esquemas/canais";
 import { CAPTACAO } from "./esquemas/captacao";
 import { COLABORACAO } from "./esquemas/colaboracao";
 import { COMUNIDADES } from "./esquemas/comunidades";
 import { CONFIGURACAO } from "./esquemas/configuracao";
 import { CONSTRUTOR_DE_AGENTES } from "./esquemas/construtor-de-agentes";
-import { CONTATOS } from "./esquemas/contatos";
 import { CONVERSAS } from "./esquemas/conversas";
 import { ESCALA } from "./esquemas/escala";
 import { ESTRUTURA } from "./esquemas/estrutura";
@@ -79,14 +80,12 @@ import { IA_AUTOMACOES_EDITOR } from "./esquemas/ia-automacoes-editor";
 import { IA_CONHECIMENTO } from "./esquemas/ia-conhecimento";
 import { IA_HABILIDADES } from "./esquemas/ia-habilidades";
 import { IA_INTEGRACOES } from "./esquemas/ia-integracoes";
-import { INICIAR_CONVERSA } from "./esquemas/iniciar-conversa";
 import { LOTE } from "./esquemas/lote";
 import { MEMBROS } from "./esquemas/membros";
 import { PAPEIS } from "./esquemas/papeis";
 import { EQUIPES } from "./esquemas/equipes";
 import { ACESSOS } from "./esquemas/acessos";
 import { CICLO_DO_MEMBRO } from "./esquemas/ciclo-do-membro";
-import { NEGOCIOS } from "./esquemas/negocios";
 import { NOTAS } from "./esquemas/notas";
 import { PASTAS_DE_CHAT } from "./esquemas/pastas-de-chat";
 import { PLANEJAMENTO } from "./esquemas/planejamento";
@@ -98,15 +97,13 @@ export type { ArgumentosDe } from "./esquemas/fragmentos";
 /**
  * Composição por spread — preserva o tipo literal de cada chave. O
  * `satisfies` abaixo é o portão de completude: faltar UMA operação de
- * `OPERACOES` (264) não compila, apontando o nome dela.
+ * `OPERACOES` não compila, apontando o nome dela.
  */
 export const ESQUEMAS = {
   ...TAREFAS,
   ...AUTOMACOES,
   ...FINANCEIRO,
-  ...NEGOCIOS,
   ...CONVERSAS,
-  ...CONTATOS,
   ...IA,
   ...PASTAS_DE_CHAT,
   ...CONSTRUTOR_DE_AGENTES,
@@ -123,11 +120,9 @@ export const ESQUEMAS = {
   ...NOTAS,
   ...CAPTACAO,
   ...COMUNIDADES,
-  ...INICIAR_CONVERSA,
   ...GRUPOS,
   ...FLOWS,
   ...LOTE,
-  ...CANAIS,
   ...TAREFAS_CONVERSACIONAIS,
   ...IA_AGENTES,
   ...IA_AUTOMACOES_EDITOR,
@@ -139,7 +134,7 @@ export const ESQUEMAS = {
 /**
  * `ESQUEMAS[nome]` — nunca fallback: toda operação do registro tem schema
  * próprio (portão `EsquemasCompletos` acima). O cast relaxa só a união das
- * 264 assinaturas específicas que a rota — genérica sobre `NomeDeOperacao`
+ * assinaturas específicas que a rota — genérica sobre `NomeDeOperacao`
  * — não consegue indexar sem um genérico por chamada; a FORMA de cada valor
  * já foi garantida pelo portão de completude e pelo `satisfies` de cada
  * arquivo de `esquemas/`.

@@ -26,8 +26,15 @@
  * o menu dele só tem Abrir, e Reabrir um `ganho` fica desligado com o motivo
  * para quem não administra. Quem barra de verdade é o backend.
  *
+ * O filtro "Meus" (F14-D-06, UCR-06): "Meus negócios" não é mais rota nem
+ * árvore, é este quadro com `proprietarioId` = Membro da sessão. Quem sabe se
+ * o filtro está ligado é a página (`?meus=1`); o quadro só recebe o
+ * `proprietarioId` e o repassa à lista, e a página soma os totais com o MESMO
+ * valor — a chave de SWR é a mesma, então ligar e desligar volta ao quadro
+ * que já estava em cache. O filtro só restringe: quem barra de verdade é a api.
+ *
  * O quadro de Status das Listas conversacionais é OUTRO arquivo
- * (`features/estrutura/quadro-negocios.tsx`, modelo de Tarefas) e não muda.
+ * (`features/estrutura/quadro-conversacional.tsx`, modelo de Tarefas) e não muda.
  */
 
 import Link from "next/link";
@@ -95,12 +102,18 @@ export function totaisDoQuadro(itens: ReadonlyArray<NegocioResumo>): TotaisDoQua
 }
 
 /**
- * A lista do quadro: os Negócios `ativo` do Funil, até 200. A página e o quadro
- * chamam com o MESMO filtro (a chave é a mesma; o SWR busca uma vez), e sem
- * Funil (`undefined`) nada vai à api.
+ * A lista do quadro: os Negócios `ativo` do Funil, até 200 — ou, com o filtro
+ * "Meus", só os do Proprietário `proprietarioId`. A página e o quadro chamam
+ * com o MESMO filtro (a chave é a mesma; o SWR busca uma vez), e sem Funil
+ * (`undefined`) nada vai à api.
  */
-export function useNegociosDoQuadro(funilId: string | undefined) {
-  const filtro: FiltroDeNegocios = { estado: "ativo", limite: NEGOCIOS_POR_FUNIL, ...(funilId !== undefined ? { funilId } : {}) };
+export function useNegociosDoQuadro(funilId: string | undefined, proprietarioId?: string) {
+  const filtro: FiltroDeNegocios = {
+    estado: "ativo",
+    limite: NEGOCIOS_POR_FUNIL,
+    ...(funilId !== undefined ? { funilId } : {}),
+    ...(proprietarioId !== undefined ? { proprietarioId } : {}),
+  };
   return useNegocios(filtro, { pausado: funilId === undefined });
 }
 
@@ -123,15 +136,18 @@ interface DialogoAberto {
 export function QuadroDoFunil({
   funilId,
   onNovo,
+  proprietarioId,
 }: {
   readonly funilId: string;
   /** O "+" das colunas vazias: abre o Novo Negócio. */
   readonly onNovo: () => void;
+  /** O filtro "Meus": o Membro da sessão. Ausente, o quadro mostra todos os Negócios do Funil. */
+  readonly proprietarioId?: string;
 }) {
   const router = useRouter();
   const fmt = useFormat();
   const funil = useFunil(funilId);
-  const lista = useNegociosDoQuadro(funilId);
+  const lista = useNegociosDoQuadro(funilId, proprietarioId);
 
   const [arrastando, setArrastando] = useState<string | null>(null);
   /** O cartão que acabou de mudar de coluna: acende (`data-recente`) até o próximo arrasto. */

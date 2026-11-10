@@ -29,18 +29,19 @@ ser válido", limites numéricos) continua exclusivamente no domínio.
    }`); ninguém dentro desta pasta importa dele. Sem ciclo:
    `fragmentos.ts` → `<modulo>.ts` → `esquemas-de-argumentos.ts` →
    `operacoes.ts`.
-7. `esquemas-de-argumentos.ts` compõe os 33 sob `satisfies
+7. `esquemas-de-argumentos.ts` compõe os módulos sob `satisfies
    EsquemasCompletos` — um módulo novo no domínio exige um arquivo novo
    aqui, senão não compila.
 
 ## Arquivos
 
 Os 15 originais são do Plan 01-16, que fechou a composição; `notas.ts`,
-`captacao.ts`, `comunidades.ts`, `grupos.ts`, `flows.ts` e
-`iniciar-conversa.ts` vieram depois, fechando a reconciliação que trouxe
-Ferramentas do Canal (Grupos, Comunidades, Flows, Links de Captação, Notas)
-e `iniciarConversa` para `OPERACOES` sem schema — ver
-`esquemas-de-argumentos.ts` para a linha do tempo completa.
+`captacao.ts`, `comunidades.ts`, `grupos.ts` e `flows.ts` vieram depois,
+fechando a reconciliação que trouxe Ferramentas do Canal (Grupos, Comunidades,
+Flows, Links de Captação, Notas) para `OPERACOES` sem schema — ver
+`esquemas-de-argumentos.ts` para a linha do tempo completa. A 15-32 apagou
+`contatos.ts`, `negocios.ts`, `canais.ts` e `iniciar-conversa.ts` com as
+operações do CRM antigo que eles descreviam.
 
 | Arquivo | Módulo do domínio |
 |---|---|
@@ -48,9 +49,7 @@ e `iniciarConversa` para `OPERACOES` sem schema — ver
 | `tarefas.ts` | `tasks.ts` |
 | `automacoes.ts` | `automations.ts` |
 | `financeiro.ts` | `financeiro.ts` |
-| `negocios.ts` | `deals.ts` |
-| `conversas.ts` | `conversations.ts` |
-| `contatos.ts` | `contacts.ts` |
+| `conversas.ts` | `ferramentas/conversa-de-grupo.ts` (só as cinco operações da Conversa de grupo, F14-D-05) |
 | `ia.ts` | `ai.ts` |
 | `pastas-de-chat.ts` | `chat-folders.ts` |
 | `construtor-de-agentes.ts` | `agent-builder.ts` |
@@ -69,9 +68,7 @@ e `iniciarConversa` para `OPERACOES` sem schema — ver
 | `comunidades.ts` | `ferramentas/comunidades.ts` |
 | `grupos.ts` | `ferramentas/grupos.ts` |
 | `flows.ts` | `ferramentas/flows.ts` |
-| `iniciar-conversa.ts` | `iniciar-conversa.ts` |
 | `lote.ts` | `lote.ts` |
-| `canais.ts` | `canais.ts` |
 | `tarefas-conversacionais.ts` | `tarefas-conversacionais.ts` |
 | `ia-agentes.ts` | `ia/agentes.ts` |
 | `ia-automacoes-editor.ts` | `ia/automacoes-editor.ts` |
@@ -79,6 +76,6 @@ e `iniciarConversa` para `OPERACOES` sem schema — ver
 | `ia-habilidades.ts` | `ia/habilidades.ts` |
 | `ia-integracoes.ts` | `ia/integracoes.ts` |
 
-`esquemas-de-argumentos.ts` compõe os 33 sob `satisfies EsquemasCompletos`
-— toda operação de `OPERACOES` (264) tem schema; não existe mais fallback
+`esquemas-de-argumentos.ts` compõe os módulos sob `satisfies EsquemasCompletos`
+— toda operação de `OPERACOES` tem schema (a contagem é `Object.keys(OPERACOES).length`); não existe mais fallback
 estrutural nem operação alcançável por HTTP sem schema próprio.

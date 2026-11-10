@@ -18,9 +18,6 @@ import { instrumentar } from "./registro";
 
 export * from "./activity";
 export * from "./tasks";
-export * from "./deals";
-export * from "./conversations";
-export * from "./contacts";
 export * from "./ai";
 export * from "./chat-folders";
 export * from "./agent-builder";
@@ -28,9 +25,10 @@ export * from "./configuration";
 export * from "./collaboration";
 export * from "./planning";
 export * from "./scale";
-export * from "./iniciar-conversa";
 export * from "./ferramentas";
 export * from "./tarefas-conversacionais";
+export * from "./tarefa-conversacional-nas-tabelas";
+export * from "./vinculos-da-mesclagem";
 export * from "./canais";
 export * from "./ia";
 export * from "./automations";
@@ -80,53 +78,13 @@ export const resolveTaskComment = instrumentar("resolveTaskComment");
 export const setTaskTags = instrumentar("setTaskTags");
 export const watchTask = instrumentar("watchTask");
 
-// deals.ts
-export const moveDealToStage = instrumentar("moveDealToStage");
-export const winDeal = instrumentar("winDeal");
-export const loseDeal = instrumentar("loseDeal");
-export const reopenDeal = instrumentar("reopenDeal");
-export const linkContactToDeal = instrumentar("linkContactToDeal");
-export const removeStage = instrumentar("removeStage");
-export const migrateDealsToFunnel = instrumentar("migrateDealsToFunnel");
-export const restoreDeal = instrumentar("restoreDeal");
-export const moveDealToFunnel = instrumentar("moveDealToFunnel");
-export const createDeal = instrumentar("createDeal");
-export const unlinkContactFromDeal = instrumentar("unlinkContactFromDeal");
-export const setDealFieldValue = instrumentar("setDealFieldValue");
-
-// conversations.ts
-export const sendMessage = instrumentar("sendMessage");
+// ferramentas/conversa-de-grupo.ts
+// Só as cinco que a Conversa de grupo na Caixa ainda chama pelo store (F14-D-05).
 export const resolveConversation = instrumentar("resolveConversation");
 export const reopenConversation = instrumentar("reopenConversation");
 export const assignConversation = instrumentar("assignConversation");
 export const trashConversation = instrumentar("trashConversation");
-export const moveConversationToContact = instrumentar("moveConversationToContact");
-export const discardDraft = instrumentar("discardDraft");
-export const restoreConversation = instrumentar("restoreConversation");
-export const startConversation = instrumentar("startConversation");
 export const toggleConversationStar = instrumentar("toggleConversationStar");
-export const markConversationRead = instrumentar("markConversationRead");
-
-// contacts.ts
-export const addContactIdentifier = instrumentar("addContactIdentifier");
-export const transferContactIdentifier = instrumentar("transferContactIdentifier");
-export const mergeContacts = instrumentar("mergeContacts");
-export const endContactCompanyLink = instrumentar("endContactCompanyLink");
-export const trashContact = instrumentar("trashContact");
-export const trashCompany = instrumentar("trashCompany");
-export const restoreMergedCopy = instrumentar("restoreMergedCopy");
-export const importContacts = instrumentar("importContacts");
-export const restoreContact = instrumentar("restoreContact");
-export const restoreCompany = instrumentar("restoreCompany");
-export const markContactsAsDistinct = instrumentar("markContactsAsDistinct");
-export const addContactNote = instrumentar("addContactNote");
-export const createContact = instrumentar("createContact");
-export const createCompany = instrumentar("createCompany");
-export const linkContactToCompany = instrumentar("linkContactToCompany");
-export const addCompanyIdentifier = instrumentar("addCompanyIdentifier");
-export const setContactCatalogValue = instrumentar("setContactCatalogValue");
-export const updateCompany = instrumentar("updateCompany");
-export const addCompanyNote = instrumentar("addCompanyNote");
 
 // ai.ts
 export const decideApproval = instrumentar("decideApproval");
@@ -263,9 +221,6 @@ export const unarchiveContainer = instrumentar("unarchiveContainer");
 export const trashContainer = instrumentar("trashContainer");
 export const restoreContainer = instrumentar("restoreContainer");
 
-// iniciar-conversa.ts
-export const iniciarConversa = instrumentar("iniciarConversa");
-
 // ferramentas/notas.ts
 export const adicionarNotaNoAtivo = instrumentar("adicionarNotaNoAtivo");
 
@@ -347,17 +302,9 @@ export const restaurarComunidadeDaLixeira = instrumentar("restaurarComunidadeDaL
 // chamaria as versões cruas, `gravarChamadas` não observaria nada e o clique
 // rodaria só no navegador — nunca chegaria a `POST /operacoes/:nome`.
 
-// canais.ts
-export const criarCanal = instrumentar("criarCanal");
-export const configurarCanal = instrumentar("configurarCanal");
-
 // tarefas-conversacionais.ts
 export const alterarModeloDaLista = instrumentar("alterarModeloDaLista");
 export const definirCanaisDaLista = instrumentar("definirCanaisDaLista");
-export const criarTarefaConversacional = instrumentar("criarTarefaConversacional");
-export const trocarCanalDaTarefa = instrumentar("trocarCanalDaTarefa");
-export const vincularNegocioATarefa = instrumentar("vincularNegocioATarefa");
-export const criarNegocioDaTarefa = instrumentar("criarNegocioDaTarefa");
 
 // ia/agentes.ts
 export const ativarAgente = instrumentar("ativarAgente");

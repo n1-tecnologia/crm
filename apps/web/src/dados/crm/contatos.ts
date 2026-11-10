@@ -21,12 +21,15 @@ import type {
   EdicaoDeIdentificador,
   NovoContato,
   NovoIdentificadorDeContato,
+  TipoIdentificadorContato,
 } from "@n1/dominio/crm/contatos";
 import { chamarCrm, ErroDeApi, invalidarCrm } from "./cliente-crm";
 
 export interface FiltroDeContatos {
   readonly estado?: EstadoCrm;
   readonly q?: string;
+  /** Só Contatos com Identificador desse tipo — o seletor de Contatos com WhatsApp das Ferramentas (3.4.8). */
+  readonly comIdentificador?: TipoIdentificadorContato;
   readonly limite?: number;
   readonly deslocamento?: number;
 }
@@ -37,22 +40,24 @@ export interface RespostaDaListaDeContatos {
   readonly total: number;
 }
 
-/** `/contatos?estado=…&q=…&limite=…&deslocamento=…` — a mesma forma para a lista e para a invalidação. */
+/** `/contatos?estado=…&q=…&comIdentificador=…&limite=…&deslocamento=…` — a mesma forma para a lista e para a invalidação. */
 export function chaveDeContatos(filtro: FiltroDeContatos): string {
   const parametros = new URLSearchParams();
   parametros.set("estado", filtro.estado ?? "ativo");
   const busca = (filtro.q ?? "").trim();
   if (busca !== "") parametros.set("q", busca);
+  if (filtro.comIdentificador !== undefined) parametros.set("comIdentificador", filtro.comIdentificador);
   parametros.set("limite", String(filtro.limite ?? LIMITES_CRM.paginaPadrao));
   parametros.set("deslocamento", String(filtro.deslocamento ?? 0));
   return `/contatos?${parametros.toString()}`;
 }
 
-export function useContatos(filtro: FiltroDeContatos) {
+/** `pausado` não lê nada (a Busca só consulta arquivados e a lixeira quando a pessoa pede). */
+export function useContatos(filtro: FiltroDeContatos, opcoes: { readonly pausado?: boolean } = {}) {
   const chave = chaveDeContatos(filtro);
   // `keepPreviousData`: "Mostrar mais" (o `limite` muda a chave) não pisca o esqueleto nem volta ao topo.
   // Quem usa confere se os dados são do estado pedido (a troca de aba também muda a chave).
-  return useSWR<RespostaDaListaDeContatos, Error>(chave, (k: string) => chamarCrm<RespostaDaListaDeContatos>(k), {
+  return useSWR<RespostaDaListaDeContatos, Error>(opcoes.pausado ? null : chave, (k: string) => chamarCrm<RespostaDaListaDeContatos>(k), {
     keepPreviousData: true,
   });
 }
@@ -104,6 +109,24 @@ export function editarIdentificador(id: string, identificadorId: string, edicao:
 
 export function removerIdentificador(id: string, identificadorId: string): Promise<ContatoDetalhado> {
   return gravar(`${chaveDoContato(id)}/identificadores/${identificadorId}`, "DELETE");
+}
+
+/**
+ * 3.2.3: passa o Identificador de `contatoId` ao Contato de destino. Só a
+ * resolução futura muda; Conversas e Mensagens passadas ficam onde estão. A
+ * resposta é o Contato de ORIGEM, já sem o Identificador.
+ */
+export function transferirIdentificador(contatoId: string, identificadorId: string, paraContatoId: string): Promise<ContatoDetalhado> {
+  return gravar(`${chaveDoContato(contatoId)}/identificadores/${identificadorId}/transferir`, "POST", { paraContatoId });
+}
+
+/**
+ * 3.2.2: o Contato `sobreviventeId` absorve o `absorvidoId`; irreversível. A
+ * resposta é o sobrevivente. O absorvido passa a `mesclado` e a página dele
+ * leva ao sobrevivente (14-01).
+ */
+export function mesclarContatos(sobreviventeId: string, absorvidoId: string): Promise<ContatoDetalhado> {
+  return gravar(`${chaveDoContato(sobreviventeId)}/mesclar`, "POST", { absorvidoId });
 }
 
 export function arquivarContato(id: string): Promise<ContatoDetalhado> {

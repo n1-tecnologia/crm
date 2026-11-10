@@ -13,7 +13,7 @@
  * com o `workspace_id` da sessão (T-07-28): o que é de outro Espaço é 404. As
  * Regras de encerramento do Funil (D-05) são lidas do banco na mesma
  * transação e aplicadas pelo domínio; só depois vem o SQL. O serviço PRÉ-CHECA
- * para dar a mensagem rica e o SQLSTATE traduzido por `FRASES` é a rede contra
+ * para dar a mensagem rica e o SQLSTATE traduzido por `FRASES_DE_NEGOCIOS` é a rede contra
  * a corrida. Recusa de regra é valor (`recusa`), não exceção.
  */
 
@@ -46,7 +46,7 @@ import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
 import { criarRepositorioDeEmpresasPg } from "../../repositorios/crm/empresas";
 import { criarRepositorioDeFunisPg } from "../../repositorios/crm/funis";
-import { criarRepositorioDeNegociosPg, type RepositorioDeNegocios } from "../../repositorios/crm/negocios";
+import { criarRepositorioDeNegociosPg, type LinhaDeNegocio, type RepositorioDeNegocios } from "../../repositorios/crm/negocios";
 import { exigir, resolverProprietario, type AcessoAoCrm } from "./acesso";
 import { recusa, sucesso, type ResultadoCrm } from "./resultado";
 import { comTransacao, type FrasesDeRestricao } from "./transacao";
@@ -57,6 +57,7 @@ export interface FiltroDeNegocios {
   readonly situacao?: SituacaoNegocio | undefined;
   readonly empresaId?: string | undefined;
   readonly contatoId?: string | undefined;
+  readonly proprietarioId?: string | undefined;
   readonly q?: string | undefined;
   readonly limite: number;
   readonly deslocamento: number;
@@ -79,8 +80,8 @@ export interface ServicoDeNegocios {
 
 const FRASE_DONO = "Um Negócio é de uma Empresa ou de um Contato.";
 
-/** Rede contra corrida: o constraint que segurou vira esta frase, sem o nome dele (T-07-06). */
-const FRASES: FrasesDeRestricao = {
+/** Rede contra corrida: o constraint que segurou vira esta frase, sem o nome dele (T-07-06). Exportada para quem grava Negócio dentro de outra transação (14-14). */
+export const FRASES_DE_NEGOCIOS: FrasesDeRestricao = {
   negocios_dono_ck: { codigo: "DONO_INVALIDO", error: FRASE_DONO },
   negocios_encerramento_ck: {
     codigo: "NEGOCIO_ENCERRADO",
@@ -142,10 +143,28 @@ async function conferirEmpresa(cliente: Cliente, workspaceId: string, empresaId:
   return undefined;
 }
 
-/** Contato do Espaço e fora da lixeira (RN-CON-19: arquivado continua referenciável). */
-async function conferirContato(cliente: Cliente, workspaceId: string, contatoId: string): Promise<ResultadoCrm<never> | undefined> {
-  const contato = await criarRepositorioDeContatosPg(cliente).obter(workspaceId, contatoId);
+/**
+ * Contato do Espaço, nem mesclado nem na lixeira (RN-CON-19: arquivado continua referenciável).
+ * Por padrão trava a linha (`for update`): com uma mesclagem confirmada no meio, a escrita espera e enxerga
+ * `mesclado` (WR-01, RN-CON-14). Em `editar` o Negócio já está travado, a ordem inversa da mesclagem
+ * (Contato → Negócio): se o Postgres escolher esta transação num deadlock, `comTransacao` devolve 409
+ * `CONFLITO_TRANSITORIO` (D-15-07).
+ */
+async function conferirContato(
+  cliente: Cliente,
+  workspaceId: string,
+  contatoId: string,
+  { travar = true }: { readonly travar?: boolean } = {},
+): Promise<ResultadoCrm<never> | undefined> {
+  const contato = await criarRepositorioDeContatosPg(cliente).obter(workspaceId, contatoId, { travar });
   if (!contato) return recusa<never>(404, "Contato não encontrado.", { codigo: "CONTATO_NAO_ENCONTRADO", campo: "contatoId" });
+  // RN-CON-14: o absorvido é somente leitura; o Negócio vai para o Contato que ficou.
+  if (contato.estado === "mesclado") {
+    return recusa<never>(409, "Este Contato foi mesclado em outro: escolha o Contato que ficou.", {
+      codigo: "CONTATO_MESCLADO",
+      campo: "contatoId",
+    });
+  }
   if (contato.estado === "na_lixeira") {
     return recusa<never>(409, "O Contato está na lixeira. Restaure o Contato antes de criar um Negócio para ele.", {
       codigo: "CONTATO_INATIVO",
@@ -200,6 +219,125 @@ async function detalhar(cliente: Cliente, workspaceId: string, negocio: Negocio)
   };
 }
 
+/** Funil existente no Espaço (404 se não) e `ativo` (409 `FUNIL_INATIVO`, RN-FUN-14). */
+async function funilAtivo(cliente: Cliente, workspaceId: string, funilId: string): Promise<Achado<Funil, "funil">> {
+  const funil = await criarRepositorioDeFunisPg(cliente).obter(workspaceId, funilId);
+  if (!funil) return { falha: recusa<never>(404, "Funil não encontrado.", { codigo: "FUNIL_NAO_ENCONTRADO", campo: "funilId" }) };
+  if (funil.estado !== "ativo") {
+    return {
+      falha: recusa<never>(409, "Um Funil arquivado ou na lixeira não recebe Negócios (RN-FUN-14).", {
+        codigo: "FUNIL_INATIVO",
+        campo: "funilId",
+      }),
+    };
+  }
+  return { funil };
+}
+
+/** Etapa existente no Espaço (404 se não) e do Funil dado (409 `ETAPA_INVALIDA`, INV-FUN-06). */
+async function etapaDoFunil(cliente: Cliente, workspaceId: string, funilId: string, etapaId: string): Promise<Achado<Etapa, "etapa">> {
+  const etapa = await criarRepositorioDeFunisPg(cliente).obterEtapa(workspaceId, etapaId);
+  if (!etapa) return { falha: recusa<never>(404, "Etapa não encontrada.", { codigo: "ETAPA_NAO_ENCONTRADA", campo: "etapaId" }) };
+  if (etapa.funilId !== funilId) {
+    return {
+      falha: recusa<never>(409, "A Etapa de destino não é do Funil escolhido (INV-FUN-06).", {
+        codigo: "ETAPA_INVALIDA",
+        campo: "etapaId",
+      }),
+    };
+  }
+  return { etapa };
+}
+
+/** Forma do Negócio novo (título, dono, valor), sem banco: a recusa 400, ou `undefined` quando está válido. */
+export function recusaDeFormaDoNegocio(entrada: NovoNegocio): ResultadoCrm<never> | undefined {
+  const validacao = validarNovoNegocio(entrada);
+  if (validacao.ok) return undefined;
+  return validacao.field === undefined ? recusa<never>(400, validacao.error, { codigo: "DONO_INVALIDO" }) : valorInvalido(validacao);
+}
+
+/**
+ * Tudo o que se LÊ para criar um Negócio, sem gravar: o Funil (o padrão do Espaço, se não vier) `ativo`, a Etapa
+ * (a inicial, se não vier), a Empresa e o Contato. Devolve a linha pronta para o `inserir`, sem o `id`. Quem
+ * grava dentro de outra transação pré-checa aqui (em `lerDoCrm`) para a recusa voltar como valor antes de
+ * escrever qualquer coisa. O Proprietário já vem resolvido em `entrada.proprietarioId` (ou é o `membro`).
+ */
+export async function prepararNegocioNovo(cliente: PoolClient, membro: MembroDaSessao, entrada: NovoNegocio): Promise<ResultadoCrm<LinhaDeNegocio>> {
+  const funis = criarRepositorioDeFunisPg(cliente);
+  const ws = membro.workspaceId;
+
+  // RN-NEG-03: sem Funil explícito, o Funil padrão do Espaço.
+  let funilId = entrada.funilId;
+  if (funilId === undefined) {
+    const padrao = await funis.funilPadrao(ws);
+    if (!padrao) {
+      return recusa<never>(409, "Este Espaço de Trabalho não tem Funil padrão. Crie um Funil antes.", { codigo: "SEM_FUNIL_PADRAO" });
+    }
+    funilId = padrao.id;
+  }
+  const funil = await funilAtivo(cliente, ws, funilId);
+  if (funil.falha) return funil.falha;
+
+  // RN-FUN-06: sem Etapa explícita, a de menor ordem.
+  let etapaId = entrada.etapaId;
+  if (etapaId === undefined) {
+    const inicial = etapaInicial(await funis.listarEtapas(ws, funil.funil.id));
+    if (!inicial) return recusa<never>(409, "O Funil não tem Etapas.", { codigo: "ETAPA_INVALIDA" });
+    etapaId = inicial.id;
+  } else {
+    const etapa = await etapaDoFunil(cliente, ws, funil.funil.id, etapaId);
+    if (etapa.falha) return etapa.falha;
+  }
+
+  if (entrada.empresaId !== undefined) {
+    const recusada = await conferirEmpresa(cliente, ws, entrada.empresaId);
+    if (recusada) return recusada;
+  }
+  if (entrada.contatoId !== undefined) {
+    const recusada = await conferirContato(cliente, ws, entrada.contatoId);
+    if (recusada) return recusada;
+  }
+
+  return sucesso({
+    titulo: entrada.titulo,
+    objeto: entrada.objeto,
+    descricao: entrada.descricao,
+    empresaId: entrada.empresaId,
+    contatoId: entrada.contatoId,
+    funilId: funil.funil.id,
+    etapaId,
+    valor: entrada.valor,
+    moeda: entrada.moeda,
+    probabilidade: entrada.probabilidade,
+    origem: entrada.origem,
+    dataPrevistaFechamento: entrada.dataPrevistaFechamento,
+    proprietarioId: entrada.proprietarioId ?? membro.id,
+    criadoPor: membro.id,
+  });
+}
+
+/**
+ * O corpo da transação de `criar`: confere Funil, Etapa, Empresa e Contato e insere o Negócio no `cliente` que
+ * veio (a transação é de quem chama). A recusa volta como valor. O Papel e a forma da entrada
+ * (`recusaDeFormaDoNegocio`) ficam com quem chama, ANTES da transação, e o Proprietário já resolvido em
+ * `entrada.proprietarioId`. Sem `opcoes.id`, o default do banco gera o id; a Tarefa conversacional o escolhe
+ * antes para gravar o Vínculo com ele (14-14).
+ */
+export async function criarNegocioNoCliente(
+  cliente: PoolClient,
+  membro: MembroDaSessao,
+  entrada: NovoNegocio,
+  opcoes: { readonly id?: string } = {},
+): Promise<ResultadoCrm<NegocioDetalhado>> {
+  const preparada = await prepararNegocioNovo(cliente, membro, entrada);
+  if (!preparada.ok) return preparada;
+  const negocio = await criarRepositorioDeNegociosPg(cliente).inserir(membro.workspaceId, {
+    ...preparada.valor,
+    ...(opcoes.id !== undefined ? { id: opcoes.id } : {}),
+  });
+  return sucesso(await detalhar(cliente, membro.workspaceId, negocio));
+}
+
 export function criarServicoDeNegocios(deps: {
   readonly pool: () => Pool;
   readonly acesso: AcessoAoCrm;
@@ -239,43 +377,13 @@ export function criarServicoDeNegocios(deps: {
         }
         return corpo({ cliente, repositorio, negocio });
       },
-      FRASES,
+      FRASES_DE_NEGOCIOS,
     );
   }
 
   async function devolver(cliente: Cliente, membro: MembroDaSessao, negocio: Negocio | undefined): Promise<ResultadoCrm<NegocioDetalhado>> {
     if (!negocio) return naoEncontrado();
     return sucesso(await detalhar(cliente, membro.workspaceId, negocio));
-  }
-
-  /** Funil existente no Espaço (404 se não) e `ativo` (409 `FUNIL_INATIVO`, RN-FUN-14). */
-  async function funilAtivo(cliente: Cliente, workspaceId: string, funilId: string): Promise<Achado<Funil, "funil">> {
-    const funil = await criarRepositorioDeFunisPg(cliente).obter(workspaceId, funilId);
-    if (!funil) return { falha: recusa<never>(404, "Funil não encontrado.", { codigo: "FUNIL_NAO_ENCONTRADO", campo: "funilId" }) };
-    if (funil.estado !== "ativo") {
-      return {
-        falha: recusa<never>(409, "Um Funil arquivado ou na lixeira não recebe Negócios (RN-FUN-14).", {
-          codigo: "FUNIL_INATIVO",
-          campo: "funilId",
-        }),
-      };
-    }
-    return { funil };
-  }
-
-  /** Etapa existente no Espaço (404 se não) e do Funil dado (409 `ETAPA_INVALIDA`, INV-FUN-06). */
-  async function etapaDoFunil(cliente: Cliente, workspaceId: string, funilId: string, etapaId: string): Promise<Achado<Etapa, "etapa">> {
-    const etapa = await criarRepositorioDeFunisPg(cliente).obterEtapa(workspaceId, etapaId);
-    if (!etapa) return { falha: recusa<never>(404, "Etapa não encontrada.", { codigo: "ETAPA_NAO_ENCONTRADA", campo: "etapaId" }) };
-    if (etapa.funilId !== funilId) {
-      return {
-        falha: recusa<never>(409, "A Etapa de destino não é do Funil escolhido (INV-FUN-06).", {
-          codigo: "ETAPA_INVALIDA",
-          campo: "etapaId",
-        }),
-      };
-    }
-    return { etapa };
   }
 
   /** Muda de situação e devolve o detalhe. Compartilhado por `arquivar`, `restaurar` e `enviarParaLixeira`. */
@@ -306,6 +414,7 @@ export function criarServicoDeNegocios(deps: {
           situacao: filtro.situacao,
           empresaId: filtro.empresaId,
           contatoId: filtro.contatoId,
+          proprietarioId: filtro.proprietarioId,
           q: filtro.q,
           limite: filtro.limite,
           deslocamento: filtro.deslocamento,
@@ -326,72 +435,15 @@ export function criarServicoDeNegocios(deps: {
       const negado = await exigir(deps.acesso, membro, "criar", "negocio");
       if (negado) return { ok: false, ...negado };
 
-      const validacao = validarNovoNegocio(entrada);
-      if (!validacao.ok) {
-        return validacao.field === undefined
-          ? recusa<never>(400, validacao.error, { codigo: "DONO_INVALIDO" })
-          : valorInvalido(validacao);
-      }
+      const malFormado = recusaDeFormaDoNegocio(entrada);
+      if (malFormado) return malFormado;
       const proprietario = await resolverProprietario(deps.acesso, membro, entrada.proprietarioId);
       if (!proprietario.ok) return proprietario;
 
       return comTransacao(
         deps.pool,
-        async (cliente) => {
-          const funis = criarRepositorioDeFunisPg(cliente);
-          const ws = membro.workspaceId;
-
-          // RN-NEG-03: sem Funil explícito, o Funil padrão do Espaço.
-          let funilId = entrada.funilId;
-          if (funilId === undefined) {
-            const padrao = await funis.funilPadrao(ws);
-            if (!padrao) {
-              return recusa<never>(409, "Este Espaço de Trabalho não tem Funil padrão. Crie um Funil antes.", { codigo: "SEM_FUNIL_PADRAO" });
-            }
-            funilId = padrao.id;
-          }
-          const funil = await funilAtivo(cliente, ws, funilId);
-          if (funil.falha) return funil.falha;
-
-          // RN-FUN-06: sem Etapa explícita, a de menor ordem.
-          let etapaId = entrada.etapaId;
-          if (etapaId === undefined) {
-            const inicial = etapaInicial(await funis.listarEtapas(ws, funil.funil.id));
-            if (!inicial) return recusa<never>(409, "O Funil não tem Etapas.", { codigo: "ETAPA_INVALIDA" });
-            etapaId = inicial.id;
-          } else {
-            const etapa = await etapaDoFunil(cliente, ws, funil.funil.id, etapaId);
-            if (etapa.falha) return etapa.falha;
-          }
-
-          if (entrada.empresaId !== undefined) {
-            const recusada = await conferirEmpresa(cliente, ws, entrada.empresaId);
-            if (recusada) return recusada;
-          }
-          if (entrada.contatoId !== undefined) {
-            const recusada = await conferirContato(cliente, ws, entrada.contatoId);
-            if (recusada) return recusada;
-          }
-
-          const negocio = await criarRepositorioDeNegociosPg(cliente).inserir(ws, {
-            titulo: entrada.titulo,
-            objeto: entrada.objeto,
-            descricao: entrada.descricao,
-            empresaId: entrada.empresaId,
-            contatoId: entrada.contatoId,
-            funilId: funil.funil.id,
-            etapaId,
-            valor: entrada.valor,
-            moeda: entrada.moeda,
-            probabilidade: entrada.probabilidade,
-            origem: entrada.origem,
-            dataPrevistaFechamento: entrada.dataPrevistaFechamento,
-            proprietarioId: proprietario.valor,
-            criadoPor: membro.id,
-          });
-          return devolver(cliente, membro, negocio);
-        },
-        FRASES,
+        (cliente) => criarNegocioNoCliente(cliente, membro, { ...entrada, proprietarioId: proprietario.valor }),
+        FRASES_DE_NEGOCIOS,
       );
     },
 

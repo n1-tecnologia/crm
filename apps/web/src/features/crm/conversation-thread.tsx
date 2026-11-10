@@ -7,68 +7,80 @@
  * Contato e na do Negócio — e duas cópias divergiriam justamente nas regras do
  * Canal, que é onde errar custa uma Mensagem enviada fora da janela.
  *
+ * Desde a Fase 15 (15-20, 3.4.2) o fio recebe IDS e lê o CRM novo pela api:
+ * o Contato com os Identificadores (`useContato`), os Canais (`useCanais`), as
+ * Conversas do Contato (`useConversas`) e as Mensagens da Conversa
+ * (`useMensagens`). Responder grava UMA linha em `plataforma.mensagens`
+ * (`enviarMensagem`, `POST /mensagens`); o que decide janela, consentimento e
+ * Canal arquivado é a api, e a recusa dela aparece no fio. Nada daqui lê as
+ * Conversas, os Contatos nem os Canais do estado antigo (`DataState`).
+ *
  * As abas são por Canal (D-14): uma por Canal ativo do Espaço, e a de um Canal
  * que o Contato não alcança fica desligada dizendo o que falta. O compositor
  * escolhe por qual Canal responder (D-15) e o separador "via …" marca a troca
- * de Canal numa sequência de Mensagens (D-13). Toda a conta mora em
- * `derive-conversacional`; aqui só se desenha.
+ * de Canal numa sequência de Mensagens (D-13). Toda a conta mora no domínio
+ * (`crm/canais-de-resposta`); aqui só se desenha.
+ *
+ * O modelo novo não tem Rascunho de IA (D-15-11, adiado para a Sessão 16), nem
+ * Mensagem de modelo: `plataforma.canais` não guarda modelos. Fora da janela de
+ * 24 h do WhatsApp oficial, então, o envio fica desligado dizendo por quê.
  */
 
 import Link from "next/link";
-import { useId, useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import {
   AudioLines,
-  Eye,
   FileText,
   Globe,
   Image,
   Mail,
-  MapPin,
   ListTodo,
   MessageCircle,
-  Mic,
   Paperclip,
   Plus,
   Send,
-  Smile,
-  Sparkles,
   StickyNote,
-  Table,
   Video,
-  Workflow,
   type LucideIcon,
 } from "lucide-react";
-import { useData, useRun } from "@/dados/store";
-import { useRecente } from "@/features/shell/recente";
+import { useData, useRehidratar, useRun } from "@/dados/store";
+import { ErroDeApi } from "@/dados/crm/cliente-crm";
+import { useCanais } from "@/dados/crm/canais";
+import { useContato } from "@/dados/crm/contatos";
+import { abrirConversa, useConversa, useConversas } from "@/dados/crm/conversas";
+import { enviarMensagem, pedirTicketDeAnexo, useMensagens } from "@/dados/crm/mensagens";
+import { enviarBytesAoBucket, recusaDoAnexoDaMensagem } from "@/dados/envio-ao-bucket";
+import { useNegocios } from "@/dados/crm/negocios";
+import { useConsentimentosDoContato } from "@/dados/crm/consentimentos";
+import { adicionarNotaAoContato } from "@/dados/crm/notas";
+import { criarTarefaConversacional } from "@/dados/crm/tarefas-conversacionais";
+import { createTask } from "@n1/dominio/operations";
+import { capacidadesDoCanal } from "@n1/dominio/crm/capacidades";
+import { statusCategory } from "@n1/dominio/derive";
 import {
-  capacidadesDoCanal,
-  addContactNote,
-  createTask,
-  criarTarefaConversacional,
-  discardDraft,
-  sendMessage,
-  startConversation,
-} from "@n1/dominio/operations";
-import {
-  contactDisplayName,
-  marketingConsentMissing,
-  responseWindowOpenUntil,
-  statusCategory,
-} from "@n1/dominio/derive";
-import {
-  canaisDaLista,
-  canaisDoFio,
-  canalDaAbaInicial,
-  canalPadraoDeResposta,
+  canaisDaListaNasTabelas,
   listaConversacional,
-  listaSemCanais,
+  listaSemCanaisNasTabelas,
   marcadoresDeCanal,
-  rotuloDoCanal,
 } from "@n1/dominio/derive-conversacional";
+import {
+  canaisDoFioNasTabelas,
+  canalDaAbaInicialNasTabelas,
+  canalPadraoDeRespostaNasTabelas,
+  rotuloDoCanalNasTabelas,
+} from "@n1/dominio/crm/canais-de-resposta";
+import { LIMITES_CRM } from "@n1/dominio/crm/comum";
+import { categoriaDaMidia, normalizarTipoDeMidia, tiposAceitosParaOCanal, type CategoriaDeMidia } from "@n1/dominio/crm/midia";
+import type { ReferenciaDeAnexoEnviado } from "@n1/dominio/crm/mensagens";
+import { nomeDeExibicaoDoContato, ROTULO_DO_TIPO_DE_IDENTIFICADOR } from "@n1/dominio/crm/contatos";
+import { consentimentoVigente } from "@n1/dominio/crm/consentimentos";
+import { recusaDeNotaNoContato, validarNovaNota } from "@n1/dominio/crm/notas";
+import { TIPO_DE_IDENTIFICADOR_DO_CANAL, type ConversaNaLista } from "@n1/dominio/crm/conversas";
 import { LISTA_SEM_CANAIS } from "@n1/dominio/operations/canais";
 import { SeletorDeTipoDeTarefa } from "@/features/estrutura/seletor-de-tipo";
-import { IDENTIFIER_TYPE_LABEL } from "@/features/shell/format";
-import { ContactAvatar } from "@/features/crm/contact-card";
+import { AvatarDoContato } from "@/features/crm/avatar-do-contato";
+import { AnexoDaMensagemNoFio } from "@/features/crm/anexo-da-mensagem";
+import { EstadoDaEntrega } from "@/features/crm/estado-da-entrega";
 import { SeletorDeCanalDeResposta } from "@/features/crm/seletor-de-canal";
 import { SeparadorDeCanal } from "@/features/crm/separador-de-canal";
 import { MarcaDeConexaoSimulada, SeloDoProvedor } from "@/features/crm/selo-do-provedor";
@@ -81,20 +93,11 @@ import {
   Divisor,
   EmptyState,
   Icone,
-  Painel,
   Pilula,
   Select,
   cn,
 } from "@/features/shell/ui";
-import type {
-  ActorRef,
-  Attachment,
-  ChannelType,
-  Contact,
-  ContactIdentifierType,
-  Id,
-  Task,
-} from "@n1/dominio/types";
+import type { ChannelType, Id, Task } from "@n1/dominio/types";
 
 export const CHANNEL_ICON: Record<
   ChannelType,
@@ -107,39 +110,17 @@ export const CHANNEL_ICON: Record<
   chatDoSite: Globe,
 };
 
-/** O Identificador que cada Canal exige, para a aba desligada dizer o que falta. */
-const IDENTIFICADOR_DO_CANAL: Record<ChannelType, ContactIdentifierType> = {
-  whatsapp: "identidadeDeWhatsApp",
-  instagram: "usuarioDeInstagram",
-  linkedin: "perfilDeLinkedIn",
-  email: "email",
-  chatDoSite: "identificadorDeChatDoSite",
-};
-
-/** O que cada tipo de mídia é, em palavras de quem atende. */
-const MEDIA_TYPE_LABEL: Record<Attachment["mediaType"], string> = {
-  image: "Imagem",
-  video: "Vídeo",
-  audio: "Áudio",
-  document: "Arquivo",
-  spreadsheet: "Planilha",
-  location: "Local",
-  sticker: "Figurinha",
-  flow: "Flow",
-  other: "Outro",
-};
-
-const ICONE_DA_MIDIA: Record<Attachment["mediaType"], LucideIcon> = {
-  image: Image,
-  video: Video,
-  audio: AudioLines,
-  document: FileText,
-  spreadsheet: Table,
-  location: MapPin,
-  sticker: Smile,
-  flow: Workflow,
-  other: Paperclip,
-};
+/**
+ * As categorias de arquivo que o compositor oferece (D-16-10): as que a Mensagem
+ * leva de verdade (`@n1/dominio/crm/midia`). Localização, figurinha e Flow não são
+ * arquivo e saíram da barra; enviar áudio é anexar um arquivo de áudio.
+ */
+const CATEGORIAS_DE_ARQUIVO = [
+  { categoria: "image", rotulo: "Imagem", icone: Image },
+  { categoria: "audio", rotulo: "Áudio", icone: AudioLines },
+  { categoria: "video", rotulo: "Vídeo", icone: Video },
+  { categoria: "document", rotulo: "Documento", icone: FileText },
+] as const satisfies readonly { readonly categoria: CategoriaDeMidia; readonly rotulo: string; readonly icone: LucideIcon }[];
 
 /** O alternador de anexo: aceso em acento lavado, apagado em cinza. */
 function classeDoAlternador(ligado: boolean): string {
@@ -162,12 +143,6 @@ function classeDoAlternador(ligado: boolean): string {
 */
 const CLASSE_DO_FIO_EMPILHADO =
   "@max-4xl/ficha:h-[var(--conversa-empilhada-min)] @max-4xl/ficha:shrink-0 @max-4xl/ficha:basis-auto";
-/* Com o Rascunho da IA aberto sob demanda, o fio cede metade: é o Rascunho
-   que se está lendo, e assim o cartão e o compositor continuam à vista em
-   vez de a coluna inteira rolar. "Recolher" devolve o fio ao mínimo. */
-const CLASSE_DO_FIO_EMPILHADO_COM_RASCUNHO_ABERTO =
-  "@max-4xl/ficha:h-[calc(var(--conversa-empilhada-min)*0.5)] @max-4xl/ficha:shrink-0 @max-4xl/ficha:basis-auto";
-
 /* Os botões redondos da barra do compositor têm a altura do controle, e não a
    do botão nu (menor), para alinharem com a pílula de texto ao lado. */
 const MEDIDA_DO_BOTAO_DO_COMPOSITOR = {
@@ -175,44 +150,59 @@ const MEDIDA_DO_BOTAO_DO_COMPOSITOR = {
   height: "var(--controle-h)",
 } as const;
 
+/** A Conversa como o fio a enxerga: a da lista do Contato, ou só o que `GET /conversas/:id` diz dela. */
+type ConversaDaAba = Pick<ConversaNaLista, "id" | "canalId" | "situacao" | "ultimaRecebidaEm">;
+
 export function ConversationThread({
-  contact,
+  conversaId,
+  contatoId,
+  canalPreferidoId,
   canalSelecionado,
   onCanalChange,
+  onConversaAberta,
   flush = false,
 }: {
-  readonly contact: Contact;
+  /** A Conversa que o fio segue; sem ela o fio escolhe a do Canal da aba. */
+  readonly conversaId?: string;
+  readonly contatoId: string;
+  /** O Canal em que a aba prefere abrir quando a tela não a controla e nada decide por ela. */
+  readonly canalPreferidoId?: string;
+  /**
+   * A Tarefa conversacional a que este fio pertence (ficha da Tarefa). Ainda não é
+   * lida aqui: a Nota é do Contato (`POST /contatos/:id/notas`) e o "Criar Tarefa"
+   * nasce da Lista que se escolhe, então nenhum dos dois precisa dela.
+   */
+  readonly tarefaId?: string;
   /** O id do Canal da aba; controlado quando a tela tem atalho de Canal fora da aba. */
   readonly canalSelecionado?: Id | null;
   readonly onCanalChange?: (channelId: Id) => void;
+  /** Avisa a tela de que o fio abriu uma Conversa nova (a primeira Mensagem acabou de sair). */
+  readonly onConversaAberta?: (conversaId: string) => void;
   /** Sem moldura: o thread É o painel, como na Caixa de Entrada. */
   readonly flush?: boolean;
 }) {
+  // O estado ainda guarda Listas, Tarefas, Membros e Agentes; o CRM vem da api.
   const state = useData((data) => data);
   const run = useRun();
-  // A Mensagem recém-enviada surge; as outras já estão (o fio não tem cascata).
-  const recente = useRecente();
+  const rehidratar = useRehidratar();
   const fmt = useFormat();
   /*
     A FICHA EMPILHADA. Quando o fio vive num contêiner chamado `ficha` mais
     estreito que @4xl (a Tarefa conversacional com a Conversa embaixo da
     ficha), a altura é disputada: o fio ganha uma altura própria
-    (`--conversa-empilhada-min`, que a ficha reparte) em vez de se espremer, e
-    o Rascunho da IA nasce recolhido numa linha ("Ver" o abre). Fora desse
-    contêiner — Caixa de Entrada, Contato, Negócio, a Tarefa em colunas — as
-    classes `@max-4xl/ficha:` não casam com nada e nada muda.
+    (`--conversa-empilhada-min`, que a ficha reparte) em vez de se espremer.
+    Fora desse contêiner — Caixa de Entrada, Contato, Negócio, a Tarefa em
+    colunas — as classes `@max-4xl/ficha:` não casam com nada e nada muda.
   */
-  const idDoRascunho = useId();
-  const [rascunhoAberto, setRascunhoAberto] = useState(false);
   const [canalAtivo, setCanalAtivo] = useState<Id | null>(null);
   const [draft, setDraft] = useState("");
-  const [modeloId, setModeloId] = useState("");
   const [assunto, setAssunto] = useState("");
   const [copia, setCopia] = useState("");
   const [copiaOculta, setCopiaOculta] = useState("");
-  const [anexo, setAnexo] = useState<Attachment["mediaType"] | null>(null);
+  // O arquivo escolhido para a próxima Mensagem; o progresso é o do envio ao bucket (0 a 100).
+  const [anexo, setAnexo] = useState<{ readonly arquivo: File; readonly progresso: number } | null>(null);
   const [anexando, setAnexando] = useState(false);
-  const [visualizacaoUnica, setVisualizacaoUnica] = useState(false);
+  const seletoresDeArquivo = useRef<Partial<Record<CategoriaDeMidia, HTMLInputElement | null>>>({});
   const [registro, setRegistro] = useState<"nota" | "tarefa" | "meet" | null>(
     null,
   );
@@ -220,14 +210,46 @@ export function ConversationThread({
   const [listaDaTarefa, setListaDaTarefa] = useState("");
   /** O Tipo da Tarefa que nasce daqui; vazio até o seletor pôr o padrão da Lista. */
   const [tipoDaTarefa, setTipoDaTarefa] = useState<string | undefined>(undefined);
-  const [adotado, setAdotado] = useState<ActorRef | null>(null);
   const [confirmandoEnvio, setConfirmandoEnvio] = useState(false);
-  const [descartando, setDescartando] = useState<ActorRef | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  // A Tarefa conversacional é uma chamada à api: o botão espera a resposta, sem criar duas.
+  const [criandoTarefa, setCriandoTarefa] = useState(false);
+  // A Nota também é uma chamada à api (`POST /contatos/:id/notas`): o `ref` fecha o intervalo do duplo clique (UCR-05).
+  const [salvandoNota, setSalvandoNota] = useState(false);
+  const salvandoNotaRef = useRef(false);
+  /*
+    O envio é uma chamada à api: o botão desliga enquanto a primeira está em voo
+    (borda UCR-05). O `ref` fecha o intervalo entre o clique e a renderização, em
+    que um segundo clique ainda veria o botão ligado.
+  */
+  const [enviando, setEnviando] = useState(false);
+  const enviandoRef = useRef(false);
+  // A Mensagem que acabou de sair, para o fio acender só ela.
+  const [recemEnviada, setRecemEnviada] = useState<string | null>(null);
+  // A Conversa que o próprio fio acabou de abrir: dali em diante é ela que ele segue.
+  const [aberta, setAberta] = useState<string | undefined>(undefined);
   const [agora] = useState(() => Date.now());
 
-  const fio = canaisDoFio(state, contact);
+  /*
+    O que o fio lê da api. Cada leitura é uma chave de SWR do CRM; `useConversa`
+    segue a Conversa que a tela pediu (`conversaId`) mesmo quando ela não está na
+    lista do Contato (fora do Espaço da lista, por exemplo).
+  */
+  const contatoQ = useContato(contatoId);
+  const canaisQ = useCanais({ estado: "ativo", limite: LIMITES_CRM.paginaMaxima });
+  const conversasQ = useConversas({ contatoId, estado: "ativo", limite: LIMITES_CRM.paginaMaxima });
+  const seguida = aberta ?? conversaId;
+  const pedidaQ = useConversa(seguida);
+  const negociosQ = useNegocios({ contatoId, estado: "ativo", limite: LIMITES_CRM.paginaMaxima });
+  const consentimentosQ = useConsentimentosDoContato(contatoId);
+
+  const canais = canaisQ.data?.itens;
+  const contato = contatoQ.data?.contato;
+  const identificadores = contatoQ.data?.identificadores;
+  const conversasDoContato = conversasQ.data?.itens;
+  const pedida = pedidaQ.data?.conversa;
+  const fio = canais && identificadores ? canaisDoFioNasTabelas(canais, identificadores) : undefined;
 
   // Quem controla o Canal por fora (os atalhos da ficha) espera ver o chat ao
   // clicar. Ajuste de estado durante a renderização, o padrão do React para
@@ -236,16 +258,20 @@ export function ConversationThread({
   if (canalSelecionado !== canalVisto) {
     setCanalVisto(canalSelecionado);
     setRegistro(null);
+    setAnexo(null);
   }
+
+  const principal = identificadores?.find((i) => i.principal) ?? identificadores?.[0];
+  const nomeDoContato = contato ? nomeDeExibicaoDoContato(contato, principal?.valorExibido ?? principal?.valor) : "";
+  const primeiroNome = contato?.nome?.trim() || nomeDoContato.split(" ")[0] || "";
 
   /*
    * A Reunião do Contato: Tarefa de Tipo Reunião ligada a um Negócio em que ele
-   * está vinculado. A que está em andamento ganha a vez; senão, a próxima.
+   * está vinculado (os Negócios do Contato vêm de `GET /negocios?contatoId=`).
+   * A que está em andamento ganha a vez; senão, a próxima.
    */
-  const negociosDele = state.deals
-    .filter((d) => d.lifecycle === "ativo")
-    .filter((d) => d.contactLinks.some((l) => l.contactId === contact.id))
-    .map((d) => d.id);
+  const negocios = negociosQ.data?.itens ?? [];
+  const negociosDele = new Set(negocios.map((n) => n.id));
   const reunioes = state.tasks
     .filter((t) => t.lifecycle === "ativo")
     .filter(
@@ -258,10 +284,10 @@ export function ConversationThread({
         (l) =>
           (l.fromId === t.id &&
             l.toType === "deal" &&
-            negociosDele.includes(l.toId)) ||
+            negociosDele.has(l.toId)) ||
           (l.toId === t.id &&
             l.fromType === "deal" &&
-            negociosDele.includes(l.fromId)),
+            negociosDele.has(l.fromId)),
       ),
     );
   /** O Negócio ao qual a Reunião está ligada: é dele que sai o valor. */
@@ -272,10 +298,8 @@ export function ConversationThread({
         (l.toId === reuniaoId && l.fromType === "deal"),
     );
     if (!vinculo) return undefined;
-    return state.deals.find(
-      (d) =>
-        d.id === (vinculo.fromId === reuniaoId ? vinculo.toId : vinculo.fromId),
-    );
+    const idDoNegocio = vinculo.fromId === reuniaoId ? vinculo.toId : vinculo.fromId;
+    return negocios.find((n) => n.id === idDoNegocio);
   };
 
   /* Em andamento primeiro, depois a mais próxima: a call de agora é a que o
@@ -303,143 +327,273 @@ export function ConversationThread({
   const reuniaoAoVivo =
     reuniao !== undefined && statusCategory(state, reuniao) === "emAndamento";
 
-  const conversas = state.conversations.filter(
-    (c) => c.contactId === contact.id && c.lifecycle === "ativo",
-  );
-
   /*
     D-15: a aba abre no Canal da última Mensagem recebida do Contato; sem ela,
     D-14: no da Conversa mais recente. Depois disso a escolha é de quem atende.
+    Um Canal que a tela mande e que não esteja (mais) na fileira é ignorado.
   */
+  const naFileira = (id: Id | null | undefined): Id | undefined =>
+    id !== null && id !== undefined && fio?.some((c) => c.canal.id === id) ? id : undefined;
   const canalDaAba =
-    canalSelecionado ??
-    canalAtivo ??
-    canalPadraoDeResposta(state, contact) ??
-    canalDaAbaInicial(state, contact) ??
+    naFileira(canalSelecionado) ??
+    naFileira(canalAtivo) ??
+    naFileira(pedida?.canalId) ??
+    naFileira(canalPreferidoId) ??
+    (canais && identificadores && conversasDoContato
+      ? (canalPadraoDeRespostaNasTabelas(canais, identificadores, conversasDoContato) ??
+        canalDaAbaInicialNasTabelas(canais, identificadores, conversasDoContato))
+      : undefined) ??
     null;
-  const canal = canalDaAba
-    ? state.channels.find((ch) => ch.id === canalDaAba)
-    : undefined;
-  // D-14: a Conversa da aba é a deste Canal com o Contato — nunca a de outro
-  // Canal do mesmo tipo.
-  const doCanal = canal
-    ? conversas.filter((c) => c.channelId === canal.id)
-    : [];
-  // A Conversa aberta é a que recebe resposta; as resolvidas ficam como histórico.
-  const conversa = doCanal.find((c) => c.state !== "resolvida") ?? doCanal[0];
-  const channel = conversa
-    ? state.channels.find((ch) => ch.id === conversa.channelId)
-    : undefined;
+  const canal = canalDaAba ? canais?.find((ch) => ch.id === canalDaAba) : undefined;
 
-  const IconeDaAba = canal ? CHANNEL_ICON[canal.channelType] : undefined;
+  // D-14: a Conversa da aba é a deste Canal com o Contato — nunca a de outro
+  // Canal do mesmo tipo. A que o fio foi mandado seguir ganha; senão a Conversa
+  // aberta é a que recebe resposta e as resolvidas ficam como histórico.
+  const doCanal = canal ? (conversasDoContato ?? []).filter((c) => c.canalId === canal.id) : [];
+  const pedidaDestaAba: ConversaDaAba | undefined =
+    pedida && canal && pedida.canalId === canal.id
+      ? { id: pedida.id, canalId: pedida.canalId, situacao: pedida.situacao, ultimaRecebidaEm: null }
+      : undefined;
+  const conversa: ConversaDaAba | undefined =
+    doCanal.find((c) => c.id === seguida) ??
+    pedidaDestaAba ??
+    doCanal.find((c) => c.situacao !== "resolvida") ??
+    doCanal[0];
+
+  /*
+    As Mensagens vêm em páginas de até 200 na ordem do fio (a mais antiga
+    primeiro). Uma Conversa maior mostra as 200 ÚLTIMAS: o deslocamento sobe
+    para `total - 200` assim que a primeira página diz o tamanho do fio.
+  */
+  const [posicao, setPosicao] = useState<{ readonly conversaId: string | undefined; readonly deslocamento: number }>({
+    conversaId: undefined,
+    deslocamento: 0,
+  });
+  const deslocamento = posicao.conversaId === conversa?.id ? posicao.deslocamento : 0;
+  const mensagensQ = useMensagens(conversa?.id, { limite: LIMITES_CRM.paginaMaxima, deslocamento });
+  // `keepPreviousData` mostra a página da Conversa anterior enquanto a nova chega: só vale a desta.
+  const daConversa = (mensagensQ.data?.itens ?? []).filter((m) => m.conversaId === conversa?.id);
+  if (conversa && mensagensQ.data && daConversa.length > 0) {
+    const ultimaPagina = Math.max(0, mensagensQ.data.total - LIMITES_CRM.paginaMaxima);
+    if (ultimaPagina !== deslocamento) setPosicao({ conversaId: conversa.id, deslocamento: ultimaPagina });
+  }
+  const mensagens = daConversa;
+
+  const IconeDaAba = canal ? CHANNEL_ICON[canal.tipo] : undefined;
+
+  /*
+    3.4.2 — o aviso de consentimento de marketing é a regra do CRM novo: o
+    consentimento vigente (`consentimentoVigente`) da finalidade Marketing do
+    Catálogo, para o tipo do Canal da aba, sobre o histórico de
+    `GET /contatos/:id/consentimentos`. Vigente que não seja `concedido` (revogado,
+    ou nenhum registro, ou Espaço sem a finalidade) dispara o aviso — a mesma conta
+    que o fio antigo fazia e que `recusaPorFaltaDeConsentimento` aplica, no
+    envio da api, ao modelo de marketing. É AVISO: o texto livre dentro da
+    janela não é marketing e continua saindo. Sem a leitura (carregando ou falha)
+    o fio não afirma nada.
+  */
+  const finalidadeDeMarketingId = state.catalog.find(
+    (item) => item.kind === "finalidadeConsentimento" && item.name.toLowerCase() === "marketing",
+  )?.id;
+  const semConsentimentoDeMarketing =
+    canal !== undefined &&
+    consentimentosQ.data !== undefined &&
+    (finalidadeDeMarketingId === undefined ||
+      consentimentoVigente(consentimentosQ.data.itens, finalidadeDeMarketingId, canal.tipo)?.decisao !== "concedido");
 
   // A Capacidade é do Canal da aba (D-02): o provedor muda a janela.
-  const capacidades = canal ? capacidadesDoCanal(canal) : undefined;
-  const abertaAte = conversa
-    ? responseWindowOpenUntil(state, conversa, capacidadesDoCanal)
-    : null;
+  const capacidades = canal ? capacidadesDoCanal({ channelType: canal.tipo, provider: canal.provedor }) : undefined;
+  // D-16-10: só as categorias de arquivo e os tipos que o Canal da aba envia (`sendableMediaTypes`).
+  const tiposDoCanal = capacidades ? tiposAceitosParaOCanal(capacidades.sendableMediaTypes) : [];
+  const categoriasDoCanal = CATEGORIAS_DE_ARQUIVO.map((c) => ({
+    ...c,
+    tipos: tiposDoCanal.filter((tipo) => categoriaDaMidia(tipo) === c.categoria),
+  })).filter((c) => c.tipos.length > 0);
+  const horasDaJanela = capacidades?.responseWindowHours;
+  const abertaAte =
+    horasDaJanela !== undefined && conversa?.ultimaRecebidaEm
+      ? new Date(Date.parse(conversa.ultimaRecebidaEm) + horasDaJanela * 3_600_000)
+      : null;
   const janelaFechada = abertaAte !== null && agora > abertaAte.getTime();
   /*
-    RN-CXE-19 — fora da janela, o WhatsApp só aceita Mensagem de modelo
-    aprovada pelo provedor. Em vez de deixar o envio falhar no clique, o
-    compositor troca o texto livre pelo seletor de modelo.
+    RN-CXE-19 — fora da janela, o WhatsApp oficial só aceita Mensagem de modelo
+    aprovada pelo provedor. O Canal novo não guarda modelos, então não há o que
+    escolher: em vez de deixar o envio falhar no clique, o compositor se
+    desliga dizendo por quê. Quem decide de verdade é a api.
   */
   const exigeModelo =
     janelaFechada && capacidades?.requiresTemplateOutsideWindow === true;
-  const modelosAprovados = (channel?.messageTemplates ?? []).filter(
-    (modelo) => modelo.approval === "aprovado",
-  );
-  const semConsentimento = conversa
-    ? marketingConsentMissing(
-        state,
-        conversa,
-        exigeModelo ? modeloId || undefined : undefined,
-      )
-    : false;
 
-  const rascunho = conversa?.drafts.find((item) => item.origin !== "membro");
+  const bloqueio = enviando
+    ? "Enviando a Mensagem…"
+    : !canal
+      ? "Este Contato não tem Canal."
+      : anexo && !conversa
+        ? "Abra a Conversa com uma Mensagem antes de anexar um arquivo."
+      : draft.trim() === "" && !anexo
+        ? conversa
+          ? "Escreva a mensagem antes de enviar."
+          : "Escreva a primeira Mensagem antes de enviar."
+        : exigeModelo
+          ? "A janela de resposta expirou e este Canal não tem Mensagem de modelo aprovada: não dá para enviar agora."
+          : janelaFechada
+            ? "A janela de resposta expirou."
+            : canal?.conexao === "com_erro"
+              ? "O Canal está com erro de conexão."
+              : undefined;
 
-  // O Canal da aba é onde o atendimento abre e onde a Tarefa conversacional
-  // nasce — um id só, para os dois gestos concordarem.
-  const abrirAtendimento = () => {
-    if (!canal) {
-      setAviso(null);
-      setErro("Nenhum Canal ativo para abrir atendimento.");
+  /*
+    D-15 — "Responder por": muda a aba. O Canal de nenhuma Conversa existente
+    muda (INV-CXE-04), e nada é gravado: a Conversa do outro Canal já existe, ou
+    nasce com a primeira Mensagem.
+  */
+  const trocarCanalDeResposta = (canalId: Id) => {
+    const escolhido = canais?.find((ch) => ch.id === canalId);
+    setCanalAtivo(canalId);
+    onCanalChange?.(canalId);
+    setDraft("");
+    setAnexo(null);
+    setErro(null);
+    setAviso(`Respondendo por ${escolhido ? rotuloDoCanalNasTabelas(escolhido) : "outro Canal"}.`);
+  };
+
+  /** O arquivo escolhido é pré-conferido (tipo do Canal e teto); a api confere de novo ao pedir o ticket. */
+  const escolherArquivo = (arquivo: File | undefined) => {
+    if (!arquivo) return;
+    setAviso(null);
+    const recusa = recusaDoAnexoDaMensagem(arquivo, tiposDoCanal);
+    if (recusa) {
+      setErro(recusa);
       return;
     }
-    const resultado = run((data, memberId) =>
-      startConversation(data, memberId, canal.id, contact.id),
-    );
-    if (resultado.ok) {
+    setErro(null);
+    setAnexo({ arquivo, progresso: 0 });
+    setAnexando(false);
+  };
+
+  /** A falha vira a frase da api (janela fechada, sem consentimento, Canal arquivado…) e o texto fica no campo. */
+  const recusar = (falha: unknown) => {
+    setAviso(null);
+    setErro(falha instanceof ErroDeApi ? falha.message : "Não foi possível enviar a Mensagem. Tente de novo.");
+  };
+
+  /*
+    Com Conversa no Canal da aba, a Mensagem vai para ela (`POST /mensagens`).
+    Sem ela, a Conversa nasce COM a primeira Mensagem (`POST /conversas`,
+    INV-CXE-05, F14-D-07): não existe Conversa vazia. O Canal da Conversa é o da
+    aba, para sempre (INV-CXE-04).
+  */
+  const enviar = async () => {
+    if (enviandoRef.current || !canal) return;
+    enviandoRef.current = true;
+    setEnviando(true);
+    try {
+      if (conversa) {
+        /*
+          Com arquivo (D-16-10): o ticket reserva o objeto (a api já confere tipo, tamanho e Canal), os
+          bytes sobem direto ao bucket pela URL assinada e só então a Mensagem sai com a referência do
+          arquivo. Se o arquivo não chega ao bucket nada é gravado e ele continua escolhido.
+        */
+        let anexos: ReferenciaDeAnexoEnviado[] | undefined;
+        if (anexo) {
+          const ticket = await pedirTicketDeAnexo({
+            conversaId: conversa.id,
+            nome: anexo.arquivo.name,
+            tipoDeMidia: normalizarTipoDeMidia(anexo.arquivo.type),
+            tamanhoBytes: anexo.arquivo.size,
+          });
+          const subiu = await enviarBytesAoBucket(ticket.uploadUrl, anexo.arquivo, (progresso) =>
+            setAnexo((atual) => (atual ? { ...atual, progresso } : atual)),
+          );
+          if (!subiu) {
+            setAnexo((atual) => (atual ? { ...atual, progresso: 0 } : atual));
+            setAviso(null);
+            setErro("O arquivo não chegou ao armazenamento. Tente de novo.");
+            return;
+          }
+          anexos = [{ submissionId: ticket.submissionId, objectId: ticket.objectId }];
+        }
+        const enviada = await enviarMensagem({
+          conversaId: conversa.id,
+          direcao: "enviada",
+          conteudo: anexo && draft.trim() === "" ? "" : draft,
+          ...(anexos ? { anexos } : {}),
+        });
+        setRecemEnviada(enviada.id);
+        setAnexo(null);
+        setAviso("Mensagem enviada.");
+      } else {
+        const nova = await abrirConversa({ canalId: canal.id, contatoId, mensagem: { conteudo: draft } });
+        setAberta(nova.conversa.id);
+        setRecemEnviada(nova.primeiraMensagem.id);
+        setAviso("Conversa aberta e Mensagem enviada.");
+        onConversaAberta?.(nova.conversa.id);
+      }
+      setDraft("");
       setErro(null);
-      setAviso("Atendimento aberto.");
-    } else {
-      setAviso(null);
-      setErro(resultado.error);
+    } catch (falha) {
+      recusar(falha);
+    } finally {
+      enviandoRef.current = false;
+      setEnviando(false);
+      setConfirmandoEnvio(false);
     }
   };
 
   /*
-    D-15 — "Responder por": abre (ou reutiliza) a Conversa do par (Canal,
-    Contato) e muda a aba. O Canal de nenhuma Conversa existente muda
-    (INV-CXE-04): quem decide se a Conversa existe é `startConversation`.
+    A Nota é do Contato (3.2.7): o texto vai para `POST /contatos/:id/notas` e o
+    autor é o Membro da sessão. A regra de forma é a do domínio (`validarNovaNota`,
+    a mesma que o endpoint aplica), conferida ANTES de ir à api; o Contato que não
+    aceita Nota (mesclado, na lixeira) é recusado pela mesma `recusaDeNotaNoContato`.
+    A recusa da api aparece aqui com a frase dela e o texto fica no campo.
   */
-  const trocarCanalDeResposta = (channelId: Id) => {
-    const resultado = run((data, memberId) =>
-      startConversation(data, memberId, channelId, contact.id),
-    );
-    if (resultado.ok) {
-      const escolhido = state.channels.find((ch) => ch.id === channelId);
-      setCanalAtivo(channelId);
-      onCanalChange?.(channelId);
-      setDraft("");
-      setAdotado(null);
-      setErro(null);
-      setAviso(`Respondendo por ${escolhido ? rotuloDoCanal(escolhido) : "outro Canal"}.`);
-    } else {
+  const registrarNota = async () => {
+    if (salvandoNotaRef.current) return;
+    const valida = validarNovaNota({ conteudo: textoDoRegistro });
+    if (!valida.ok) {
       setAviso(null);
-      setErro(resultado.error);
+      setErro(valida.error);
+      return;
+    }
+    const recusa = contato ? recusaDeNotaNoContato(contato) : undefined;
+    if (recusa) {
+      setAviso(null);
+      setErro(recusa);
+      return;
+    }
+    salvandoNotaRef.current = true;
+    setSalvandoNota(true);
+    try {
+      await adicionarNotaAoContato(contatoId, valida.value.conteudo);
+      setErro(null);
+      setAviso("Nota registrada no Contato.");
+      setTextoDoRegistro("");
+    } catch (falha) {
+      setAviso(null);
+      setErro(falha instanceof ErroDeApi ? falha.message : "Não foi possível registrar a nota. Tente de novo.");
+    } finally {
+      salvandoNotaRef.current = false;
+      setSalvandoNota(false);
     }
   };
 
-  const bloqueio = !conversa
-    ? "Abra o atendimento antes de escrever."
-    : draft.trim() === ""
-      ? "Escreva a mensagem antes de enviar."
-      : exigeModelo && modelosAprovados.length === 0
-        ? "Este Canal não tem Mensagem de modelo aprovada: não dá para enviar fora da janela."
-        : exigeModelo && modeloId === ""
-          ? "A janela de resposta expirou: escolha uma Mensagem de modelo aprovada."
-          : janelaFechada && !exigeModelo
-            ? "A janela de resposta expirou."
-            : semConsentimento
-              ? "Este Contato não tem consentimento vigente para marketing neste Canal."
-              : channel?.connection === "comErro"
-                ? "O Canal está com erro de conexão."
-                : undefined;
-
-  const enviar = () => {
-    if (!conversa) return;
-    const resultado = run((data, memberId) =>
-      sendMessage(data, memberId, {
-        conversationId: conversa.id,
-        content: draft,
-        ...(exigeModelo && modeloId ? { templateProviderId: modeloId } : {}),
-        ...(adotado ? { adoptedDraftOf: adotado } : {}),
-      }),
+  if (contatoQ.error || canaisQ.error || conversasQ.error) {
+    const naoAchou = contatoQ.error instanceof ErroDeApi && contatoQ.error.status === 404;
+    return (
+      <EmptyState
+        title={naoAchou ? "Contato não encontrado." : "Não foi possível carregar a conversa."}
+        hint={naoAchou ? "Ele pode estar em outro Espaço de Trabalho ou ter sido removido." : "Tente de novo em instantes."}
+      />
     );
-    if (resultado.ok) {
-      setDraft("");
-      setModeloId("");
-      setAdotado(null);
-      setErro(null);
-      setAviso("Mensagem enviada.");
-    } else {
-      setAviso(null);
-      setErro(resultado.error);
-    }
-    setConfirmandoEnvio(false);
-  };
+  }
+
+  if (!fio || !conversasDoContato) {
+    return (
+      <p role="status" className="app-sm p-3" style={{ color: "var(--texto-3)" }}>
+        Carregando a conversa…
+      </p>
+    );
+  }
 
   if (!fio.some((c) => c.alcancavel)) {
     return (
@@ -454,40 +608,26 @@ export function ConversationThread({
     <div className={cn("flex h-full min-h-0 flex-col", !flush && "painel")}>
       <ConfirmDialog
         open={confirmandoEnvio}
-        title={`Enviar a ${contactDisplayName(contact)} por ${canal ? rotuloDoCanal(canal) : ""}?`}
-        description={`Esta Mensagem sai da plataforma.${
-          adotado ? " O Rascunho adotado deixa de existir ao enviar." : ""
-        } Depois de enviada, nada aqui a apaga do lado de quem recebeu.`}
+        title={`Enviar a ${nomeDoContato} por ${canal ? rotuloDoCanalNasTabelas(canal) : ""}?`}
+        description={`${conversa ? "Esta Mensagem sai da plataforma." : "Esta é a primeira Mensagem: ela abre a Conversa neste Canal e sai da plataforma."} Depois de enviada, nada aqui a apaga do lado de quem recebeu.`}
         confirmLabel="Enviar"
-        onConfirm={enviar}
+        {...(enviando ? { confirmDisabledReason: "Enviando a Mensagem…" } : {})}
+        confirmCarregando={enviando}
+        onConfirm={() => void enviar()}
         onCancel={() => setConfirmandoEnvio(false)}
       >
         <p
           className="app-base rounded-[var(--r-controle)] px-3 py-2"
           style={{ background: "var(--superficie-2)", color: "var(--texto)" }}
         >
-          {draft}
+          {draft.trim() !== "" ? draft : anexo ? `Arquivo: ${anexo.arquivo.name}` : ""}
         </p>
+        {draft.trim() !== "" && anexo ? (
+          <p className="app-sm mt-2" style={{ color: "var(--texto-3)" }}>
+            Com o arquivo {anexo.arquivo.name}
+          </p>
+        ) : null}
       </ConfirmDialog>
-
-      <ConfirmDialog
-        open={descartando !== null}
-        title="Descartar este Rascunho?"
-        description="O Rascunho nunca foi Mensagem: não há lixeira nem versão anterior para onde voltar."
-        confirmLabel="Descartar"
-        destructive
-        onConfirm={() => {
-          if (descartando && conversa) {
-            const resultado = run((data, memberId) =>
-              discardDraft(data, memberId, conversa.id, descartando),
-            );
-            if (resultado.ok) setAviso("Rascunho descartado.");
-            else setErro(resultado.error);
-          }
-          setDescartando(null);
-        }}
-        onCancel={() => setDescartando(null)}
-      />
 
       {/* ── abas de Canal ── */}
       <div
@@ -504,14 +644,14 @@ export function ConversationThread({
           falta um Identificador.
         */}
         {fio.map(({ canal: canalDaFileira, alcancavel }) => {
-          const IconeDoCanal = CHANNEL_ICON[canalDaFileira.channelType];
-          const quantas = conversas.filter(
-            (c) => c.channelId === canalDaFileira.id,
+          const IconeDoCanal = CHANNEL_ICON[canalDaFileira.tipo];
+          const quantas = conversasDoContato.filter(
+            (c) => c.canalId === canalDaFileira.id,
           ).length;
           const ativa = canal?.id === canalDaFileira.id;
           const motivo = alcancavel
             ? undefined
-            : `Este Contato não tem ${IDENTIFIER_TYPE_LABEL[IDENTIFICADOR_DO_CANAL[canalDaFileira.channelType]] ?? "Identificador"}.`;
+            : `Este Contato não tem ${ROTULO_DO_TIPO_DE_IDENTIFICADOR[TIPO_DE_IDENTIFICADOR_DO_CANAL[canalDaFileira.tipo]]}.`;
           return (
             <button
               key={canalDaFileira.id}
@@ -527,7 +667,6 @@ export function ConversationThread({
                       setRegistro(null);
                       onCanalChange?.(canalDaFileira.id);
                       setDraft("");
-                      setAdotado(null);
                     }
                   : undefined
               }
@@ -543,7 +682,7 @@ export function ConversationThread({
             >
               {/* Ícone de marca não é Lucide: recebe a medida do sistema pela classe. */}
               <IconeDoCanal className="size-[var(--icone-sm)] shrink-0" aria-hidden="true" />
-              {rotuloDoCanal(canalDaFileira)}
+              {rotuloDoCanalNasTabelas(canalDaFileira)}
               {quantas > 0 ? <Contador valor={quantas} /> : null}
               {motivo ? <span className="sr-only">{motivo}</span> : null}
             </button>
@@ -633,7 +772,7 @@ export function ConversationThread({
           data-regra-do-canal="true"
           className="app-sm flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2"
           style={
-            janelaFechada || channel?.connection === "comErro"
+            janelaFechada || canal?.conexao === "com_erro"
               ? {
                   background: "var(--aviso-lavado)",
                   color: "var(--aviso)",
@@ -644,7 +783,7 @@ export function ConversationThread({
         >
           <span className="flex min-w-0 items-center gap-1.5">
             <IconeDaAba className="size-[var(--icone-xs)] shrink-0" aria-hidden="true" />
-            <span className="truncate font-medium">{canal.name}</span>
+            <span className="truncate font-medium">{canal.nome}</span>
           </span>
           <SeloDoProvedor canal={canal} />
           <MarcaDeConexaoSimulada canal={canal} />
@@ -656,11 +795,22 @@ export function ConversationThread({
                 : abertaAte
                   ? `janela de resposta até ${fmt.instant(abertaAte.toISOString())}`
                   : `janela de ${capacidades.responseWindowHours}h após a Mensagem recebida`}
-            {channel?.connection === "comErro"
+            {canal.conexao === "com_erro"
               ? " · Canal com erro de conexão"
               : ""}
           </span>
         </div>
+      ) : null}
+
+      {semConsentimentoDeMarketing && registro !== "meet" ? (
+        <p
+          data-aviso="consentimento-de-marketing"
+          className="app-sm shrink-0 px-3 py-2"
+          style={{ background: "var(--aviso-lavado)", color: "var(--aviso)", borderBottom: "1px solid var(--linha)" }}
+        >
+          {primeiroNome || "Este Contato"} não tem consentimento vigente para marketing neste Canal. Mensagem de modelo
+          de marketing só sai com o consentimento registrado na ficha do Contato.
+        </p>
       ) : null}
 
       {registro !== null ? (
@@ -685,7 +835,7 @@ export function ConversationThread({
                     .map((a) => state.members.find((m) => m.id === a.id))
                     .filter((m) => m !== undefined)
                     .map((m) => ({ id: m.id, nome: m.displayName })),
-                  { id: contact.id, nome: contactDisplayName(contact) },
+                  { id: contatoId, nome: nomeDoContato },
                 ];
                 return (
                   <li key={reuniaoDaLista.id}>
@@ -736,7 +886,7 @@ export function ConversationThread({
                         <p className="app-coluna">Em negociação</p>
                         <p className="app-base" style={{ color: "var(--texto)" }}>
                           {negocio
-                            ? `${negocio.title} · ${negocio.value ? fmt.money(negocio.value) : "sem valor declarado"}`
+                            ? `${negocio.titulo} · ${negocio.valor ? fmt.money({ amount: Number(negocio.valor), currency: negocio.moeda }) : "sem valor declarado"}`
                             : "Sem Negócio vinculado."}
                         </p>
 
@@ -764,21 +914,11 @@ export function ConversationThread({
               className="grid gap-2"
               onSubmit={(evento) => {
                 evento.preventDefault();
-                const resultado = run((data, memberId) =>
-                  addContactNote(data, memberId, contact.id, textoDoRegistro),
-                );
-                if (resultado.ok) {
-                  setErro(null);
-                  setAviso("Nota registrada no Contato.");
-                  setTextoDoRegistro("");
-                } else {
-                  setAviso(null);
-                  setErro(resultado.error);
-                }
+                void registrarNota();
               }}
             >
               <p className="app-sm" style={{ color: "var(--texto-3)" }}>
-                A Nota é Comentário do registro: ela não sai da plataforma e o
+                A Nota fica na ficha do Contato: ela não sai da plataforma e o
                 Contato nunca a vê.
               </p>
               <label className="sr-only" htmlFor="nota-da-conversa">
@@ -795,8 +935,8 @@ export function ConversationThread({
               <span>
                 <Button
                   type="submit"
-                  disabled={textoDoRegistro.trim() === ""}
-                  disabledReason="Escreva a nota antes de salvar."
+                  disabled={textoDoRegistro.trim() === "" || salvandoNota}
+                  disabledReason={salvandoNota ? "Registrando a nota…" : "Escreva a nota antes de salvar."}
                 >
                   Registrar nota
                 </Button>
@@ -809,52 +949,68 @@ export function ConversationThread({
                 evento.preventDefault();
                 /*
                   C35 — numa Lista conversacional a Tarefa nasce COM este
-                  Contato e a conversa do Canal ativo (criarTarefaConversacional);
-                  numa operacional, pelo título, como sempre. O `createTask`
-                  recusaria a conversacional sem Contato — aqui ele já está.
+                  Contato e a conversa do Canal ativo; numa operacional, pelo
+                  título, como sempre. O `createTask` recusaria a conversacional
+                  sem Contato — aqui ele já está.
+
+                  Fase 14 (3.3.4): a conversacional nasce por
+                  `POST /tarefas-conversacionais` (só os ids; o servidor confere
+                  Contato e Canal nas tabelas) e a tela re-hidrata o store depois
+                  (A5). O fio inteiro troca de base na 3.4.2; este botão já fala
+                  com a api. Sem `mensagem`: a Conversa do fio já está aberta, e
+                  se ela estiver resolvida a api pede a primeira Mensagem (D-07)
+                  e a recusa aparece aqui.
                 */
                 const conversacional = listaConversacional(state, listaDaTarefa);
+                const listaEscolhida = state.lists.find((l) => l.id === listaDaTarefa);
                 // C36 por Canal — a Tarefa nasce por um canal de atendimento da
                 // Lista, e só pelo Canal desta aba (não por outro do mesmo tipo).
                 const channelId = conversacional
-                  ? canaisDaLista(state, listaDaTarefa).find((ch) => ch.id === canal?.id)?.id
+                  ? canaisDaListaNasTabelas(listaEscolhida, canais ?? []).find((ch) => ch.id === canal?.id)?.id
                   : undefined;
                 if (conversacional && !channelId) {
                   setAviso(null);
                   setErro(
-                    listaSemCanais(state, listaDaTarefa)
+                    listaSemCanaisNasTabelas(listaEscolhida, canais ?? [])
                       ? LISTA_SEM_CANAIS
-                      : `Esta Lista não atende por “${canal?.name ?? "este Canal"}”.`,
+                      : `Esta Lista não atende por “${canal?.nome ?? "este Canal"}”.`,
                   );
                   return;
                 }
-                const resultado =
-                  conversacional && channelId
-                    ? run((data, memberId) =>
-                        criarTarefaConversacional(data, memberId, {
-                          listId: listaDaTarefa,
-                          contactId: contact.id,
-                          channelId,
-                          title: textoDoRegistro,
-                          assignees: [{ kind: "member", id: memberId }],
-                          ...(tipoDaTarefa ? { taskTypeId: tipoDaTarefa } : {}),
-                        }),
-                      )
-                    : run((data, memberId) =>
-                        createTask(data, memberId, {
-                          listId: listaDaTarefa,
-                          title: textoDoRegistro,
-                          assignees: [{ kind: "member", id: memberId }],
-                          ...(tipoDaTarefa ? { taskTypeId: tipoDaTarefa } : {}),
-                        }),
-                      );
+                if (conversacional && channelId) {
+                  setCriandoTarefa(true);
+                  void criarTarefaConversacional({
+                    listId: listaDaTarefa,
+                    contatoId,
+                    canalId: channelId,
+                    title: textoDoRegistro,
+                    ...(tipoDaTarefa ? { taskTypeId: tipoDaTarefa } : {}),
+                  })
+                    // Se o `GET /estado` falhar a Tarefa já existe: o aviso vale e a revisão do Espaço alcança o store depois.
+                    .then(() => rehidratar().catch(() => undefined))
+                    .then(() => {
+                      setErro(null);
+                      setAviso("Tarefa criada com o Contato e atribuída a você.");
+                      setTextoDoRegistro("");
+                    })
+                    .catch((falha: unknown) => {
+                      setAviso(null);
+                      setErro(falha instanceof ErroDeApi ? falha.message : "Não foi possível criar a Tarefa. Tente de novo.");
+                    })
+                    .finally(() => setCriandoTarefa(false));
+                  return;
+                }
+                const resultado = run((data, memberId) =>
+                  createTask(data, memberId, {
+                    listId: listaDaTarefa,
+                    title: textoDoRegistro,
+                    assignees: [{ kind: "member", id: memberId }],
+                    ...(tipoDaTarefa ? { taskTypeId: tipoDaTarefa } : {}),
+                  }),
+                );
                 if (resultado.ok) {
                   setErro(null);
-                  setAviso(
-                    conversacional
-                      ? "Tarefa criada com o Contato e atribuída a você."
-                      : "Tarefa criada e atribuída a você.",
-                  );
+                  setAviso("Tarefa criada e atribuída a você.");
                   setTextoDoRegistro("");
                 } else {
                   setAviso(null);
@@ -866,7 +1022,7 @@ export function ConversationThread({
                 A Tarefa nasce dentro de uma Lista, e é ela que define o Status
                 inicial.
                 {listaDaTarefa && listaConversacional(state, listaDaTarefa)
-                  ? ` Nesta Lista ela nasce com ${contact.firstName} e a conversa do Canal “${canal?.name ?? "este Canal"}”.`
+                  ? ` Nesta Lista ela nasce com ${primeiroNome} e a conversa do Canal “${canal?.nome ?? "este Canal"}”.`
                   : ""}
               </p>
               <label className="sr-only" htmlFor="titulo-da-tarefa">
@@ -876,7 +1032,7 @@ export function ConversationThread({
                 id="titulo-da-tarefa"
                 value={textoDoRegistro}
                 onChange={(evento) => setTextoDoRegistro(evento.target.value)}
-                placeholder={`Retomar com ${contact.firstName}…`}
+                placeholder={`Retomar com ${primeiroNome}…`}
                 className="campo"
               />
               <label className="sr-only" htmlFor="lista-da-tarefa">
@@ -896,10 +1052,10 @@ export function ConversationThread({
                     const conversacional = lista.modeloDeTarefa === "conversacional";
                     const motivo = !conversacional
                       ? undefined
-                      : listaSemCanais(state, lista.id)
+                      : listaSemCanaisNasTabelas(lista, canais ?? [])
                         ? LISTA_SEM_CANAIS
-                        : canal && !canaisDaLista(state, lista.id).some((ch) => ch.id === canal.id)
-                          ? `Esta Lista não atende por “${canal.name}”.`
+                        : canal && !canaisDaListaNasTabelas(lista, canais ?? []).some((ch) => ch.id === canal.id)
+                          ? `Esta Lista não atende por “${canal.nome}”.`
                           : undefined;
                     return {
                       value: lista.id,
@@ -924,12 +1080,14 @@ export function ConversationThread({
                 <Button
                   type="submit"
                   disabled={
-                    textoDoRegistro.trim() === "" || listaDaTarefa === ""
+                    textoDoRegistro.trim() === "" || listaDaTarefa === "" || criandoTarefa
                   }
                   disabledReason={
-                    listaDaTarefa === ""
-                      ? "Escolha a Lista."
-                      : "Dê um título à Tarefa."
+                    criandoTarefa
+                      ? "Criando a Tarefa…"
+                      : listaDaTarefa === ""
+                        ? "Escolha a Lista."
+                        : "Dê um título à Tarefa."
                   }
                 >
                   Criar Tarefa
@@ -954,47 +1112,33 @@ export function ConversationThread({
           {/* ── a conversa ── */}
           <div
             data-fio="mensagens"
-            className={cn(
-              "relative min-h-0 flex-1 space-y-3 overflow-y-auto p-3",
-              rascunho && rascunhoAberto ? CLASSE_DO_FIO_EMPILHADO_COM_RASCUNHO_ABERTO : CLASSE_DO_FIO_EMPILHADO,
-            )}
+            className={cn("relative min-h-0 flex-1 space-y-3 overflow-y-auto p-3", CLASSE_DO_FIO_EMPILHADO)}
           >
             {!conversa ? (
               <EmptyState
-                title={`Nenhuma Conversa em ${canal ? rotuloDoCanal(canal) : "nenhum Canal"}.`}
-                hint="A Conversa nasce quando a Mensagem do Contato chega — ou agora, se você abrir o atendimento."
-                action={
-                  <Button
-                    onClick={abrirAtendimento}
-                    disabled={canal === undefined}
-                    disabledReason="Este Contato não tem Canal."
-                  >
-                    Abrir atendimento
-                  </Button>
-                }
+                title={`Nenhuma Conversa em ${canal ? rotuloDoCanalNasTabelas(canal) : "nenhum Canal"}.`}
+                hint="A Conversa nasce quando a Mensagem do Contato chega — ou agora, com a sua primeira Mensagem, escrita abaixo."
               />
             ) : (
               marcadoresDeCanal(
-                [...conversa.messages]
-                  .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-                  .map((mensagem) => ({ channelId: conversa.channelId, mensagem })),
-              ).map((marcador, posicao) => {
+                mensagens.map((mensagem) => ({ channelId: mensagem.canalId, mensagem })),
+              ).map((marcador, posicaoNoFio) => {
                   // D-13: o separador "via …" só aparece quando a sequência troca de
                   // Canal; numa aba por Canal ela é de um Canal só. Bolhas sem selo.
                   if (marcador.tipo === "via") {
-                    const canalDoMarcador = state.channels.find(
+                    const canalDoMarcador = canais?.find(
                       (ch) => ch.id === marcador.channelId,
                     );
                     return canalDoMarcador ? (
                       <SeparadorDeCanal
-                        key={`via-${posicao}`}
+                        key={`via-${posicaoNoFio}`}
                         canal={canalDoMarcador}
                       />
                     ) : null;
                   }
                   const { mensagem } = marcador.item;
-                  const saiu = mensagem.direction === "enviada";
-                  const interna = mensagem.direction === "interna";
+                  const saiu = mensagem.direcao === "enviada";
+                  const interna = mensagem.direcao === "interna";
                   /*
                    * O rosto de quem falou, dos dois lados: quem atendeu à direita,
                    * o Contato à esquerda. Sem isso, uma conversa em que três
@@ -1003,17 +1147,17 @@ export function ConversationThread({
                    * exatamente o que B18 proíbe.
                    */
                   const quemFalou = state.members.find(
-                    (m) => m.id === mensagem.actor.id,
+                    (m) => m.id === mensagem.ator.id,
                   );
                   const agente = state.agents.find(
-                    (a) => a.id === mensagem.actor.id,
+                    (a) => a.id === mensagem.ator.id,
                   );
                   const avatar =
-                    mensagem.direction === "recebida" ? (
-                      <ContactAvatar contact={contact} />
+                    mensagem.direcao === "recebida" ? (
+                      <AvatarDoContato nome={contato?.nome} sobrenome={contato?.sobrenome} />
                     ) : (
                       <ActorAvatar
-                        kind={mensagem.actor.kind}
+                        kind={mensagem.ator.tipo}
                         name={
                           quemFalou?.displayName ?? agente?.name ?? "Sistema"
                         }
@@ -1027,7 +1171,7 @@ export function ConversationThread({
                   return (
                     <div
                       key={mensagem.id}
-                      className={`flex items-end gap-2 ${saiu ? "justify-end" : "justify-start"}${mensagem.id === recente ? " surgir" : ""}`}
+                      className={`flex items-end gap-2 ${saiu ? "justify-end" : "justify-start"}${mensagem.id === recemEnviada ? " surgir" : ""}`}
                     >
                       {!saiu ? avatar : null}
                       <div
@@ -1045,9 +1189,20 @@ export function ConversationThread({
                             Nota interna — não foi enviada
                           </p>
                         ) : null}
-                        <p className="whitespace-pre-wrap">
-                          {mensagem.content}
-                        </p>
+                        {/* T-15-50: o texto vem de terceiros e entra como texto do React, nunca como HTML. */}
+                        {mensagem.conteudo || mensagem.anexos.length === 0 ? (
+                          <p className="whitespace-pre-wrap">
+                            {mensagem.conteudo ?? ""}
+                          </p>
+                        ) : null}
+                        {/* 3.9.5: o anexo vem da URL assinada de `GET /mensagens/:id/anexos/:indice`; a legenda é o `conteudo`. */}
+                        {mensagem.anexos.length > 0 ? (
+                          <div className={cn("flex flex-col gap-2", mensagem.conteudo ? "mt-2" : "")}>
+                            {mensagem.anexos.map((anexo, indice) => (
+                              <AnexoDaMensagemNoFio key={`${mensagem.id}:${indice}`} mensagemId={mensagem.id} indice={indice} anexo={anexo} />
+                            ))}
+                          </div>
+                        ) : null}
                         <p
                           className={cn(
                             "app-sm mt-1",
@@ -1056,10 +1211,13 @@ export function ConversationThread({
                         >
                           {quemFalou?.displayName ?? agente?.name ?? ""}
                           {quemFalou || agente ? " · " : ""}
-                          {fmt.instant(mensagem.createdAt)}
-                          {mensagem.deliveryStatus
-                            ? ` · ${mensagem.deliveryStatus}`
-                            : ""}
+                          {fmt.instant(mensagem.criadoEm)}
+                          {saiu && mensagem.statusEntrega ? (
+                            <>
+                              {" · "}
+                              <EstadoDaEntrega mensagem={mensagem} />
+                            </>
+                          ) : null}
                         </p>
                       </div>
                       {saiu ? avatar : null}
@@ -1069,97 +1227,13 @@ export function ConversationThread({
             )}
           </div>
 
-          {/* ── Rascunho de IA à espera de decisão humana (B66) ── */}
-          {rascunho ? (
-            // A doca do robô flutuante: o cartão acaba antes dele, alinhado ao compositor.
-            <div className="doca-do-robo shrink-0">
-              {/*
-                Na ficha empilhada o cartão inteiro engoliria o fio: nasce
-                recolhido numa linha — quem é, em que estado, "Ver" — e só
-                abre sob demanda. Fora dela a linha não existe (`hidden`).
-                A linha fica SEMPRE no DOM do empilhado: o mesmo botão abre e
-                recolhe (aria-expanded), e o foco de teclado não se perde.
-              */}
-              {
-                <p
-                  className="mx-3 mb-2 hidden shrink-0 items-center gap-2 rounded-[var(--r-controle)] px-2 py-1.5 @max-4xl/ficha:flex"
-                  style={{
-                    background: "var(--superficie-2)",
-                    border: "1px solid color-mix(in srgb, var(--cor-dom-ia) 40%, transparent)",
-                  }}
-                >
-                  <Icone de={Sparkles} tamanho="xs" style={{ color: "var(--cor-dom-ia)" }} />
-                  <span className="app-sm min-w-0 flex-1 truncate font-medium" style={{ color: "var(--texto)" }}>
-                    Rascunho de{" "}
-                    {state.agents.find((a) => a.id === rascunho.actor.id)?.name ?? "Agente"}{" "}
-                    · {adotado ? "carregado no compositor" : "não enviado"}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setRascunhoAberto((aberto) => !aberto)}
-                    aria-expanded={rascunhoAberto}
-                    aria-controls={idDoRascunho}
-                    className="app-sm shrink-0 rounded-[var(--r-controle)] px-1.5 py-0.5 font-medium transition-colors hover:bg-[var(--superficie-hover)]"
-                    style={{ color: "var(--acento-suave)" }}
-                  >
-                    {rascunhoAberto ? "Recolher" : "Ver"}
-                  </button>
-                </p>
-              }
-              <Painel
-                id={idDoRascunho}
-                className={cn("mx-3 mb-3 shrink-0 p-3", !rascunhoAberto && "@max-4xl/ficha:hidden")}
-                style={{ borderColor: "color-mix(in srgb, var(--cor-dom-ia) 40%, transparent)" }}
-              >
-                <p className="app-sm flex items-center gap-2 font-medium" style={{ color: "var(--texto)" }}>
-                  <Icone de={Sparkles} tamanho="xs" style={{ color: "var(--cor-dom-ia)" }} />
-                  Rascunho de{" "}
-                  {state.agents.find((a) => a.id === rascunho.actor.id)?.name ??
-                    "Agente"}{" "}
-                  · {adotado ? "carregado no compositor" : "não enviado"}
-                </p>
-                <p className="app-base mt-1" style={{ color: "var(--texto)" }}>
-                  {rascunho.content}
-                </p>
-                <div className="mt-2 flex items-center gap-2">
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setDraft(rascunho.content);
-                      setAdotado(rascunho.actor);
-                      setRascunhoAberto(false);
-                    }}
-                  >
-                    Usar
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    onClick={() => {
-                      setDescartando(rascunho.actor);
-                      setRascunhoAberto(false);
-                    }}
-                  >
-                    Descartar
-                  </Button>
-                  {rascunho.executionId ? (
-                    <Link
-                      href={`/ia/execucoes/${rascunho.executionId}`}
-                      className="app-sm text-[var(--texto-3)] hover:underline"
-                    >
-                      Ver a Execução
-                    </Link>
-                  ) : null}
-                </div>
-              </Painel>
-            </div>
-          ) : null}
-
           {/* ── compositor ── */}
           <div className="shrink-0" style={{ borderTop: "1px solid var(--linha)" }}>
             <div className="px-3 pt-3 empty:hidden">
               <div className="mb-2">
                 <SeletorDeCanalDeResposta
-                  contact={contact}
+                  canais={canais ?? []}
+                  identificadores={identificadores ?? []}
                   canalId={canal?.id ?? null}
                   onTrocar={trocarCanalDeResposta}
                 />
@@ -1226,43 +1300,42 @@ export function ConversationThread({
               ) : null}
 
               {/*
-          A barra de anexos é a do CANAL: cada um aceita uma coisa, e a lista
-          sai de `sendableMediaTypes`, não de um menu fixo. Figurinha no e-mail
-          e planilha no Instagram não existem.
+          A barra de anexos é a do CANAL: cada categoria aceita os tipos que ele
+          envia (`tiposAceitosParaOCanal`), não um menu fixo, e cada uma abre o
+          seletor de arquivo com o `accept` desses tipos. Só arquivo de verdade:
+          nada de tipo sem conteúdo, nem "ver uma vez", que a api não envia.
         */}
-              {capacidades && anexando ? (
+              {categoriasDoCanal.map(({ categoria, rotulo, tipos }) => (
+                <input
+                  key={categoria}
+                  ref={(elemento) => {
+                    seletoresDeArquivo.current[categoria] = elemento;
+                  }}
+                  type="file"
+                  hidden
+                  aria-label={`Escolher ${rotulo.toLowerCase()}`}
+                  accept={tipos.join(",")}
+                  onChange={(evento) => {
+                    const arquivo = evento.target.files?.[0];
+                    evento.target.value = "";
+                    escolherArquivo(arquivo);
+                  }}
+                />
+              ))}
+              {anexando ? (
                 <div className="mb-2 flex flex-wrap items-center gap-1">
-                  {capacidades.sendableMediaTypes.map((tipo) => {
-                    const IconeDaMidia = ICONE_DA_MIDIA[tipo];
-                    return (
-                      <button
-                        key={tipo}
-                        type="button"
-                        title={`Anexar ${MEDIA_TYPE_LABEL[tipo]}`}
-                        onClick={() => {
-                          setAnexo(tipo);
-                          setAnexando(false);
-                        }}
-                        aria-pressed={anexo === tipo}
-                        className={classeDoAlternador(anexo === tipo)}
-                      >
-                        <Icone de={IconeDaMidia} />
-                        {MEDIA_TYPE_LABEL[tipo]}
-                      </button>
-                    );
-                  })}
-                  {capacidades.viewOnce && anexo !== null ? (
+                  {categoriasDoCanal.map(({ categoria, rotulo, icone }) => (
                     <button
+                      key={categoria}
                       type="button"
-                      onClick={() => setVisualizacaoUnica((atual) => !atual)}
-                      aria-pressed={visualizacaoUnica}
-                      title="A mídia some depois de vista uma vez"
-                      className={classeDoAlternador(visualizacaoUnica)}
+                      title={`Anexar ${rotulo.toLowerCase()}`}
+                      onClick={() => seletoresDeArquivo.current[categoria]?.click()}
+                      className={classeDoAlternador(false)}
                     >
-                      <Icone de={Eye} />
-                      Visualização única
+                      <Icone de={icone} />
+                      {rotulo}
                     </button>
-                  ) : null}
+                  ))}
                 </div>
               ) : null}
 
@@ -1273,71 +1346,33 @@ export function ConversationThread({
                   style={{ color: "var(--texto-3)" }}
                 >
                   <Icone de={Paperclip} tamanho="xs" />
-                  <span className="min-w-0 flex-1 truncate">
-                    {MEDIA_TYPE_LABEL[anexo]} anexado
-                    {visualizacaoUnica ? " · visualização única" : ""}
-                  </span>
+                  <span className="min-w-0 flex-1 truncate">{anexo.arquivo.name}</span>
+                  {enviando && anexo.progresso > 0 ? <span className="shrink-0">{anexo.progresso}%</span> : null}
                   <button
                     type="button"
-                    onClick={() => {
-                      setAnexo(null);
-                      setVisualizacaoUnica(false);
-                    }}
-                    className="shrink-0 hover:text-[var(--texto)] hover:underline"
+                    disabled={enviando}
+                    onClick={() => setAnexo(null)}
+                    className="shrink-0 hover:text-[var(--texto)] hover:underline disabled:opacity-60"
                   >
                     Remover
                   </button>
                 </p>
               ) : null}
 
-              {exigeModelo ? (
-                <div className="mb-2">
-                  <label htmlFor="modelo-da-mensagem" className="rotulo">
-                    Mensagem de modelo aprovada pelo provedor
-                  </label>
-                  <Select
-                    id="modelo-da-mensagem"
-                    value={modeloId}
-                    onChange={(valor) => {
-                      setModeloId(valor);
-                      const modelo = modelosAprovados.find(
-                        (item) => item.providerId === valor,
-                      );
-                      if (modelo) setDraft(modelo.body);
-                    }}
-                    placeholder="Escolher modelo"
-                    options={modelosAprovados.map((modelo) => ({
-                      value: modelo.providerId,
-                      label: `${modelo.name} · ${modelo.category}`,
-                    }))}
-                  />
-                  {semConsentimento && modeloId !== "" ? (
-                    <p
-                      className="app-sm mt-1 rounded-[var(--r-controle)] px-2 py-1"
-                      style={{ background: "var(--aviso-lavado)", color: "var(--aviso)" }}
-                    >
-                      Este modelo é de marketing e {contactDisplayName(contact)}{" "}
-                      não tem consentimento vigente para essa finalidade neste
-                      Canal. Escolha um modelo de utilidade ou registre o
-                      consentimento na ficha.
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
             </div>
 
             {/*
               Modelo do WhatsApp: uma linha só. O "+" abre os anexos do Canal
               acima da barra; o campo é uma pílula que cresce até seis linhas;
-              à direita fica o enviar — ou o microfone, enquanto não há texto,
-              nos Canais que aceitam áudio. Enter envia, Shift+Enter quebra.
+              à direita fica o enviar. Não há botão de gravar: o áudio sai como
+              arquivo de áudio anexado (D-16-10). Enter envia, Shift+Enter quebra.
             */}
             {/* A doca do robô flutuante: o fundo fica no invólucro, que vai
                 até o canto; a linha encolhe dentro dele quando o robô está
                 ali (features/shell/robo-flutuante.tsx). */}
             <div className="doca-do-robo" style={{ background: "var(--superficie-2)" }}>
               <div className="flex items-end gap-2 px-3 py-2">
-                {capacidades && capacidades.sendableMediaTypes.length > 0 ? (
+                {categoriasDoCanal.length > 0 ? (
                   <button
                     type="button"
                     onClick={() => setAnexando((aberto) => !aberto)}
@@ -1358,7 +1393,7 @@ export function ConversationThread({
                 ) : null}
 
                 <label className="sr-only" htmlFor="compositor-ficha">
-                  Escrever para {contactDisplayName(contact)}
+                  {conversa ? `Escrever para ${nomeDoContato}` : "Primeira Mensagem"}
                 </label>
                 <textarea
                   id="compositor-ficha"
@@ -1371,34 +1406,21 @@ export function ConversationThread({
                     }
                   }}
                   rows={1}
-                  disabled={!conversa}
-                  placeholder={conversa ? "Digite uma mensagem" : "Abra o atendimento para escrever"}
+                  disabled={!canal}
+                  placeholder={conversa ? "Digite uma mensagem" : "Escreva a primeira Mensagem"}
                   className="app-base max-h-40 min-h-10 min-w-0 flex-1 resize-none border-0 bg-[var(--page)] px-4 py-2.5 outline-none [field-sizing:content] placeholder:text-[var(--texto-3)] disabled:opacity-50"
                   style={{ borderRadius: "calc(var(--controle-h) / 2)" }}
                 />
 
-                {draft.trim() === "" && capacidades?.voiceNote && !anexo ? (
-                  <button
-                    type="button"
-                    title="Gravar áudio"
-                    aria-label="Gravar áudio"
-                    disabled={!conversa}
-                    className="btn-icone btn-icone-nu shrink-0 rounded-full"
-                    style={MEDIDA_DO_BOTAO_DO_COMPOSITOR}
-                  >
-                    <Icone de={Mic} tamanho="md" />
-                  </button>
-                ) : (
-                  <Button
-                    variant="primary"
-                    onClick={() => setConfirmandoEnvio(true)}
-                    disabled={bloqueio !== undefined}
-                    disabledReason={bloqueio ?? ""}
-                    icon={<Icone de={Send} />}
-                  >
-                    <span className="sr-only">Enviar</span>
-                  </Button>
-                )}
+                <Button
+                  variant="primary"
+                  onClick={() => setConfirmandoEnvio(true)}
+                  disabled={bloqueio !== undefined}
+                  disabledReason={bloqueio ?? ""}
+                  icon={<Icone de={Send} />}
+                >
+                  <span className="sr-only">Enviar</span>
+                </Button>
               </div>
             </div>
           </div>

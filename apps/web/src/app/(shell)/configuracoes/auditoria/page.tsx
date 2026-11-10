@@ -11,6 +11,7 @@
 
 import Link from "next/link";
 import { useId, useState } from "react";
+import { useAtividadesDoCrm } from "@/dados/crm/atividades";
 import { useData } from "@/dados/store";
 import { actorLabel, newestFirst } from "@n1/dominio/derive";
 import { ehAlteracaoDeDescricao } from "@n1/dominio/descricao-da-tarefa";
@@ -34,6 +35,7 @@ import {
   useGovernanceAccessDialog,
 } from "@/features/configuracoes/governance-access-dialog";
 import type { ActorRef } from "@n1/dominio/types";
+import type { ActivityRecord } from "@n1/dominio/types/primitives";
 
 const RESULT_LABEL: Record<string, string> = {
   ok: "concluída",
@@ -59,6 +61,10 @@ export default function AuditoriaPage() {
   const [query, setQuery] = useState("");
   const [shown, setShown] = useState(PAGE_SIZE);
   const { governedResourceId, openGovernance, closeGovernance } = useGovernanceAccessDialog();
+  // Cursor da fonte nova: a primeira página não tem; "Mostrar mais" põe `(at, id)` da última linha dela.
+  const [cursor, setCursor] = useState<{ ate: string; ateId: string } | undefined>(undefined);
+  const [doCrm, setDoCrm] = useState<ReadonlyMap<string, ActivityRecord>>(new Map());
+  const { data: paginaDoCrm, error: erroDoCrm } = useAtividadesDoCrm({ limite: PAGE_SIZE, ...(cursor ?? {}) });
   const [resourceProbe, setResourceProbe] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const idAtor = useId();
@@ -66,10 +72,25 @@ export default function AuditoriaPage() {
   const idResultado = useId();
   const idBusca = useId();
 
-  const objectTypes = [...new Set(state.activity.map((record) => record.objectType))].sort();
+  // As páginas já lidas da fonte nova se acumulam por id; a página que chega soma, nunca troca.
+  // Estado derivado durante a renderização (sem efeito): só atualiza quando há id ainda não visto,
+  // então a renderização seguinte já não encontra novidade e o laço termina.
+  if (paginaDoCrm && !paginaDoCrm.itens.every((item) => doCrm.has(item.id))) {
+    const proximas = new Map(doCrm);
+    for (const item of paginaDoCrm.itens) proximas.set(item.id, item);
+    setDoCrm(proximas);
+  }
+
+  // A página cheia pode ter mais atrás dela; uma curta (ou nenhuma) é o fim da fonte nova.
+  const ultimaDoCrm = paginaDoCrm?.itens.at(-1);
+  const haMaisNoCrm = (paginaDoCrm?.itens.length ?? 0) >= PAGE_SIZE && ultimaDoCrm !== undefined;
+
+  // Mistura por `at`: a ordenação é estável, então o empate fica com a ordem de cada fonte.
+  const todas = [...newestFirst(state.activity), ...doCrm.values()].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+  const objectTypes = [...new Set(todas.map((record) => record.objectType))].sort();
 
   const term = query.trim().toLowerCase();
-  const filtered = newestFirst(state.activity)
+  const filtered = todas
     .filter((record) => actorKind === "todos" || record.actor.kind === actorKind)
     .filter((record) => objectType === "todos" || record.objectType === objectType)
     .filter((record) => result === "todos" || record.result === result)
@@ -91,7 +112,7 @@ export default function AuditoriaPage() {
           </Link>
         }
         title="Auditoria"
-        meta={`${state.activity.length} Registro(s) de Atividade`}
+        meta={`${todas.length} Registro(s) de Atividade`}
       />
 
       <BarraDeFiltros>
@@ -182,7 +203,7 @@ export default function AuditoriaPage() {
         </div>
 
         <span className="app-meta app-numero shrink-0">
-          {filtered.length} de {state.activity.length}
+          {filtered.length} de {todas.length}
         </span>
       </BarraDeFiltros>
 
@@ -237,6 +258,12 @@ export default function AuditoriaPage() {
             </div>
           </div>
         </details>
+
+        {erroDoCrm ? (
+          <p className="app-meta mb-2" role="status">
+            A linha do tempo do CRM novo não carregou agora; só aparecem os Registros que já estavam no Espaço.
+          </p>
+        ) : null}
 
         {filtered.length === 0 ? (
           <EmptyState
@@ -298,8 +325,18 @@ export default function AuditoriaPage() {
               <span className="app-meta app-numero">
                 Mostrando {visible.length} de {filtered.length}
               </span>
-              {shown < filtered.length ? (
-                <Button variant="ghost" size="sm" onClick={() => setShown((value) => value + PAGE_SIZE)}>
+              {shown < filtered.length || haMaisNoCrm ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setShown((value) => value + PAGE_SIZE);
+                    // Só busca atrás quando o que já veio não basta para a próxima fatia.
+                    if (haMaisNoCrm && ultimaDoCrm !== undefined && shown + PAGE_SIZE >= filtered.length) {
+                      setCursor({ ate: ultimaDoCrm.at, ateId: ultimaDoCrm.id });
+                    }
+                  }}
+                >
                   Mostrar mais
                 </Button>
               ) : null}

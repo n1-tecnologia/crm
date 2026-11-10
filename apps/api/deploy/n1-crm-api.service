@@ -31,6 +31,16 @@ Environment=TZ=America/Sao_Paulo
 Environment=AGENTE_CONTAS_A_PAGAR_ATIVO=false
 Environment=OUTBOX_WORKER_ATIVO=false
 Environment=AUTOMACOES_WORKER_ATIVO=false
+# Mensageria (Fase 16): MENSAGERIA_WORKER_ATIVO liga o processador da fila de entrada E o
+# worker de saída (uma flag só); COLETA_DE_ORFAOS_ATIVA liga a coleta diária de arquivos
+# órfãos do bucket. Os dois nascem desligados: ligar é um drop-in como root, só do dono
+# (`mensageria.conf`, ver apps/api/deploy/CONTEXT.md).
+# TEMPO_REAL_ATIVO (o ouvinte LISTEN do SSE) NÃO está aqui de propósito: o padrão do
+# código é ligado, e ele soma UMA conexão fixa ao banco por processo, fora do pool de 10
+# (10 + 1). `Environment=TEMPO_REAL_ATIVO=false` num drop-in o desliga (GET /eventos
+# passa a responder 503 e a tela relê a cada 5 s).
+Environment=MENSAGERIA_WORKER_ATIVO=false
+Environment=COLETA_DE_ORFAOS_ATIVA=false
 
 Restart=always
 RestartSec=5

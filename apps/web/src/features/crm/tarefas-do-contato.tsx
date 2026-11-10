@@ -18,12 +18,13 @@ import { useRecente } from "@/features/shell/recente";
 import { Button, EmptyState, Icone, Pilula, RecordPanel } from "@/features/shell/ui";
 
 export function TarefasDoContato({
-  contactId,
+  contatoId,
   onCriar,
   rotuloDoBotao = "Nova Tarefa conversacional",
   limite = 5,
 }: {
-  readonly contactId: string;
+  /** O id do Contato do CRM novo: os Vínculos das Tarefas apontam para ele. */
+  readonly contatoId: string;
   /** Abre o diálogo de criação de quem hospeda; ausente, o painel só lista. */
   readonly onCriar?: () => void;
   readonly rotuloDoBotao?: string;
@@ -33,7 +34,7 @@ export function TarefasDoContato({
   const state = useData((data) => data);
   // A Tarefa recém-criada surge; as outras já estão.
   const recente = useRecente();
-  const tarefas = tarefasConversacionaisDoContato(state, contactId);
+  const tarefas = tarefasConversacionaisDoContato(state, contatoId);
   const mostradas = tarefas.slice(0, limite);
 
   return (

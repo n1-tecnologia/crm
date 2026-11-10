@@ -15,7 +15,6 @@ import { Suspense, type ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { buildSeed } from "@n1/dominio/seed";
-import { MEUS_NEGOCIOS_ID } from "@n1/dominio/seed-comercial";
 import type { Ordens } from "@n1/dominio";
 import { containerAdminRefusal } from "@n1/dominio/derive";
 import { createFolder, createList, recusaDeReordenar } from "@n1/dominio/operations";
@@ -25,6 +24,9 @@ import type { RespostaDeGravacao, Transporte } from "@/dados/transporte";
 import { AppShell } from "@/features/shell/app-shell";
 import { MoverConteinerDialog } from "@/features/estrutura/mover-conteiner-dialog";
 import PastaPage from "@/app/(shell)/estrutura/pastas/[pasta]/page";
+
+/** A Pasta que ainda se chama «Meus negócios» nos Espaços de teste: uma Pasta comum (15-41, D-15-14); a constante do domínio saiu no 15-43. */
+const MEUS_NEGOCIOS_ID = "fld_meus_negocios";
 
 // O robô flutuante mede a tela com APIs que o jsdom não tem, e o Guia do Financeiro não é o assunto aqui.
 vi.mock("@/features/shell/robo-flutuante", () => ({ RoboFlutuante: () => null }));
@@ -128,6 +130,43 @@ function servidorFalso(): Servidor {
 }
 
 let state: DataState;
+
+/**
+ * A Pasta «Meus negócios», agora comum (15-41, D-15-14), com uma Lista de Funil dentro. O seed não as cria mais (15-31,
+ * D-15-13): os casos que as usam as montam no próprio arranjo, onde ficavam (Comercial, ordem 3) — é o que ainda existe
+ * nos Espaços de teste com Tarefas espelho.
+ */
+function montarMeusNegocios(): void {
+  const origem = { kind: "member", id: "mem_julia" } as const;
+  state.folders.push({
+    id: MEUS_NEGOCIOS_ID,
+    workspaceId: state.workspace.id,
+    createdBy: origem,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    lifecycle: "ativo",
+    name: "Meus negócios",
+    order: 3,
+    isPrivate: false,
+    modes: {},
+    blocks: {},
+    parentType: "space",
+    parentId: "spc_com",
+  });
+  state.lists.push({
+    id: "lst_funil_closer",
+    workspaceId: state.workspace.id,
+    createdBy: origem,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    lifecycle: "ativo",
+    name: "Closer",
+    order: 0,
+    isPrivate: false,
+    modeloDeTarefa: "operacional",
+    modes: {},
+    parentType: "folder",
+    parentId: MEUS_NEGOCIOS_ID,
+  });
+}
 let servidor: Servidor;
 
 const THIAGO = "mem_thiago"; // Proprietário
@@ -434,15 +473,17 @@ describe("Subir e Descer — a fatia visível, a falha e a gravação (EST-06, T
     expect(servidor.gravar).not.toHaveBeenCalled();
   });
 
-  it("a Pasta Meus negócios e as Listas dela não ganham «⋯» (A9), e a vizinha fora dela, sim", async () => {
+  it("a Pasta Meus negócios e as Listas dela ganham «⋯» como qualquer outra, com «Subir», «Descer» e «Mover para…» (15-41)", async () => {
+    montarMeusNegocios();
     await abrirArvore();
     await waitFor(() => expect(temLinha(MEUS_NEGOCIOS_ID)).toBe(true));
 
-    expect(within(linha(MEUS_NEGOCIOS_ID)).queryByRole("button", { name: /^Ações de / })).toBeNull();
+    expect(within(linha(MEUS_NEGOCIOS_ID)).queryByRole("button", { name: /^Ações de / })).not.toBeNull();
     const dela = state.lists.filter((l) => l.parentId === MEUS_NEGOCIOS_ID && temLinha(l.id));
     expect(dela.length).toBeGreaterThan(0);
-    for (const l of dela) expect(within(linha(l.id)).queryByRole("button", { name: /^Ações de / })).toBeNull();
-    expect(within(linha("lst_prospeccao")).queryByRole("button", { name: /^Ações de / })).not.toBeNull();
+    for (const l of dela) expect(within(linha(l.id)).queryByRole("button", { name: /^Ações de / })).not.toBeNull();
+
+    expect(nomes(abrirMenuDaLinha(MEUS_NEGOCIOS_ID))).toEqual(expect.arrayContaining(["Subir", "Descer", "Mover para…"]));
   });
 
   it("o Convidado vê a árvore inerte como hoje: nenhuma linha tem «⋯»", async () => {
@@ -577,11 +618,12 @@ describe("A página da Pasta e da Subpasta (D-10, A8-bis, F2)", () => {
     expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
-  it("a Pasta Meus negócios não tem «Mais ações» (A9)", async () => {
+  it("a Pasta Meus negócios tem «Mais ações» como qualquer Pasta (15-41)", async () => {
+    montarMeusNegocios();
     await montarPagina(MEUS_NEGOCIOS_ID);
 
-    expect(screen.queryByRole("button", { name: "Mais ações" })).toBeNull();
-    // O controle: o botão «Criar» da Pasta continua lá.
+    fireEvent.click(screen.getByRole("button", { name: "Mais ações" }));
+    expect(nomes(screen.getAllByRole("menuitem"))).toEqual(["Mover para…"]);
     expect(screen.getByRole("button", { name: "Criar nesta Pasta" })).toBeTruthy();
   });
 

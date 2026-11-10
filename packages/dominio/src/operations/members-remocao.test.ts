@@ -15,7 +15,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "../seed";
 import type { DataState } from "../state";
-import { removeMember } from "./members";
+import { alterarPapelDoMembro, previewSuccession, removeMember } from "./members";
 
 const PROPRIETARIO = "mem_thiago";
 const ADMINISTRADOR = "mem_rafael";
@@ -106,5 +106,68 @@ describe("removeMember — quem chama (09-21)", () => {
     expect(removeMember(state, ADMINISTRADOR, ALVO, CONVIDADO)).toMatchObject({ ok: false, field: "sucessor" });
     expect(removeMember(state, ADMINISTRADOR, ALVO, "mem_que_nao_existe")).toMatchObject({ ok: false, field: "sucessor" });
     expect(membro(ALVO).state).toBe("ativo");
+  });
+});
+
+/**
+ * 15-36 (D-15-08, F14-D-05) — a Conversa de Grupo do modelo antigo segue a mesma regra do CRM novo:
+ * quem remove o Membro passa o Atribuído ao Sucessor, não o libera. Uma regra só, sem exceção no contrato.
+ */
+describe("removeMember — Conversa de Grupo passa ao Sucessor (D-15-08)", () => {
+  function conversaDoAlvo() {
+    const conversa = state.conversations[0];
+    if (!conversa) throw new Error("o seed precisa de uma Conversa");
+    conversa.assignee = { kind: "member", id: ALVO };
+    return conversa;
+  }
+
+  it("o Atribuído passa ao Sucessor e a Atividade diz \"Conversa passada ao Sucessor\"", () => {
+    const conversa = conversaDoAlvo();
+    const r = removeMember(state, ADMINISTRADOR, ALVO, SUCESSOR);
+    expect(r.ok).toBe(true);
+    expect(conversa.assignee).toEqual({ kind: "member", id: SUCESSOR });
+    const atividades = state.activity.filter((a) => a.objectType === "conversation" && a.objectId === conversa.id);
+    expect(atividades.some((a) => a.action === "Conversa passada ao Sucessor")).toBe(true);
+    expect(state.activity.some((a) => a.action === "Conversa liberada" && a.objectId === conversa.id)).toBe(false);
+  });
+
+  it("a Conversa atribuída a um Agente ou a outro Membro não muda", () => {
+    const [primeira, segunda] = state.conversations;
+    if (!primeira || !segunda) throw new Error("o seed precisa de duas Conversas");
+    primeira.assignee = { kind: "agent", id: "agt_qualquer" };
+    segunda.assignee = { kind: "member", id: COMUM };
+    removeMember(state, ADMINISTRADOR, ALVO, SUCESSOR);
+    expect(primeira.assignee).toEqual({ kind: "agent", id: "agt_qualquer" });
+    expect(segunda.assignee).toEqual({ kind: "member", id: COMUM });
+  });
+
+  it("repetir não passa nada de novo: nem Atribuído, nem Atividade", () => {
+    const conversa = conversaDoAlvo();
+    expect(removeMember(state, ADMINISTRADOR, ALVO, SUCESSOR).ok).toBe(true);
+    const atividadesDepois = state.activity.length;
+    const atribuido = structuredClone(conversa.assignee);
+    expect(removeMember(state, ADMINISTRADOR, ALVO, PROPRIETARIO).ok).toBe(true);
+    expect(conversa.assignee).toEqual(atribuido);
+    expect(state.activity).toHaveLength(atividadesDepois);
+  });
+
+  it("previewSuccession conta a Conversa entre as transferências, não em releases", () => {
+    const conversa = conversaDoAlvo();
+    const previa = previewSuccession(state, ALVO);
+    expect(previa.transfers.some((t) => t.type === "conversation" && t.id === conversa.id)).toBe(true);
+    expect(previa.releases.some((t) => t.type === "conversation")).toBe(false);
+  });
+
+  it("atender uma Conversa não é propriedade: rebaixar a Convidado quem só atende Conversa segue permitido", () => {
+    const atendente = "mem_walter";
+    expect(membro(atendente).state).toBe("ativo");
+    expect(previewSuccession(state, atendente).transfers).toHaveLength(0);
+    const conversa = state.conversations[0];
+    if (!conversa) throw new Error("o seed precisa de uma Conversa");
+    conversa.assignee = { kind: "member", id: atendente };
+    const convidado = state.roles.find((r) => r.base === "convidado");
+    if (!convidado) throw new Error("o seed precisa de um Papel de base Convidado");
+    const r = alterarPapelDoMembro(state, PROPRIETARIO, { memberId: atendente, roleId: convidado.id });
+    expect(r.ok).toBe(true);
   });
 });

@@ -36,18 +36,17 @@ import { useIdsNaoConfirmados, useRun, useSession } from "@/dados/store";
 import { useRecente } from "@/features/shell/recente";
 import { changeTaskStatus, statusOptionRefusal } from "@n1/dominio/operations";
 import {
-  contactDisplayName,
   isBlocked,
   isOverdue,
   isTerminalCategory,
   statusCategory,
   taskWriteRefusal,
 } from "@n1/dominio/derive";
-import { canalDaTarefa, contatoDaTarefa } from "@n1/dominio/derive-conversacional";
 import type { DataState } from "@n1/dominio/state";
 import type { Priority, StatusDefinition, Task, ViewFilters } from "@n1/dominio/types";
-import { ContactAvatar } from "@/features/crm/contact-card";
-import { CHANNEL_TYPE_LABEL, PRIORITY_LABEL, STATUS_CATEGORY_LABEL } from "@/features/shell/format";
+import { useResumoDaTarefa } from "@/dados/crm/tarefas-conversacionais";
+import { PilulaDaQualificacao, PilulaDoEstadoDaConversa, PilulasDoCanal, RostoDoContato } from "@/features/estrutura/cartao-conversacional";
+import { PRIORITY_LABEL, STATUS_CATEGORY_LABEL } from "@/features/shell/format";
 import { useFormat } from "@/features/shell/use-format";
 import {
   ActionMenu,
@@ -61,6 +60,54 @@ import {
 } from "@/features/shell/ui";
 import { BotaoDeMais, CompositorNoGrupo } from "@/features/estrutura/novo-no-grupo";
 import { iconeDeTipo } from "@/features/estrutura/icone-de-tipo";
+
+/**
+ * C35 / 14-15 — o Contato da linha, do resumo da api (a Tarefa guarda só o id). Sem resumo ainda, o travessão.
+ * Fase 15 (D-15-05): a Empresa e a qualificação do Contato voltam junto do nome.
+ */
+export function CelulaDoContato({ taskId }: { readonly taskId: string }) {
+  const resumo = useResumoDaTarefa(taskId);
+  const contato = resumo?.contato;
+  const empresa = resumo?.empresa;
+  return (
+    <td>
+      {contato ? (
+        <span className="grid gap-0.5">
+          <span className="inline-flex items-center gap-1.5" style={{ color: "var(--texto)" }}>
+            <RostoDoContato nome={contato.nome} tamanho="normal" />
+            <span className="max-w-[14ch] truncate">{contato.nome}</span>
+          </span>
+          {empresa ? <span className="app-meta max-w-[18ch] truncate">{empresa.nome}</span> : null}
+          {resumo?.qualificacaoId ? (
+            <span className="flex flex-wrap items-center gap-1">
+              <PilulaDaQualificacao qualificacaoId={resumo.qualificacaoId} />
+            </span>
+          ) : null}
+        </span>
+      ) : (
+        <span style={{ color: "var(--texto-4)" }}>—</span>
+      )}
+    </td>
+  );
+}
+
+/** C35 / 14-15 — o Canal da linha (nome e selo do provedor), do resumo da api; e o estado da Conversa (D-15-05). */
+export function CelulaDoCanal({ taskId }: { readonly taskId: string }) {
+  const resumo = useResumoDaTarefa(taskId);
+  const canal = resumo?.canal;
+  return (
+    <td className="hidden @4xl:table-cell">
+      {canal ? (
+        <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+          <PilulasDoCanal canal={canal} />
+          <PilulaDoEstadoDaConversa conversa={resumo?.conversa ?? null} />
+        </span>
+      ) : (
+        <span style={{ color: "var(--texto-4)" }}>—</span>
+      )}
+    </td>
+  );
+}
 
 type Report = (result: { ok: boolean; error?: string }, message: string) => void;
 
@@ -288,9 +335,6 @@ export function TabelaDeTarefas({
                   const membro = responsavel ? state.members.find((m) => m.id === responsavel.id) : undefined;
                   const agente = !membro && task.assignees[0]?.kind === "agent" ? state.agents.find((a) => a.id === task.assignees[0]?.id) : undefined;
                   const tipo = state.taskTypes.find((t) => t.id === task.taskTypeId);
-                  // C35 — o Contato e o Canal vêm dos Vínculos; a Tarefa não os guarda.
-                  const contato = conversacional ? contatoDaTarefa(state, task) : undefined;
-                  const canal = conversacional ? canalDaTarefa(state, task) : undefined;
                   const escreve = taskWriteRefusal(state, memberId, task.id) === undefined;
                   // Uma Tarefa ainda "Salvando…" tem o id que a cópia calculou, não o do servidor: um gesto que
                   // grava sobre ela (Status) poderia agir em outro registro se os ids divergirem.
@@ -369,25 +413,8 @@ export function TabelaDeTarefas({
                       </td>
                       {conversacional ? (
                         <>
-                          <td>
-                            {contato ? (
-                              <span className="inline-flex items-center gap-1.5" style={{ color: "var(--texto)" }}>
-                                <ContactAvatar contact={contato} />
-                                <span className="max-w-[14ch] truncate">{contactDisplayName(contato)}</span>
-                              </span>
-                            ) : (
-                              <span style={{ color: "var(--texto-4)" }}>—</span>
-                            )}
-                          </td>
-                          <td className="hidden @4xl:table-cell">
-                            {canal ? (
-                              <Pilula tom="neutro" className="whitespace-nowrap">
-                                {CHANNEL_TYPE_LABEL[canal.channelType] ?? canal.name}
-                              </Pilula>
-                            ) : (
-                              <span style={{ color: "var(--texto-4)" }}>—</span>
-                            )}
-                          </td>
+                          <CelulaDoContato taskId={task.id} />
+                          <CelulaDoCanal taskId={task.id} />
                         </>
                       ) : null}
                       <td className="hidden @3xl:table-cell">

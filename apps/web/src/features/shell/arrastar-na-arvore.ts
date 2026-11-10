@@ -31,7 +31,6 @@ import {
   type DestinoDeMover,
   type PaiDeConteiner,
 } from "@n1/dominio/operations";
-import { MEUS_NEGOCIOS_ID } from "@n1/dominio/seed-comercial";
 import type { DataState, OperationResult } from "@n1/dominio/state";
 import type { Id } from "@n1/dominio/types";
 import { frasePronta, type Movel } from "@/features/estrutura/mover-conteiner-dialog";
@@ -103,7 +102,7 @@ export interface ArrastoDaArvore {
   readonly arrastando: Arrastando | null;
   readonly alvo: AlvoDoGesto | null;
   readonly gravando: boolean;
-  /** `undefined` quando a linha não participa do gesto (Meus negócios e o que mora nele, A9). */
+  /** `undefined` quando a linha não participa do gesto (a árvore sem o gesto). */
   readonly propsDaLinha: (no: NoDaArvore) => PropsDeArrasto | undefined;
   /** Para a `<ul>` da árvore: sair dela apaga o realce. */
   readonly propsDaArvore: { readonly onDragLeave: (evento: DragEvent<HTMLElement>) => void };
@@ -220,8 +219,6 @@ export function useArrastarNaArvore(parametros: ParametrosDoArrasto): ArrastoDaA
   };
 
   const propsDaLinha = (no: NoDaArvore): PropsDeArrasto | undefined => {
-    // A9 — a Pasta «Meus negócios» e o que mora nela ficam fora do gesto, como do menu.
-    if (no.tipo !== "space" && containerPath(data, no.tipo, no.id).some((passo) => passo.id === MEUS_NEGOCIOS_ID)) return undefined;
     // Só arrasta quem administra o item (os Espaços: quem reordena Espaços). Receber a soltura vale para todas as outras
     // linhas (A2): a recusa do domínio é o que a pessoa vê.
     const recusaDeArrastar = no.tipo === "space" ? recusaDeReordenar(data, memberId, "space", null) : containerAdminRefusal(data, memberId, no.tipo, no.id);

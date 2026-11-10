@@ -36,8 +36,7 @@ import { containerAdminRefusal, effectiveLifecycleOfTask, effectiveListConfig, m
 import { fail, ok, type DataState, type OperationResult } from "../state";
 import type { Automation, AutomationAction, AutomationExecution, AutomationTrigger, AutomationVersion, Id, Task } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
-import { CP, clienteDe, runLancamentoAgent, type DeParaDeLancamento } from "./financeiro";
-import { contactDisplayName } from "../derive";
+import { CP, clienteDe, runLancamentoAgent, type ClienteLido, type ClientesLidos, type DeParaDeLancamento } from "./financeiro";
 import { addTaskComment, assignTask, changeTaskStatus, setTaskFieldValue, unassignTask, watchTask } from "./tasks";
 // Sem ciclo: `operations/ai.ts` importa `./tasks` e `../derive`, nunca `./automations`.
 import { solicitarAprovacao as solicitarAprovacaoDeProcesso } from "./ai";
@@ -168,6 +167,17 @@ function conditionsHold(state: DataState, task: Task, version: AutomationVersion
 }
 
 /**
+ * O cliente da conta, com nome e dono, lido de `OpcoesDaAgenda.clientes`: o que o servidor leu de
+ * `plataforma.contatos` (15-42, WINDOWS #35). `clienteDe` devolve só a referência do Vínculo; o estado
+ * não guarda mais Contato. Sem o que o servidor leu (uma Execução que não é da agenda, ou um cliente
+ * ausente), as Automações dizem "o cliente" e não mencionam o dono dele.
+ */
+function contatoDoCliente(state: DataState, task: Task, clientes?: ClientesLidos): ClienteLido | undefined {
+  const ref = clienteDe(state, task);
+  return ref?.tipo === "contact" ? clientes?.contatos.find((c) => c.id === ref.id) : undefined;
+}
+
+/**
  * Substitui `{{campo:<id>}}` (um Campo de pessoa vira o nome), `{{cnpjEmpresa}}`,
  * `{{titulo}}`, `{{vencimento}}`, `{{cliente}}` e `{{donoDoCliente}}` no
  * texto de um Comentário.
@@ -177,14 +187,14 @@ function conditionsHold(state: DataState, task: Task, version: AutomationVersion
  * Empresa da Tarefa ausente dele, o fallback textual (`da Empresa <nome>`)
  * é o mesmo de antes: nenhum número inventado sobrevive à falta de configuração.
  */
-function fillTemplate(state: DataState, task: Task, template: string, cnpjPorEmpresa?: Readonly<Record<string, string>>): string {
-  const cliente = clienteDe(state, task);
-  const donoDoCliente = cliente ? state.members.find((m) => m.id === cliente.ownerMemberId)?.displayName : undefined;
+function fillTemplate(state: DataState, task: Task, template: string, cnpjPorEmpresa?: Readonly<Record<string, string>>, clientes?: ClientesLidos): string {
+  const cliente = contatoDoCliente(state, task, clientes);
+  const donoDoCliente = cliente ? state.members.find((m) => m.id === cliente.proprietarioId)?.displayName : undefined;
   // Sem dono conhecido, a saudação sai inteira ("{{donoDoCliente}}, …"), em vez
   // de virar "—, o cliente está…" — achado da simulação no ws_n1 (2026-09-28).
   const semSaudacaoVazia = donoDoCliente ? template : template.replace(/\{\{donoDoCliente\}\},?\s*/g, "");
   const texto = semSaudacaoVazia
-    .replace(/\{\{cliente\}\}/g, () => (cliente ? contactDisplayName(cliente) : "o cliente"))
+    .replace(/\{\{cliente\}\}/g, () => (cliente ? cliente.nome : "o cliente"))
     .replace(/\{\{donoDoCliente\}\}/g, () => donoDoCliente ?? "")
     .replace(/\{\{campo:([a-zA-Z0-9_]+)\}\}/g, (_, id: string) => {
       const valor = fieldValueOf(task, id);
@@ -231,7 +241,11 @@ function fillTemplate(state: DataState, task: Task, template: string, cnpjPorEmp
  * e nunca com o de-para do protótipo (T-3-39) — enquanto as outras
  * Automações por data (A5/A6, R2…) rodam normalmente.
  */
-export type OpcoesDaAgenda = { readonly cnpjPorEmpresa?: Readonly<Record<string, string>> } & (
+export type OpcoesDaAgenda = {
+  readonly cnpjPorEmpresa?: Readonly<Record<string, string>>;
+  /** Nome e dono dos clientes das contas, como o servidor os leu de `plataforma.contatos` (WINDOWS #35). */
+  readonly clientes?: ClientesLidos;
+} & (
   | { readonly lancamento?: undefined }
   | { readonly lancamento: { readonly dePara: DeParaDeLancamento; readonly rehearsal: true } }
   | { readonly lancamento: { readonly dePara: DeParaDeLancamento; readonly rehearsal: false; readonly tarefasLancadas: readonly Id[] } }
@@ -482,7 +496,7 @@ function runAction(
         // O aviso é in-app nesta fase: um Comentário com Menção, que `pendingMentions`
         // entrega a quem ENXERGA a Tarefa. O canal WhatsApp está acima, neste mesmo `case`.
         const r = addTaskComment(state, owner, task.id, {
-          content: fillTemplate(state, task, spec.template, opcoes?.cnpjPorEmpresa),
+          content: fillTemplate(state, task, spec.template, opcoes?.cnpjPorEmpresa, opcoes?.clientes),
           mentions: alvos.map((id) => ({ type: "member", id })),
           actor: { kind: "automation", id: automation.id },
         });
@@ -497,7 +511,7 @@ function runAction(
         if (!aprovador) return { ok: false, output: "“solicitarAprovacao” sem Aprovador: declare approverMemberId na versão ou approverFieldDefinitionId nos parâmetros." };
         if (!spec.template) return { ok: false, output: "“solicitarAprovacao” sem texto de roteamento: declare `template` nos parâmetros da Ação." };
         const comentario = addTaskComment(state, owner, task.id, {
-          content: fillTemplate(state, task, spec.template, opcoes?.cnpjPorEmpresa),
+          content: fillTemplate(state, task, spec.template, opcoes?.cnpjPorEmpresa, opcoes?.clientes),
           mentions: [{ type: "member", id: aprovador }],
           actor: { kind: "automation", id: automation.id },
         });
@@ -577,11 +591,11 @@ function runAction(
         if (typeof pessoa === "string" && pessoa) mentions.push({ type: "member", id: pessoa });
       }
       if (spec.mentionClientOwner) {
-        const cliente = clienteDe(state, task);
-        if (cliente) mentions.push({ type: "member", id: cliente.ownerMemberId });
+        const cliente = contatoDoCliente(state, task, opcoes?.clientes);
+        if (cliente) mentions.push({ type: "member", id: cliente.proprietarioId });
       }
       // O autor é a Automação (em nome do dono): uma Menção ao próprio dono é lida como aviso, não como monólogo.
-      const r = addTaskComment(state, owner, task.id, { content: fillTemplate(state, task, spec.template, opcoes?.cnpjPorEmpresa), mentions, actor: { kind: "automation", id: automation.id } });
+      const r = addTaskComment(state, owner, task.id, { content: fillTemplate(state, task, spec.template, opcoes?.cnpjPorEmpresa, opcoes?.clientes), mentions, actor: { kind: "automation", id: automation.id } });
       return r.ok ? { ok: true, output: "Comentário publicado" } : { ok: false, output: r.error };
     }
     case "tarefa.definirCampo": {

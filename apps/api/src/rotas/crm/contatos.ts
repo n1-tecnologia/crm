@@ -1,13 +1,14 @@
 /**
  * Rotas REST de Contato (D-03): o CRUD completo, de 07-01 (traçador) a 07-03.
  *
- *   GET    /contatos                                   lista
+ *   GET    /contatos                                   lista (?comIdentificador=<tipo> filtra por Identificador)
  *   POST   /contatos                                   cria (201)
  *   GET    /contatos/:id                               ficha
  *   PATCH  /contatos/:id                               edita
  *   POST   /contatos/:id/identificadores               adiciona Identificador (201)
  *   PATCH  /contatos/:id/identificadores/:identificadorId
  *   DELETE /contatos/:id/identificadores/:identificadorId
+ *   POST   /contatos/:id/identificadores/:identificadorId/transferir   passa o Identificador a outro Contato (3.2.3)
  *   POST   /contatos/:id/arquivar | /restaurar
  *   DELETE /contatos/:id                               lixeira (D-06)
  *   DELETE /contatos/:id/permanente                    exclusão de vez, só da lixeira
@@ -38,6 +39,15 @@ import {
   TEXTO_LONGO,
 } from "./comum";
 
+/**
+ * A lista de Contatos aceita um filtro a mais que a de `comum.ts`: só quem tem Identificador do tipo
+ * (3.4.8, o seletor de Contatos com WhatsApp das Ferramentas). O `QUERY_LISTA` compartilhado não muda;
+ * o tipo vem do domínio, então um valor fora dele é 400 antes de chegar ao serviço (T-15-90).
+ */
+const QUERY_LISTA_DE_CONTATOS = QUERY_LISTA.extend({
+  comIdentificador: z.enum(TIPOS_IDENTIFICADOR_CONTATO).optional(),
+}).strict();
+
 const PARAMS_IDENTIFICADOR = z
   .object({ id: z.string().min(1).max(64), identificadorId: z.string().min(1).max(64) })
   .strict();
@@ -50,6 +60,9 @@ const IDENTIFICADOR_NOVO = z
     rotuloCanal: TEXTO_CURTO.optional(),
   })
   .strict();
+
+/** O principal do transferido o serviço decide (INV-CON-03): o corpo só diz para quem vai. */
+const CORPO_DE_TRANSFERENCIA = z.object({ paraContatoId: z.string().min(1).max(64) }).strict();
 
 const PROPRIETARIO = z.string().min(1).max(64);
 const ENDERECOS = z.array(ENDERECO).max(LIMITES_CRM.enderecosMaximo);
@@ -105,7 +118,7 @@ export async function rotasDeContatos(app: FastifyInstance, opcoes: { readonly s
   const rotas = app.withTypeProvider<ZodTypeProvider>();
   const { servico } = opcoes;
 
-  rotas.get("/contatos", { schema: { querystring: QUERY_LISTA } }, async (request, reply) =>
+  rotas.get("/contatos", { schema: { querystring: QUERY_LISTA_DE_CONTATOS } }, async (request, reply) =>
     responderLista(reply, await servico.listar(request.membro, request.query)),
   );
 
@@ -143,6 +156,16 @@ export async function rotasDeContatos(app: FastifyInstance, opcoes: { readonly s
     { schema: { params: PARAMS_IDENTIFICADOR } },
     async (request, reply) =>
       responder(reply, await servico.removerIdentificador(request.membro, request.params.id, request.params.identificadorId)),
+  );
+
+  rotas.post(
+    "/contatos/:id/identificadores/:identificadorId/transferir",
+    { schema: { params: PARAMS_IDENTIFICADOR, body: CORPO_DE_TRANSFERENCIA } },
+    async (request, reply) =>
+      responder(
+        reply,
+        await servico.transferirIdentificador(request.membro, request.params.id, request.params.identificadorId, request.body),
+      ),
   );
 
   rotas.post("/contatos/:id/arquivar", { schema: { params: PARAMS_ID } }, async (request, reply) =>

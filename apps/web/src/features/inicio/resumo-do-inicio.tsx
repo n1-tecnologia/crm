@@ -14,13 +14,17 @@
  *  - Tarefas abertas: `tarefasAbertasDoMembro` (a da barra global); Vencidas
  *    e Para hoje: os recortes de Minhas Tarefas (`recortesDeTarefas`) — cada
  *    atalho leva ao recorte com o MESMO número.
- *  - Leads a atender: `leadsAAtender` — Contatos de que sou Proprietário com
- *    a Qualificação "Lead" (lead é Qualificação, não entidade: DO-CON-05)
- *    ainda sem contato ou esperando resposta nossa.
- *  - Mensagens novas: `conversasComMensagensNovas` — a mesma "não lida" da
- *    Caixa de Entrada, nas Conversas atribuídas a mim.
+ *  - Leads a atender: `GET /crm/inicio/leads-a-atender` (`useLeadsAAtender`) —
+ *    Contatos de que sou Proprietário com a Qualificação "Lead" (lead é
+ *    Qualificação, não entidade: DO-CON-05) ainda sem contato ou esperando
+ *    resposta nossa. As Qualificações "Lead" saem do Catálogo, no store.
+ *  - Mensagens novas: `GET /conversas?naoLidas=true&atribuidoId=<eu>` — a mesma
+ *    "não lida" da Caixa de Entrada, nas Conversas atribuídas a mim
+ *    (`mensagensNovasDasConversas` soma as linhas e diz quando são parciais).
  *  - Estatísticas: `estatisticasDoMembro` — o que EU fiz no período, contra o
  *    período anterior do mesmo tamanho, no fuso do Espaço de Trabalho.
+ * Desde o 15-23 nada do CRM sai do store: o Início abre sem Contatos, Negócios
+ * e Conversas do modelo antigo (3.4.7, UCR-07).
  * "Vencida", nunca "em atraso" (GLOSSÁRIO). Nada de contagem do que a pessoa
  * não vê (B103). Sem lanterna nos cartões: luz que segue o cursor é só a do
  * palco, atrás do robô.
@@ -45,21 +49,27 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useData, useSession } from "@/dados/store";
-import { contactDisplayName, isOverdue, statusDefinition, tarefasAbertasDoMembro } from "@n1/dominio/derive";
+import { LIMITES_CRM } from "@n1/dominio/crm/comum";
+import { LIMITE_DE_LEADS, type LeadAAtenderDoCrm } from "@n1/dominio/crm/inicio";
+import { isOverdue, statusDefinition, tarefasAbertasDoMembro } from "@n1/dominio/derive";
 import {
   METRICAS_DO_RESUMO,
-  conversasComMensagensNovas,
   estatisticasDoMembro,
-  leadsAAtender,
-  type ConversaComNovas,
-  type LeadAAtender,
+  janelaDoResumo,
+  janelasDeConsultaDoCrm,
+  juntarEstatisticasDoCrm,
+  mensagensNovasDasConversas,
+  qualificacoesDeLead,
+  type MensagensNovasDoMembro,
   type MetricaDoResumo,
   type PeriodoDoResumo,
 } from "@n1/dominio/derive-resumo";
 import type { DataState } from "@n1/dominio/state";
 import type { Task } from "@n1/dominio/types";
+import { useConversas } from "@/dados/crm/conversas";
+import { useEstatisticasDoCrm, useLeadsAAtender } from "@/dados/crm/inicio";
 import { reduzido } from "@/design/movimento";
-import { ContactAvatar } from "@/features/crm/contact-card";
+import { AvatarDoContato } from "@/features/crm/avatar-do-contato";
 import { ICONE_DE_OBJETO, Selo, SeloDaTarefa } from "@/features/estrutura/icone-de-tipo";
 import { diaDoVencimento, gruposDeTarefas, recortesDeTarefas, type GruposDeTarefas } from "@n1/dominio/recortes-de-tarefas";
 import { Colunas } from "@/features/paineis/graficos";
@@ -122,10 +132,11 @@ export function ResumoDoInicio() {
   const abertas = tarefasAbertasDoMembro(state, memberId);
   const recortes = recortesDeTarefas(state, memberId, agora);
   const grupos = gruposDeTarefas(state, memberId, agora);
-  const leads = leadsAAtender(state, memberId);
-  const conversas = conversasComMensagensNovas(state, memberId);
+  // O CRM vem das rotas (15-23): as Qualificações "Lead" são do Catálogo (store), os Leads são do servidor.
+  const { leads } = useLeadsAAtender(qualificacoesDeLead(state));
+  const mensagens = useConversas({ naoLidas: true, atribuidoId: memberId, limite: LIMITES_CRM.paginaMaxima });
+  const novas = mensagensNovasDasConversas(mensagens.data?.itens ?? [], mensagens.data?.total ?? 0);
 
-  const naoLidas = conversas.reduce((soma, conversa) => soma + conversa.naoLidas, 0);
   const semContato = leads.filter((lead) => lead.motivo === "semContato").length;
   // A vencida mais antiga, pelo DIA do vencimento no fuso do Espaço de Trabalho
   // (um dia civil e um instante não se comparam como texto).
@@ -198,9 +209,11 @@ export function ResumoDoInicio() {
       detalhe:
         leads.length === 0
           ? "nenhum esperando"
-          : semContato === leads.length
-            ? "sem contato ainda"
-            : `${fmt.number(leads.length - semContato)} esperando resposta`,
+          : leads.length >= LIMITE_DE_LEADS
+            ? `os ${fmt.number(LIMITE_DE_LEADS)} que esperam há mais tempo`
+            : semContato === leads.length
+              ? "sem contato ainda"
+              : `${fmt.number(leads.length - semContato)} esperando resposta`,
     },
     {
       chave: "mensagens",
@@ -208,12 +221,15 @@ export function ResumoDoInicio() {
       icone: MessageSquare,
       cor: "var(--info)",
       lavado: "var(--info-lavado)",
-      rotulo: naoLidas === 1 ? "Mensagem nova" : "Mensagens novas",
-      valor: naoLidas,
+      rotulo: novas.naoLidas === 1 ? "Mensagem nova" : "Mensagens novas",
+      valor: novas.naoLidas,
+      // Passando do que a api devolveu de uma vez, o número é das Conversas lidas e o detalhe diz isso.
       detalhe:
-        conversas.length === 0
+        novas.conversas === 0
           ? "nada novo nas suas Conversas"
-          : `em ${fmt.number(conversas.length)} ${conversas.length === 1 ? "Conversa" : "Conversas"}`,
+          : novas.parcial
+            ? `nas primeiras ${fmt.number(novas.linhas.length)} de ${fmt.number(novas.conversas)} Conversas`
+            : `em ${fmt.number(novas.conversas)} ${novas.conversas === 1 ? "Conversa" : "Conversas"}`,
     },
   ];
 
@@ -241,7 +257,7 @@ export function ResumoDoInicio() {
         <div className="inicio-resumo-blocos">
           <BlocoDeTarefas state={state} abertas={abertas} grupos={grupos} />
           <BlocoDeLeads leads={leads} agora={agora} />
-          <BlocoDeMensagens conversas={conversas} naoLidas={naoLidas} agora={agora} />
+          <BlocoDeMensagens novas={novas} agora={agora} />
         </div>
 
         <Estatisticas state={state} memberId={memberId} agora={agora} />
@@ -474,7 +490,7 @@ function LinhaDeTarefa({ state, task, vencida }: { readonly state: DataState; re
  * aviso ("Esperando resposta há 2 horas"), sem marcador à direita: numa coluna
  * de um quinto, ele espremia o nome.
  */
-function BlocoDeLeads({ leads, agora }: { readonly leads: readonly LeadAAtender[]; readonly agora: Date }) {
+function BlocoDeLeads({ leads, agora }: { readonly leads: readonly LeadAAtenderDoCrm[]; readonly agora: Date }) {
   const fmt = useFormat();
   return (
     <section id={ID_DOS_LEADS} aria-labelledby="inicio-leads-titulo" className="min-w-0">
@@ -490,16 +506,16 @@ function BlocoDeLeads({ leads, agora }: { readonly leads: readonly LeadAAtender[
         <>
           <ul className="pilha-solta">
             {leads.slice(0, POR_BLOCO).map((lead) => {
-              const aguardando = lead.motivo === "aguardandoResposta" && lead.conversa;
-              const href = aguardando && lead.conversa ? `/crm/caixa-de-entrada/${lead.conversa.id}` : `/crm/contatos/${lead.contato.id}`;
+              const aguardando = lead.motivo === "aguardandoResposta" && lead.conversaId !== null;
+              const href = aguardando && lead.conversaId ? `/crm/caixa-de-entrada/${lead.conversaId}` : `/crm/contatos/${lead.contatoId}`;
               return (
-                <li key={lead.contato.id}>
+                <li key={lead.contatoId}>
                   <Link href={href} onNavigate={() => marcarSeMuda(href)} className="item-solto py-3">
                     <span className="inicio-linha-marca">
-                      <ContactAvatar contact={lead.contato} />
+                      <AvatarDoContato nome={lead.nome} />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="app-base block truncate text-[var(--texto)]">{contactDisplayName(lead.contato)}</span>
+                      <span className="app-base block truncate text-[var(--texto)]">{lead.nome}</span>
                       <span className="app-sm block truncate" style={{ color: aguardando ? "var(--aviso)" : "var(--texto-3)" }}>
                         {aguardando
                           ? `Esperando resposta ${fmt.relative(lead.desde, agora.getTime())}`
@@ -521,19 +537,11 @@ function BlocoDeLeads({ leads, agora }: { readonly leads: readonly LeadAAtender[
 /**
  * As MENSAGENS NOVAS: as Conversas atribuídas a mim com Mensagem não lida, a
  * mais recente primeiro. Duas linhas, como as Tarefas e os Leads ao lado — o
- * nome com o "há 4 horas"; embaixo, quantas não lidas e o começo da última
- * Mensagem, numa linha só (eram três, e a peça ficava mais alta que as
- * vizinhas).
+ * nome com o "há 4 horas"; embaixo, quantas não lidas. O trecho da última
+ * Mensagem saiu no 15-23: a lista de Conversas da api não o traz (a Caixa de
+ * Entrada abre a Conversa para ler).
  */
-function BlocoDeMensagens({
-  conversas,
-  naoLidas,
-  agora,
-}: {
-  readonly conversas: readonly ConversaComNovas[];
-  readonly naoLidas: number;
-  readonly agora: Date;
-}) {
+function BlocoDeMensagens({ novas, agora }: { readonly novas: MensagensNovasDoMembro; readonly agora: Date }) {
   const fmt = useFormat();
   const caixa = "/crm/caixa-de-entrada?escopo=minhas";
   return (
@@ -541,30 +549,27 @@ function BlocoDeMensagens({
       <CabecaDoBloco
         id="inicio-mensagens-titulo"
         titulo="Mensagens novas"
-        contagem={naoLidas}
+        contagem={novas.naoLidas}
         acao={<AcaoDoBloco href={caixa} rotulo="Caixa de Entrada" />}
       />
-      {conversas.length === 0 ? (
+      {novas.linhas.length === 0 ? (
         <EmptyState compact title="Nenhuma Mensagem nova." hint="As Conversas atribuídas a você com Mensagem não lida aparecem aqui." />
       ) : (
         <>
           <ul className="pilha-solta">
-            {conversas.slice(0, POR_BLOCO).map(({ conversa, contato, naoLidas: n, ultima, ultimaAtividade }) => {
-              const href = `/crm/caixa-de-entrada/${conversa.id}`;
+            {novas.linhas.slice(0, POR_BLOCO).map(({ conversaId, contatoNome, naoLidas: n, ultimaAtividade }) => {
+              const href = `/crm/caixa-de-entrada/${conversaId}`;
               return (
-                <li key={conversa.id}>
+                <li key={conversaId}>
                   <Link href={href} onNavigate={() => marcarSeMuda(href)} className="item-solto py-3" data-destacado="true">
                     <Selo icone={ICONE_DE_OBJETO.conversa} cor="var(--info)" lavado="var(--info-lavado)" />
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline gap-2">
-                        <span className="app-base min-w-0 flex-1 truncate text-[var(--texto)]">
-                          {contato ? contactDisplayName(contato) : "Contato não resolvido"}
-                        </span>
+                        <span className="app-base min-w-0 flex-1 truncate text-[var(--texto)]">{contatoNome ?? "Contato não resolvido"}</span>
                         <span className="app-meta shrink-0">{fmt.relative(ultimaAtividade, agora.getTime())}</span>
                       </span>
                       <span className="app-sm block truncate text-[var(--texto-3)]">
                         <span className="app-numero text-[var(--info)]">{n === 1 ? "1 não lida" : `${fmt.number(n)} não lidas`}</span>
-                        {ultima ? ` · ${ultima.content}` : null}
                       </span>
                     </span>
                   </Link>
@@ -572,7 +577,7 @@ function BlocoDeMensagens({
               );
             })}
           </ul>
-          <Corte mostrando={Math.min(POR_BLOCO, conversas.length)} total={conversas.length} href={caixa} />
+          <Corte mostrando={Math.min(POR_BLOCO, novas.linhas.length)} total={novas.conversas} href={caixa} />
         </>
       )}
     </section>
@@ -617,13 +622,26 @@ const METRICA: Record<MetricaDoResumo, { readonly rotulo: string; readonly cor: 
  */
 function Estatisticas({ state, memberId, agora }: { readonly state: DataState; readonly memberId: string; readonly agora: Date }) {
   const fmt = useFormat();
+  const fuso = state.workspace.locale.timezone;
   const [periodo, setPeriodo] = useState<PeriodoDoResumo>("semana");
-  const [metrica, setMetrica] = useState<MetricaDoResumo>(() => {
-    const semana = estatisticasDoMembro(state, memberId, "semana", agora).metricas;
-    return METRICAS_DO_RESUMO.reduce((melhor, chave) => (semana[chave].valor > semana[melhor].valor ? chave : melhor), METRICAS_DO_RESUMO[0] ?? "tarefasConcluidas");
-  });
+  // Mensagens, Conversas resolvidas e Negócios ganhos vêm do servidor, por dia (15-23). Duas consultas: a janela
+  // atual e a anterior, porque a api aceita 400 dias por pedido e o "ano" com o anterior passa de 700. As janelas
+  // só mudam na virada do dia (chave estável do SWR); o relógio do minuto não pede nada de novo.
+  const consultas = janelasDeConsultaDoCrm(janelaDoResumo(periodo, agora, fuso), fuso);
+  const atual = useEstatisticasDoCrm(consultas.atual, fuso);
+  const anterior = useEstatisticasDoCrm(consultas.anterior, fuso);
+  const crm = juntarEstatisticasDoCrm(atual.estatisticas, anterior.estatisticas);
+  const recusado = atual.erro !== undefined || anterior.erro !== undefined;
   // Por render, sem memo por `state`: o armazém muda no lugar (só a revisão avisa).
-  const leitura = estatisticasDoMembro(state, memberId, periodo, agora);
+  const leitura = estatisticasDoMembro(state, memberId, periodo, agora, crm);
+  // Sem escolha da pessoa, abre a métrica que mais tem o que mostrar no período.
+  const [escolhidaPelaPessoa, setMetrica] = useState<MetricaDoResumo | null>(null);
+  const metrica =
+    escolhidaPelaPessoa ??
+    METRICAS_DO_RESUMO.reduce(
+      (melhor, chave) => (leitura.metricas[chave].valor > leitura.metricas[melhor].valor ? chave : melhor),
+      METRICAS_DO_RESUMO[0] ?? "tarefasConcluidas",
+    );
   const janela = JANELA[periodo];
   const escolhida = leitura.metricas[metrica];
 
@@ -637,6 +655,11 @@ function Estatisticas({ state, memberId, agora }: { readonly state: DataState; r
       <p className="app-meta inicio-estatisticas-janela">
         {janela.descricao}, {janela.comparacao}.
       </p>
+      {recusado ? (
+        <p role="status" className="app-meta inicio-estatisticas-janela" style={{ color: "var(--aviso)" }}>
+          As estatísticas do CRM não carregaram: Mensagens enviadas, Conversas resolvidas e Negócios ganhos aparecem zeradas.
+        </p>
+      ) : null}
       {/* O corpo no molde da grade: largo, o gráfico sob as Tarefas e as
           métricas 2×2 sob Leads e Mensagens; médio, as métricas nas metades
           e o gráfico embaixo, na largura toda. */}

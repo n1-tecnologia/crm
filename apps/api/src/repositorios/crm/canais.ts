@@ -67,6 +67,11 @@ export interface RepositorioDeCanais {
   ativoEmConflito(workspaceId: string, alvo: AlvoDeConflito): Promise<ConflitoDeCanal | undefined>;
   /** Os Canais do Espaço em qualquer estado, do mais antigo ao mais novo (a projeção de `GET /estado`). */
   todos(workspaceId: string): Promise<Canal[]>;
+  /**
+   * O Canal tem credencial ATIVA do próprio provedor no cofre (a que `canal:ligar-evolution` guarda, `tipo` = provedor)?
+   * CR-01 (16-17): só existência, sem ler nem decifrar o segredo (não precisa da `COFRE_CHAVE`).
+   */
+  ligadoAoProvedor(workspaceId: string, canal: Pick<Canal, "id" | "provedor">): Promise<boolean>;
 }
 
 const COLUNAS_CANAL = `id, nome, tipo, provedor, identificador_externo, conexao, conexao_simulada, conectada_em,
@@ -229,6 +234,18 @@ export function criarRepositorioDeCanaisPg(cliente: Pool | PoolClient): Reposito
         [workspaceId, id, alvo.conexao, alvo.conexaoSimulada],
       );
       return rows[0] ? linhaParaCanal(rows[0]) : undefined;
+    },
+
+    async ligadoAoProvedor(workspaceId, canal) {
+      const { rows } = await cliente.query<{ ligado: boolean }>(
+        `select exists (
+           select 1 from plataforma.credenciais
+            where workspace_id = $1 and dono_tipo = 'canal' and dono_id = $2 and tipo = $3
+              and revogado_em is null
+         ) as ligado`,
+        [workspaceId, canal.id, canal.provedor],
+      );
+      return rows[0]?.ligado === true;
     },
 
     async arquivar(workspaceId, id) {

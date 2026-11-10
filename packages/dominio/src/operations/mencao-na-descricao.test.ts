@@ -30,7 +30,7 @@ const daDescricao = (lista: MencaoPendente[], taskId = TAREFA) =>
 describe("menção na descrição — o caso positivo (11-04, TAR-05)", () => {
   it("a Tarefa que a Júlia vê, com @Júlia Prado na descrição, entra em pendingMentions e no total", () => {
     expect(memberSeesTask(state, JULIA, TAREFA)).toBe(true);
-    const antes = notificacoesDoMembro(state, JULIA, new Date());
+    const antes = notificacoesDoMembro(state, JULIA, new Date(), { itens: [], total: 0 });
 
     const r = updateTask(state, THIAGO, TAREFA, { description: "Pedir a @Júlia Prado a revisão", descriptionMentions: [MENCAO_JULIA] });
     expect(r.ok).toBe(true);
@@ -39,7 +39,7 @@ describe("menção na descrição — o caso positivo (11-04, TAR-05)", () => {
     expect(entradas).toHaveLength(1);
     expect(entradas[0]?.trecho).toContain("@Júlia Prado");
 
-    const depois = notificacoesDoMembro(state, JULIA, new Date());
+    const depois = notificacoesDoMembro(state, JULIA, new Date(), { itens: [], total: 0 });
     expect(daDescricao(depois.mencoes)).toHaveLength(1);
     expect(depois.total).toBe(antes.total + 1);
   });
@@ -128,7 +128,7 @@ describe("a menção da descrição nunca vaza nem se forja (D-09, RN-TAR-14)", 
     gestao.descriptionMentions = [{ type: "member", id: semAcesso.id }];
 
     expect(daDescricao(pendingMentions(state, semAcesso.id), gestao.id)).toHaveLength(0);
-    expect(notificacoesDoMembro(state, semAcesso.id, new Date()).mencoes.some((m) => m.task.id === gestao.id)).toBe(false);
+    expect(notificacoesDoMembro(state, semAcesso.id, new Date(), { itens: [], total: 0 }).mencoes.some((m) => m.task.id === gestao.id)).toBe(false);
   });
 
   it("quem se menciona na própria descrição também recebe o aviso (a descrição não tem autor)", () => {
@@ -151,7 +151,7 @@ describe("a menção da descrição nunca vaza nem se forja (D-09, RN-TAR-14)", 
     const antes = JSON.stringify({ ...state, activity: undefined });
 
     pendingMentions(state, JULIA);
-    notificacoesDoMembro(state, JULIA, new Date());
+    notificacoesDoMembro(state, JULIA, new Date(), { itens: [], total: 0 });
 
     expect(JSON.stringify({ ...state, activity: undefined })).toBe(antes);
     expect(Object.keys(tarefa()).filter((k) => /visto|dispens|lida/i.test(k))).toEqual([]);
@@ -225,7 +225,7 @@ describe("ordem e contagem da lista única", () => {
     if (!mencionado.ok || !comum.ok) throw new Error("os Comentários deviam ser criados");
     gravarMencao();
 
-    const n = notificacoesDoMembro(state, JULIA, new Date());
+    const n = notificacoesDoMembro(state, JULIA, new Date(), { itens: [], total: 0 });
 
     expect(daDescricao(n.mencoes)).toHaveLength(1);
     expect(n.mencoes.some((m) => m.tipo === "comentario" && m.comment.id === mencionado.value.id)).toBe(true);

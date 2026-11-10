@@ -16,12 +16,15 @@
 import type { Pool, PoolClient } from "pg";
 import type { BloqueiosCrm, EstadoCrm, Pagina } from "@n1/dominio/crm/comum";
 import { LIMITES_CRM, validarCamposAdicionais, validarEnderecos } from "@n1/dominio/crm/comum";
+import { ACOES_DO_CRM } from "@n1/dominio/crm/atividades";
 import {
   fraseDeContatoBloqueado,
   fraseDeIdentificadorEmUso,
+  nomeDeExibicaoDoContato,
   primeiroDoTipo,
   validarContato,
   validarIdentificadorDeContato,
+  validarTransferenciaDeIdentificador,
   type Contato,
   type ContatoDetalhado,
   type ContatoResumo,
@@ -29,9 +32,11 @@ import {
   type EdicaoDeIdentificador,
   type NovoContato,
   type NovoIdentificadorDeContato,
+  type TipoIdentificadorContato,
 } from "@n1/dominio/crm/contatos";
 import type { AcaoCrm } from "@n1/dominio/crm/permissoes";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
+import { registrarAtividade } from "../../repositorios/crm/atividades";
 import { criarRepositorioDeContatosPg, type RepositorioDeContatos } from "../../repositorios/crm/contatos";
 import { empresasEmQueEhUnicoAdmin, listarDoContato } from "../../repositorios/crm/vinculos";
 import { exigir, resolverProprietario, type AcessoAoCrm } from "./acesso";
@@ -41,6 +46,7 @@ import { comTransacao, type FrasesDeRestricao } from "./transacao";
 export interface FiltroDeContatos {
   readonly estado: EstadoCrm;
   readonly q?: string | undefined;
+  readonly comIdentificador?: TipoIdentificadorContato | undefined;
   readonly limite: number;
   readonly deslocamento: number;
 }
@@ -62,6 +68,13 @@ export interface ServicoDeContatos {
     entrada: EdicaoDeIdentificador,
   ): Promise<ResultadoCrm<ContatoDetalhado>>;
   removerIdentificador(membro: MembroDaSessao, id: string, identificadorId: string): Promise<ResultadoCrm<ContatoDetalhado>>;
+  /** 3.2.3: passa o Identificador para outro Contato; devolve a ficha da origem. As Conversas passadas ficam (DO-CON-12). */
+  transferirIdentificador(
+    membro: MembroDaSessao,
+    id: string,
+    identificadorId: string,
+    entrada: { readonly paraContatoId: string },
+  ): Promise<ResultadoCrm<ContatoDetalhado>>;
   arquivar(membro: MembroDaSessao, id: string): Promise<ResultadoCrm<ContatoDetalhado>>;
   restaurar(membro: MembroDaSessao, id: string): Promise<ResultadoCrm<ContatoDetalhado>>;
   enviarParaLixeira(membro: MembroDaSessao, id: string): Promise<ResultadoCrm<ContatoDetalhado>>;
@@ -82,6 +95,11 @@ export const FRASES_DE_CONTATOS: FrasesDeRestricao = {
   negocios_workspace_id_contato_id_fkey: {
     codigo: "CONTATO_COM_NEGOCIOS",
     error: "Este Contato ainda tem Negócios. Troque o Contato deles antes.",
+  },
+  // 011: o absorvido aponta para o sobrevivente (`mesclado_em_id`); a pré-checagem dá a frase rica, esta é a rede (WR-06).
+  contatos_mesclado_em_fk: {
+    codigo: "CONTATO_COM_MESCLADOS",
+    error: "Outros Contatos foram mesclados neste e ele não pode ser excluído de vez.",
   },
   // 008: a Conversa referencia o Contato; a pré-checagem dá a frase rica, esta é a rede contra corrida.
   conversas_workspace_id_contato_id_fkey: {
@@ -108,6 +126,16 @@ function contatoInativo() {
   return recusa<never>(409, "Restaure o Contato antes de editar.", { codigo: "CONTATO_INATIVO" });
 }
 
+/**
+ * RN-CON-14 (011): um Contato `mesclado` foi absorvido por outro e é somente leitura em toda
+ * escrita do CRM novo. Só a mesclagem (14-09) grava esse estado; nenhuma porta o desfaz.
+ */
+function contatoMesclado() {
+  return recusa<never>(409, "Este Contato foi mesclado e agora é somente leitura. Abra o Contato que ficou.", {
+    codigo: "CONTATO_MESCLADO",
+  });
+}
+
 type Cliente = Pool | PoolClient;
 
 async function detalhar(cliente: Cliente, workspaceId: string, contato: Contato): Promise<ContatoDetalhado> {
@@ -125,7 +153,7 @@ export function criarServicoDeContatos(deps: {
   /**
    * Papel primeiro (um Convidado nunca descobre se o corpo era válido); depois a validação
    * de forma, sem banco; depois a transação. O Contato é carregado travado e tem de existir
-   * NESTE Espaço.
+   * NESTE Espaço. `tambem` é o outro Contato de um gesto entre dois (a transferência).
    */
   async function escrita<T>(
     membro: MembroDaSessao,
@@ -133,6 +161,7 @@ export function criarServicoDeContatos(deps: {
     id: string,
     corpo: (contexto: { cliente: PoolClient; repositorio: RepositorioDeContatos; contato: Contato }) => Promise<ResultadoCrm<T>>,
     validar?: () => ResultadoCrm<never> | undefined,
+    tambem?: string,
   ): Promise<ResultadoCrm<T>> {
     const negado = await exigir(deps.acesso, membro, acao, "contato");
     if (negado) return { ok: false, ...negado };
@@ -142,8 +171,13 @@ export function criarServicoDeContatos(deps: {
       deps.pool,
       async (cliente) => {
         const repositorio = criarRepositorioDeContatosPg(cliente);
+        // Gesto entre dois Contatos: as travas saem em ordem de id (a mesclagem faz o mesmo), para
+        // duas transferências opostas não darem deadlock. O de id maior é travado pelo `corpo`.
+        if (tambem !== undefined && tambem < id) await repositorio.obter(membro.workspaceId, tambem, { travar: true });
         const contato = await repositorio.obter(membro.workspaceId, id, { travar: true });
         if (!contato) return naoEncontrado();
+        // RN-CON-14: antes de qualquer outra regra, inclusive as de transição (restaurar, arquivar, lixeira).
+        if (contato.estado === "mesclado") return contatoMesclado();
         return corpo({ cliente, repositorio, contato });
       },
       FRASES_DE_CONTATOS,
@@ -201,6 +235,7 @@ export function criarServicoDeContatos(deps: {
         await repositorio.listar(membro.workspaceId, {
           estado: filtro.estado,
           q: filtro.q,
+          comIdentificador: filtro.comIdentificador,
           limite: filtro.limite,
           deslocamento: filtro.deslocamento,
         }),
@@ -378,6 +413,67 @@ export function criarServicoDeContatos(deps: {
       });
     },
 
+    async transferirIdentificador(membro, id, identificadorId, entrada) {
+      return escrita(
+        membro,
+        "editar",
+        id,
+        async ({ cliente, repositorio, contato }) => {
+          // O destino é travado depois da origem, que já foi travada (em ordem de id, ver `escrita`).
+          const destino = await repositorio.obter(membro.workspaceId, entrada.paraContatoId, { travar: true });
+          if (!destino) {
+            return recusa<never>(404, "Contato de destino não encontrado.", {
+              codigo: "CONTATO_NAO_ENCONTRADO",
+              campo: "paraContatoId",
+            });
+          }
+          const existentes = await repositorio.listarIdentificadores(membro.workspaceId, contato.id);
+          const alvo = existentes.find((identificador) => identificador.id === identificadorId);
+          if (!alvo) return recusa<never>(404, "Identificador não encontrado.", { codigo: "IDENTIFICADOR_NAO_ENCONTRADO" });
+          const restantes = existentes.filter((identificador) => identificador.id !== alvo.id);
+
+          const validacao = validarTransferenciaDeIdentificador({ origem: contato, destino, restantesDaOrigem: restantes });
+          if (!validacao.ok) {
+            return recusa<never>(409, validacao.error, {
+              codigo: "TRANSFERENCIA_RECUSADA",
+              ...(validacao.field !== undefined ? { campo: validacao.field } : {}),
+            });
+          }
+
+          const doDestino = await repositorio.listarIdentificadores(membro.workspaceId, destino.id);
+          if (doDestino.length >= LIMITES_CRM.identificadoresMaximo) {
+            return recusa<never>(409, `Um Contato tem no máximo ${LIMITES_CRM.identificadoresMaximo} Identificadores.`, {
+              codigo: "TRANSFERENCIA_RECUSADA",
+              campo: "paraContatoId",
+            });
+          }
+
+          // INV-CON-03: chega principal só se o destino ainda não tem principal desse tipo.
+          const principal = !doDestino.some((identificador) => identificador.tipo === alvo.tipo && identificador.principal);
+          await repositorio.moverIdentificador(membro.workspaceId, alvo.id, destino.id, principal);
+          // A Atividade fica no Contato de origem, com o NOME do destino. O `detalhe` é só o tipo do
+          // Identificador ("whatsapp"): o valor dele é dado pessoal e não entra na linha (T-15-27).
+          await registrarAtividade(cliente, membro.workspaceId, {
+            ator: { kind: "member", id: membro.id },
+            acao: ACOES_DO_CRM.identificadorTransferido,
+            objetoTipo: "contact",
+            objetoId: contato.id,
+            objetoNome: nomeDeExibicaoDoContato(contato),
+            depois: nomeDeExibicaoDoContato(destino),
+            detalhe: alvo.tipo,
+          });
+          if (alvo.principal) {
+            // Na origem, o mesmo tratamento de `removerIdentificador`: promove o mais antigo do mesmo tipo.
+            const proximo = restantes.find((identificador) => identificador.tipo === alvo.tipo);
+            if (proximo) await repositorio.atualizarIdentificador(membro.workspaceId, proximo.id, { principal: true });
+          }
+          return devolver(cliente, membro, contato);
+        },
+        undefined,
+        entrada.paraContatoId,
+      );
+    },
+
     async arquivar(membro, id) {
       return escrita(membro, "arquivar", id, async ({ cliente, repositorio, contato }) => {
         if (contato.estado !== "ativo") {
@@ -447,6 +543,17 @@ export function criarServicoDeContatos(deps: {
               : `Este Contato tem ${conversas.total} Conversas na Caixa de Entrada e não pode ser excluído permanentemente.`,
             { codigo: "CONTATO_COM_CONVERSAS", bloqueios: { conversas } },
           );
+        }
+        // WR-06: o sobrevivente de uma mesclagem é o destino de `mesclado_em_id` dos absorvidos; o `delete`
+        // violaria `contatos_mesclado_em_fk` e viraria 500. Repetir a chamada dá o mesmo 409 e nada muda.
+        const absorvidos = await cliente.query(
+          "select 1 from plataforma.contatos where workspace_id = $1 and mesclado_em_id = $2 limit 1",
+          [membro.workspaceId, contato.id],
+        );
+        if ((absorvidos.rowCount ?? 0) > 0) {
+          return recusa<never>(409, "Este Contato absorveu outros Contatos e não pode ser excluído de vez.", {
+            codigo: "CONTATO_COM_MESCLADOS",
+          });
         }
         // O `delete` cascateia o vínculo e o trigger recusaria no commit; antecipar dá a mensagem rica.
         const empresas = await empresasEmQueEhUnicoAdmin(cliente, membro.workspaceId, contato.id);

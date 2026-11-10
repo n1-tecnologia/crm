@@ -11,6 +11,7 @@
  * (D5): a marca vem do catálogo do domínio, não é repetida aqui.
  */
 
+import type { Canal } from "@n1/dominio/crm/canais";
 import type { DataState } from "@n1/dominio/state";
 import { CONTROLES, FERRAMENTAS_QUE_EXECUTAM, escopoExecutaNoPrototipo, eventoDoCatalogo, eventosDoEscopo, type ControleDeAcao } from "@n1/dominio/operations";
 import type { AutomationAction, AutomationCondition, AutomationScopeType, AutomationTrigger, AutonomyLevel, FieldDefinition, Id, TriggerKind } from "@n1/dominio/types";
@@ -26,6 +27,8 @@ export interface ContextoDaSpec {
   readonly scopeType: AutomationScopeType;
   readonly scopeId: Id;
   readonly valor: ValorDoBloco;
+  /** Os Canais do CRM novo (`GET /canais`), para os campos que `usaCanais`; ausente até a lista chegar. */
+  readonly canais?: readonly Pick<Canal, "id" | "nome" | "conexao" | "estado">[];
 }
 
 export interface OpcaoDaSpec {
@@ -60,6 +63,8 @@ export interface CampoSpec {
   readonly opcoes?: readonly OpcaoDaSpec[] | ((ctx: ContextoDaSpec) => readonly OpcaoDaSpec[]);
   readonly ajuda?: string;
   readonly placeholder?: string;
+  /** As opções saem dos Canais do CRM novo: o formulário busca `GET /canais` quando algum campo do bloco diz que usa. */
+  readonly usaCanais?: boolean;
   /** `campo`: as Definições de Campo deste alvo; sem ele, o alvo vem do escopo. */
   readonly alvo?: FieldDefinition["target"];
   /** O campo só aparece quando a função diz — o subtipo do Evento, o valor do operador. */
@@ -452,7 +457,8 @@ const SPEC_DA_FERRAMENTA: Record<string, readonly CampoSpec[]> = {
       chave: "channelId",
       rotulo: "Canal",
       controle: "escolha",
-      opcoes: ({ state }) => state.channels.filter((c) => c.lifecycle === "ativo").map((c) => ({ value: c.id, label: c.name, detail: c.connection })),
+      usaCanais: true,
+      opcoes: ({ canais }) => (canais ?? []).filter((c) => c.estado === "ativo").map((c) => ({ value: c.id, label: c.nome, detail: c.conexao })),
       ajuda: "Vazio = o Canal do Grupo, ou o primeiro WhatsApp conectado.",
     },
   ],

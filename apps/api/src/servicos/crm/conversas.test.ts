@@ -8,14 +8,28 @@
  * seed antigo é do Espaço antigo): a Conversa nasce com `filaId` nulo.
  */
 
+import { randomUUID } from "node:crypto";
+import type { PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { encerrar, pool } from "../../persistencia/conexao";
 import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
-import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearCanal, semearMembro } from "../../testes/banco-crm";
+import { criarRepositorioDeMarcacoesPg } from "../../repositorios/crm/marcacoes";
+import { criarRepositorioDeMensagensPg } from "../../repositorios/crm/mensagens";
+import {
+  describeComBanco,
+  limparEspaco,
+  novoEspacoDeTeste,
+  poolDoDono,
+  prepararBancoCrm,
+  semearCanal,
+  semearMembro,
+} from "../../testes/banco-crm";
+import { abrirTransacaoDeA, aindaPendenteApos, mesclarSemConfirmar } from "../../testes/duas-conexoes";
 import { criarAcessoAoCrmPg } from "./acesso";
-import { criarServicoDeConversas } from "./conversas";
+import { abrirConversaNoCliente, criarServicoDeConversas, FRASES_DE_CONVERSAS } from "./conversas";
 import type { ResultadoCrm } from "./resultado";
+import { comTransacao } from "./transacao";
 
 const servico = criarServicoDeConversas({ pool, acesso: criarAcessoAoCrmPg(pool) });
 
@@ -84,12 +98,23 @@ describeComBanco("ServicoDeConversas — Postgres local", () => {
   });
 
   afterAll(async () => {
+    // `integration_outbox` não tem FK para o Espaço: as linhas de `mensagem.enviar.v1` saem por aqui.
+    await pool().query("delete from plataforma.integration_outbox where workspace_id = any($1::text[])", [espacos]);
     for (const ws of espacos) await limparEspaco(ws);
     await encerrar();
   });
 
+  /** As linhas de `mensagem.enviar.v1` do Espaço (a fila de saída da 16-04). */
+  const filaDeSaida = async (ws: string) =>
+    (
+      await pool().query<{ aggregate_id: string; event_type: string; status: string }>(
+        "select aggregate_id, event_type, status from plataforma.integration_outbox where workspace_id = $1 and event_type = 'mensagem.enviar.v1' order by created_at, id",
+        [ws],
+      )
+    ).rows;
+
   describe("criar", () => {
-    it("a mesma Ana abre Conversa nos dois WhatsApps: enviada no conectado, pendente no desconectado", async () => {
+    it("a mesma Ana abre Conversa nos dois WhatsApps: pendente nos dois, com linha na fila só no conectado (B69, 3.7.1)", async () => {
       const c = await espaco("doisws");
       const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966660001" }]);
       const canalA = await comercial(c.ws);
@@ -107,7 +132,7 @@ describeComBanco("ServicoDeConversas — Postgres local", () => {
         conversaId: a.conversa.id,
         canalId: canalA,
         direcao: "enviada",
-        statusEntrega: "enviada",
+        statusEntrega: "pendente",
         conteudo: "Oi, Ana",
         ator: { tipo: "member", id: "mem_ana" },
       });
@@ -117,6 +142,9 @@ describeComBanco("ServicoDeConversas — Postgres local", () => {
       expect(b.primeiraMensagem.statusEntrega).toBe("pendente");
       expect(b.primeiraMensagem.statusEntregaEm).not.toBeNull();
       expect(b.conversa.id).not.toBe(a.conversa.id);
+
+      // Só o Canal conectado enfileira; o desconectado guarda a Mensagem sem linha (B69).
+      expect(await filaDeSaida(c.ws)).toEqual([{ aggregate_id: a.primeiraMensagem.id, event_type: "mensagem.enviar.v1", status: "pending" }]);
     });
 
     it("a 2ª Conversa aberta do par → 409 CONVERSA_JA_ABERTA apontando a existente, sem gravar Mensagem", async () => {
@@ -167,6 +195,31 @@ describeComBanco("ServicoDeConversas — Postgres local", () => {
       expect(recusado(await abrir(c, ativo, ana))).toMatchObject({ status: 409, codigo: "CONTATO_INATIVO" });
     });
 
+    it("WR-01: Contato mesclado no meio da abertura → 409 CONTATO_MESCLADO e nenhuma Conversa nasce", async () => {
+      const c = await espaco("mescladonomeio");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966660021" }]);
+      const sobrevivente = await contato(c.ws, "Ana Sobrevivente", [{ tipo: "whatsapp", valor: "+5511966660022" }]);
+      const canal = await comercial(c.ws);
+
+      // A mescla a Ana e ainda não confirma; B (o serviço) tenta abrir a Conversa para ela.
+      const a = await mesclarSemConfirmar(c.ws, ana, sobrevivente);
+      let depois: Awaited<ReturnType<typeof abrir>>;
+      try {
+        const b = abrir(c, canal, ana);
+        const esperando = await aindaPendenteApos(b, 400);
+        await a.confirmar();
+        depois = await b;
+        expect(esperando).toBe(true);
+      } finally {
+        await a.desfazer();
+      }
+
+      expect(recusado(depois)).toMatchObject({ status: 409, codigo: "CONTATO_MESCLADO", campo: "contatoId" });
+      const deAna = await pool().query("select 1 from plataforma.conversas where workspace_id = $1 and contato_id = $2", [c.ws, ana]);
+      expect(deAna.rowCount).toBe(0);
+      expect(await contarMensagens(c.ws)).toBe(0);
+    });
+
     it("Canal ou Contato de outro Espaço → 404 com campo", async () => {
       const c = await espaco("meu");
       const outro = await espaco("outro");
@@ -207,6 +260,41 @@ describeComBanco("ServicoDeConversas — Postgres local", () => {
       await expect(abrir(c, canal, ana, "oi\u0000")).rejects.toBeDefined();
       expect(await contarConversas(c.ws)).toBe(0);
       expect(await contarMensagens(c.ws)).toBe(0);
+    });
+  });
+
+  describe("abrirConversaNoCliente (14-13)", () => {
+    it("dentro de uma transação grava a Conversa com o id escolhido por quem chama e a primeira Mensagem", async () => {
+      const c = await espaco("idescolhido");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966660020" }]);
+      const canal = await comercial(c.ws);
+      const id = randomUUID();
+
+      const aberta = await comTransacao(
+        () => pool(),
+        (cliente) => abrirConversaNoCliente(cliente, c.membro, { canalId: canal, contatoId: ana, mensagem: { conteudo: "Oi, Ana" } }, { id }),
+        FRASES_DE_CONVERSAS,
+      );
+      const resultado = valor(aberta);
+      expect(resultado.conversa.id).toBe(id);
+      expect(resultado.primeiraMensagem).toMatchObject({ conversaId: id, direcao: "enviada", conteudo: "Oi, Ana" });
+      expect(await contarConversas(c.ws)).toBe(1);
+      expect(await contarMensagens(c.ws)).toBe(1);
+    });
+
+    it("sem id, o default do banco gera um; com o par já aberto, recusa 409 e não grava nada", async () => {
+      const c = await espaco("semid");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966660021" }]);
+      const canal = await comercial(c.ws);
+      const entrada = { canalId: canal, contatoId: ana, mensagem: { conteudo: "Oi" } };
+      const sem = (cliente: PoolClient) => abrirConversaNoCliente(cliente, c.membro, entrada);
+
+      const primeira = valor(await comTransacao(() => pool(), sem, FRASES_DE_CONVERSAS));
+      expect(primeira.conversa.id).toMatch(/^[0-9a-f-]{36}$/);
+      const segunda = recusado(await comTransacao(() => pool(), sem, FRASES_DE_CONVERSAS));
+      expect(segunda).toMatchObject({ status: 409, codigo: "CONVERSA_JA_ABERTA" });
+      expect(await contarConversas(c.ws)).toBe(1);
+      expect(await contarMensagens(c.ws)).toBe(1);
     });
   });
 
@@ -281,6 +369,681 @@ describeComBanco("ServicoDeConversas — Postgres local", () => {
       expect(detalhe.conversa.id).toBe(a.conversa.id);
       expect(detalhe.canal).toMatchObject({ id: canalA, nome: "Comercial", provedor: "whatsapp-cloud" });
       expect(recusado(await servico.obter(outro.membro, a.conversa.id))).toMatchObject({ status: 404, codigo: "CONVERSA_NAO_ENCONTRADA" });
+    });
+  });
+  describe("mover (3.2.5)", () => {
+    const mensagensDaConversa = async (ws: string, conversaId: string) =>
+      Number(
+        (await pool().query<{ n: string }>("select count(*) as n from plataforma.mensagens where workspace_id = $1 and conversa_id = $2", [ws, conversaId]))
+          .rows[0]!.n,
+      );
+
+    it("A para B sem colisão: Contato B, mesmo Canal, mesmas Mensagens, Participante principal aponta B", async () => {
+      const c = await espaco("mover");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966661001" }]);
+      const bia = await contato(c.ws, "Bia", [{ tipo: "whatsapp", valor: "+5511966661002" }]);
+      const canal = await comercial(c.ws);
+      const aberta = valor(await abrir(c, canal, ana));
+      const mensagens = await mensagensDaConversa(c.ws, aberta.conversa.id);
+
+      const movida = valor(await servico.mover(c.membro, aberta.conversa.id, { contatoId: bia }));
+      expect(movida.conversa).toMatchObject({ id: aberta.conversa.id, contatoId: bia, canalId: canal, situacao: "aberta" });
+      expect(movida.canal.id).toBe(canal);
+      expect(await mensagensDaConversa(c.ws, aberta.conversa.id)).toBe(mensagens);
+      const doContato = movida.conversa.participantes.find((p) => p.sujeito.tipo === "contato");
+      expect(doContato).toMatchObject({ principal: true, sujeito: { tipo: "contato", id: bia } });
+      expect(movida.conversa.participantes.find((p) => p.sujeito.tipo === "membro")?.sujeito.id).toBe("mem_ana");
+    });
+
+    it("destino com Conversa aberta no mesmo Canal: sem resolverExistente → 409 CONVERSA_JA_ABERTA e nada muda", async () => {
+      const c = await espaco("movercolide");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966661003" }]);
+      const bia = await contato(c.ws, "Bia", [{ tipo: "whatsapp", valor: "+5511966661004" }]);
+      const canal = await comercial(c.ws);
+      const daAna = valor(await abrir(c, canal, ana));
+      const daBia = valor(await abrir(c, canal, bia));
+
+      const r = recusado(await servico.mover(c.membro, daAna.conversa.id, { contatoId: bia }));
+      expect(r).toMatchObject({ status: 409, codigo: "CONVERSA_JA_ABERTA" });
+      expect(r.bloqueios?.conversas?.itens[0]?.id).toBe(daBia.conversa.id);
+      expect(valor(await servico.obter(c.membro, daAna.conversa.id)).conversa.contatoId).toBe(ana);
+      expect(valor(await servico.obter(c.membro, daBia.conversa.id)).conversa.situacao).toBe("aberta");
+    });
+
+    it("resolverExistente: a existente fica resolvida (sem adiamento) e a movida vai para o destino", async () => {
+      const c = await espaco("moverresolve");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966661005" }]);
+      const bia = await contato(c.ws, "Bia", [{ tipo: "whatsapp", valor: "+5511966661006" }]);
+      const canal = await comercial(c.ws);
+      const daAna = valor(await abrir(c, canal, ana));
+      const daBia = valor(await abrir(c, canal, bia));
+      await pool().query(
+        "update plataforma.conversas set situacao = 'pendente', adiada_ate = now() + interval '1 day', adiamento_motivo = 'volto' where workspace_id = $1 and id = $2",
+        [c.ws, daBia.conversa.id],
+      );
+
+      const movida = valor(await servico.mover(c.membro, daAna.conversa.id, { contatoId: bia, resolverExistente: true }));
+      expect(movida.conversa.contatoId).toBe(bia);
+      const existente = valor(await servico.obter(c.membro, daBia.conversa.id)).conversa;
+      expect(existente).toMatchObject({ situacao: "resolvida", adiadaAte: null, adiamentoMotivo: null });
+      expect(existente.resolvidaEm).not.toBeNull();
+    });
+
+    it("Conversa resolvida nunca colide: vai mesmo com Conversa aberta no destino", async () => {
+      const c = await espaco("moverresolvida");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966661007" }]);
+      const bia = await contato(c.ws, "Bia", [{ tipo: "whatsapp", valor: "+5511966661008" }]);
+      const canal = await comercial(c.ws);
+      const daAna = valor(await abrir(c, canal, ana));
+      valor(await servico.resolver(c.membro, daAna.conversa.id));
+      const daBia = valor(await abrir(c, canal, bia));
+
+      const movida = valor(await servico.mover(c.membro, daAna.conversa.id, { contatoId: bia }));
+      expect(movida.conversa).toMatchObject({ contatoId: bia, situacao: "resolvida" });
+      expect(valor(await servico.obter(c.membro, daBia.conversa.id)).conversa.situacao).toBe("aberta");
+    });
+
+    it("destino arquivado ou mesclado → 409 com campo contatoId; o mesmo Contato também", async () => {
+      const c = await espaco("moverdestino");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966661009" }]);
+      const arquivado = await contato(c.ws, "Arq", [{ tipo: "whatsapp", valor: "+5511966661010" }]);
+      const absorvido = await contato(c.ws, "Abs", [{ tipo: "whatsapp", valor: "+5511966661011" }]);
+      const canal = await comercial(c.ws);
+      const aberta = valor(await abrir(c, canal, ana));
+      await pool().query("update plataforma.contatos set estado = 'arquivado' where workspace_id = $1 and id = $2", [c.ws, arquivado]);
+      await poolDoDono().query(
+        "update plataforma.contatos set estado = 'mesclado', mesclado_em_id = $3, mesclado_em = now() where workspace_id = $1 and id = $2",
+        [c.ws, absorvido, ana],
+      );
+
+      for (const destino of [arquivado, absorvido]) {
+        expect(recusado(await servico.mover(c.membro, aberta.conversa.id, { contatoId: destino }))).toMatchObject({ status: 409, campo: "contatoId" });
+      }
+      expect(recusado(await servico.mover(c.membro, aberta.conversa.id, { contatoId: ana }))).toMatchObject({ status: 409, campo: "contatoId" });
+      expect(valor(await servico.obter(c.membro, aberta.conversa.id)).conversa.contatoId).toBe(ana);
+    });
+
+    it("Conversa na lixeira não muda de Contato (409)", async () => {
+      const c = await espaco("movertrash");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966661012" }]);
+      const bia = await contato(c.ws, "Bia", [{ tipo: "whatsapp", valor: "+5511966661013" }]);
+      const canal = await comercial(c.ws);
+      const aberta = valor(await abrir(c, canal, ana));
+      await pool().query(
+        "update plataforma.conversas set situacao = 'resolvida', estado = 'na_lixeira', na_lixeira_em = now() where workspace_id = $1 and id = $2",
+        [c.ws, aberta.conversa.id],
+      );
+      expect(recusado(await servico.mover(c.membro, aberta.conversa.id, { contatoId: bia }))).toMatchObject({ status: 409 });
+      expect(valor(await servico.obter(c.membro, aberta.conversa.id)).conversa.contatoId).toBe(ana);
+    });
+
+    it("Convidado → 403 antes de ler; Conversa ou Contato de outro Espaço → 404", async () => {
+      const c = await espaco("moverpapel");
+      const outro = await espaco("moverpapelb");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966661014" }]);
+      const bia = await contato(c.ws, "Bia", [{ tipo: "whatsapp", valor: "+5511966661015" }]);
+      const deFora = await contato(outro.ws, "Fora", [{ tipo: "whatsapp", valor: "+5511966661016" }]);
+      const canal = await comercial(c.ws);
+      const aberta = valor(await abrir(c, canal, ana));
+
+      expect(recusado(await servico.mover(c.convidado, aberta.conversa.id, { contatoId: bia }))).toMatchObject({ status: 403, codigo: "PERMISSAO" });
+      expect(recusado(await servico.mover(outro.membro, aberta.conversa.id, { contatoId: deFora }))).toMatchObject({
+        status: 404,
+        codigo: "CONVERSA_NAO_ENCONTRADA",
+      });
+      expect(recusado(await servico.mover(c.membro, aberta.conversa.id, { contatoId: deFora }))).toMatchObject({
+        status: 404,
+        codigo: "CONTATO_NAO_ENCONTRADO",
+        campo: "contatoId",
+      });
+      expect(valor(await servico.obter(c.membro, aberta.conversa.id)).conversa.contatoId).toBe(ana);
+    });
+  });
+  describe("atribuir (3.2.6, parte 1)", () => {
+    async function agente(ws: string, id: string, lifecycle: string) {
+      await pool().query(
+        `insert into plataforma.registros (workspace_id, colecao, id, dados)
+         values ($1, 'agents', $2, $3::jsonb)
+         on conflict (workspace_id, colecao, id) do update set dados = excluded.dados`,
+        [ws, id, JSON.stringify({ id, lifecycle, name: id })],
+      );
+    }
+
+    async function conversaAberta(c: Contexto, valorWhats: string) {
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: valorWhats }]);
+      const canal = await comercial(c.ws);
+      return valor(await abrir(c, canal, ana)).conversa;
+    }
+
+    it("Membro ativo do Espaço, Agente ativo e null: grava, troca e tira a atribuição", async () => {
+      const c = await espaco("atribuir");
+      await semearMembro(c.ws, { id: "mem_bia", base: "membro", state: "ativo" });
+      await agente(c.ws, "agt_1", "ativo");
+      const conversa = await conversaAberta(c, "+5511966662001");
+
+      const paraMembro = valor(await servico.atribuir(c.membro, conversa.id, { atribuido: { tipo: "membro", id: "mem_bia" } }));
+      expect(paraMembro.conversa.atribuido).toEqual({ tipo: "membro", id: "mem_bia" });
+      const paraAgente = valor(await servico.atribuir(c.membro, conversa.id, { atribuido: { tipo: "agente", id: "agt_1" } }));
+      expect(paraAgente.conversa.atribuido).toEqual({ tipo: "agente", id: "agt_1" });
+      expect(paraAgente.canal.id).toBe(conversa.canalId);
+      const livre = valor(await servico.atribuir(c.membro, conversa.id, { atribuido: null }));
+      expect(livre.conversa.atribuido).toBeNull();
+      const { rows } = await pool().query("select atribuido_tipo, atribuido_id from plataforma.conversas where workspace_id = $1 and id = $2", [c.ws, conversa.id]);
+      expect(rows[0]).toEqual({ atribuido_tipo: null, atribuido_id: null });
+    });
+
+    it("Membro de outro Espaço, suspenso ou removido → 409 com campo atribuido, e nada muda", async () => {
+      const c = await espaco("atribuirinvalido");
+      const outro = await espaco("atribuirinvalidob");
+      await semearMembro(outro.ws, { id: "mem_fora", base: "membro", state: "ativo" });
+      await semearMembro(c.ws, { id: "mem_susp", base: "membro", state: "suspenso" });
+      await semearMembro(c.ws, { id: "mem_rem", base: "membro", state: "removido" });
+      const conversa = await conversaAberta(c, "+5511966662002");
+
+      for (const id of ["mem_fora", "mem_susp", "mem_rem", "mem_inexistente"]) {
+        const r = recusado(await servico.atribuir(c.membro, conversa.id, { atribuido: { tipo: "membro", id } }));
+        expect(r).toMatchObject({ status: 409, codigo: "ATRIBUIDO_INVALIDO", campo: "atribuido" });
+      }
+      expect(valor(await servico.obter(c.membro, conversa.id)).conversa.atribuido).toEqual({ tipo: "membro", id: "mem_ana" });
+    });
+
+    it("Agente inexistente, de outro Espaço ou fora do ar → 409 com campo atribuido", async () => {
+      const c = await espaco("atribuiragente");
+      const outro = await espaco("atribuiragenteb");
+      await agente(outro.ws, "agt_fora", "ativo");
+      await agente(c.ws, "agt_pausado", "pausado");
+      const conversa = await conversaAberta(c, "+5511966662003");
+
+      for (const id of ["agt_nao_existe", "agt_fora", "agt_pausado"]) {
+        const r = recusado(await servico.atribuir(c.membro, conversa.id, { atribuido: { tipo: "agente", id } }));
+        expect(r).toMatchObject({ status: 409, codigo: "ATRIBUIDO_INVALIDO", campo: "atribuido" });
+      }
+    });
+
+    it("Conversa na lixeira → 409; Convidado → 403 antes de ler; outro Espaço → 404", async () => {
+      const c = await espaco("atribuirpapel");
+      const outro = await espaco("atribuirpapelb");
+      const conversa = await conversaAberta(c, "+5511966662004");
+
+      expect(recusado(await servico.atribuir(c.convidado, conversa.id, { atribuido: null }))).toMatchObject({ status: 403, codigo: "PERMISSAO" });
+      expect(recusado(await servico.atribuir(outro.membro, conversa.id, { atribuido: null }))).toMatchObject({
+        status: 404,
+        codigo: "CONVERSA_NAO_ENCONTRADA",
+      });
+
+      await pool().query(
+        "update plataforma.conversas set situacao = 'resolvida', estado = 'na_lixeira', na_lixeira_em = now() where workspace_id = $1 and id = $2",
+        [c.ws, conversa.id],
+      );
+      expect(recusado(await servico.atribuir(c.membro, conversa.id, { atribuido: { tipo: "membro", id: "mem_admin" } }))).toMatchObject({ status: 409 });
+    });
+  });
+
+  describe("lixeira e restaurar (3.2.6)", () => {
+    async function resolvida(c: Contexto, valorWhats: string, nome = "Ana") {
+      const ana = await contato(c.ws, nome, [{ tipo: "whatsapp", valor: valorWhats }]);
+      const canal = await comercial(c.ws, { identificadorExterno: `+55119${valorWhats.slice(-8)}` });
+      const aberta = valor(await abrir(c, canal, ana));
+      valor(await servico.resolver(c.membro, aberta.conversa.id));
+      return { ana, canal, id: aberta.conversa.id };
+    }
+
+    const filtro = (estado: "ativo" | "na_lixeira") => ({ estado, limite: 50, deslocamento: 0 });
+
+    it("Conversa resolvida → lixeira guarda na_lixeira_em, sai de ativo e aparece em na_lixeira; restaurar volta e zera a data", async () => {
+      const c = await espaco("lixeira");
+      const { id } = await resolvida(c, "+5511966663001");
+
+      const mandada = valor(await servico.enviarParaLixeira(c.membro, id));
+      expect(mandada.conversa).toMatchObject({ id, estado: "na_lixeira", situacao: "resolvida" });
+      expect(mandada.conversa.naLixeiraEm).not.toBeNull();
+      expect(mandada.canal.id).toBeTruthy();
+      expect(valor(await servico.listar(c.membro, filtro("ativo"))).itens.map((i) => i.id)).not.toContain(id);
+      expect(valor(await servico.listar(c.membro, filtro("na_lixeira"))).itens.map((i) => i.id)).toEqual([id]);
+
+      const volta = valor(await servico.restaurar(c.membro, id));
+      expect(volta.conversa).toMatchObject({ id, estado: "ativo", naLixeiraEm: null });
+      const { rows } = await pool().query("select estado, na_lixeira_em from plataforma.conversas where workspace_id = $1 and id = $2", [c.ws, id]);
+      expect(rows[0]).toEqual({ estado: "ativo", na_lixeira_em: null });
+      expect(valor(await servico.listar(c.membro, filtro("na_lixeira"))).total).toBe(0);
+    });
+
+    it("Conversa aberta → 409 TRANSICAO_INVALIDA com a frase; já na lixeira também; restaurar fora da lixeira também", async () => {
+      const c = await espaco("lixeiraaberta");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966663002" }]);
+      const canal = await comercial(c.ws);
+      const aberta = valor(await abrir(c, canal, ana));
+
+      expect(recusado(await servico.enviarParaLixeira(c.membro, aberta.conversa.id))).toMatchObject({
+        status: 409,
+        codigo: "TRANSICAO_INVALIDA",
+        error: "Resolva a Conversa antes de mandá-la para a lixeira.",
+      });
+      expect(recusado(await servico.restaurar(c.membro, aberta.conversa.id))).toMatchObject({ status: 409, codigo: "TRANSICAO_INVALIDA" });
+
+      valor(await servico.resolver(c.membro, aberta.conversa.id));
+      valor(await servico.enviarParaLixeira(c.membro, aberta.conversa.id));
+      expect(recusado(await servico.enviarParaLixeira(c.membro, aberta.conversa.id))).toMatchObject({ status: 409, codigo: "TRANSICAO_INVALIDA" });
+    });
+
+    it("restaurar com o Contato na lixeira → 409 e a Conversa continua na lixeira", async () => {
+      const c = await espaco("lixeiracontato");
+      const { ana, id } = await resolvida(c, "+5511966663003");
+      valor(await servico.enviarParaLixeira(c.membro, id));
+      await pool().query("update plataforma.contatos set estado = 'na_lixeira' where workspace_id = $1 and id = $2", [c.ws, ana]);
+
+      const r = recusado(await servico.restaurar(c.membro, id));
+      expect(r).toMatchObject({ status: 409, codigo: "TRANSICAO_INVALIDA" });
+      expect(r.error).toContain("Restaure o Contato antes");
+      expect(valor(await servico.obter(c.membro, id)).conversa.estado).toBe("na_lixeira");
+    });
+
+    it("Convidado → 403 nas duas; outro Espaço → 404 nas duas", async () => {
+      const c = await espaco("lixeirapapel");
+      const outro = await espaco("lixeirapapelb");
+      const { id } = await resolvida(c, "+5511966663004");
+
+      expect(recusado(await servico.enviarParaLixeira(c.convidado, id))).toMatchObject({ status: 403, codigo: "PERMISSAO" });
+      expect(recusado(await servico.restaurar(c.convidado, id))).toMatchObject({ status: 403, codigo: "PERMISSAO" });
+      expect(recusado(await servico.enviarParaLixeira(outro.membro, id))).toMatchObject({ status: 404, codigo: "CONVERSA_NAO_ENCONTRADA" });
+      expect(recusado(await servico.restaurar(outro.membro, id))).toMatchObject({ status: 404, codigo: "CONVERSA_NAO_ENCONTRADA" });
+      expect(valor(await servico.obter(c.membro, id)).conversa.estado).toBe("ativo");
+    });
+  });
+
+  describe("marcação por Membro e listagem com filtros (3.2.6)", () => {
+    const todas = { estado: "ativo", limite: 50, deslocamento: 0 } as const;
+    const horasAtras = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+
+    async function recebida(ws: string, conversaId: string, canalId: string, idExterno: string, criadoEm: string) {
+      await criarRepositorioDeMensagensPg(pool()).inserirRecebida(ws, {
+        conversaId,
+        canalId,
+        idExterno,
+        criadoEm,
+        conteudo: "oi",
+        anexos: [],
+        assunto: null,
+        enderecosAdicionais: [],
+        remetenteExterno: null,
+        identificadorId: null,
+        cargaBruta: {},
+      });
+    }
+
+    it("a estrela é do Membro: X marca, Y não vê e a lista de Y tem estrela false", async () => {
+      const c = await espaco("estrela");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966664001" }]);
+      const canal = await comercial(c.ws);
+      const { conversa } = valor(await abrir(c, canal, ana));
+
+      expect(valor(await servico.marcar(c.membro, conversa.id, { estrela: true }))).toEqual({ estrela: true, lidaAte: null });
+
+      const deX = valor(await servico.listar(c.membro, { ...todas, comEstrela: true }));
+      expect(deX.itens.map((i) => i.id)).toEqual([conversa.id]);
+      expect(deX.itens[0]?.estrela).toBe(true);
+      expect(valor(await servico.listar(c.admin, { ...todas, comEstrela: true })).total).toBe(0);
+      expect(valor(await servico.listar(c.admin, todas)).itens[0]?.estrela).toBe(false);
+      expect(valor(await servico.listar(c.membro, { ...todas, comEstrela: false })).total).toBe(0);
+
+      // Y desmarcar a própria não mexe na de X.
+      valor(await servico.marcar(c.admin, conversa.id, { estrela: false }));
+      expect(valor(await servico.listar(c.membro, { ...todas, comEstrela: true })).total).toBe(1);
+    });
+
+    it("naoLidas conta as recebidas depois do lidaAte do Membro; sem marcação conta todas; enviada não conta", async () => {
+      const c = await espaco("naolidas");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966664002" }]);
+      const canal = await comercial(c.ws);
+      const { conversa } = valor(await abrir(c, canal, ana));
+      await recebida(c.ws, conversa.id, canal, "wamid.1", horasAtras(2));
+      await recebida(c.ws, conversa.id, canal, "wamid.2", horasAtras(1));
+      const naoLidas = async (quem: MembroDaSessao) => valor(await servico.listar(quem, todas)).itens[0]?.naoLidas;
+
+      expect(await naoLidas(c.membro)).toBe(2);
+      valor(await servico.marcar(c.membro, conversa.id, { lidaAte: horasAtras(1.5) }));
+      expect(await naoLidas(c.membro)).toBe(1);
+      expect(valor(await servico.marcar(c.membro, conversa.id, { lidaAte: new Date().toISOString() })).estrela).toBe(false);
+      expect(await naoLidas(c.membro)).toBe(0);
+      expect(await naoLidas(c.admin)).toBe(2);
+    });
+
+    it("o filtro naoLidas é do Membro da sessão: true traz só as com Mensagem nova, false as lidas, e o total conta o filtrado", async () => {
+      const c = await espaco("filtronaolidas");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966664010" }]);
+      const bia = await contato(c.ws, "Bia", [{ tipo: "whatsapp", valor: "+5511966664011" }]);
+      const canal = await comercial(c.ws);
+      const c1 = valor(await abrir(c, canal, ana)).conversa;
+      const c2 = valor(await abrir(c, canal, bia)).conversa;
+      await recebida(c.ws, c1.id, canal, "wamid.f1", horasAtras(1));
+      await recebida(c.ws, c2.id, canal, "wamid.f2", horasAtras(3));
+      // O Membro leu a C2 depois da Mensagem dela; a C1 ficou com uma Mensagem recebida depois do lidaAte.
+      valor(await servico.marcar(c.membro, c2.id, { lidaAte: horasAtras(2) }));
+      valor(await servico.marcar(c.membro, c1.id, { lidaAte: horasAtras(2) }));
+
+      const ids = async (quem: MembroDaSessao, filtro: object) =>
+        valor(await servico.listar(quem, { ...todas, ...filtro }));
+      const nao = await ids(c.membro, { naoLidas: true });
+      expect(nao.itens.map((i) => i.id)).toEqual([c1.id]);
+      expect(nao.total).toBe(1);
+      const lidas = await ids(c.membro, { naoLidas: false });
+      expect(lidas.itens.map((i) => i.id)).toEqual([c2.id]);
+      expect(lidas.total).toBe(1);
+
+      // Outro Membro, sem marcação: as duas têm Mensagem recebida que ele nunca leu (T-15-18).
+      const doOutro = await ids(c.admin, { naoLidas: true });
+      expect(doOutro.itens.map((i) => i.id).sort()).toEqual([c1.id, c2.id].sort());
+      expect(doOutro.total).toBe(2);
+      expect((await ids(c.admin, { naoLidas: false })).total).toBe(0);
+    });
+
+    it("marcar só um campo não apaga o outro", async () => {
+      const c = await espaco("doiscampos");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966664003" }]);
+      const canal = await comercial(c.ws);
+      const { conversa } = valor(await abrir(c, canal, ana));
+      const lidaAte = horasAtras(1);
+
+      valor(await servico.marcar(c.membro, conversa.id, { estrela: true }));
+      const depois = valor(await servico.marcar(c.membro, conversa.id, { lidaAte }));
+      expect(depois).toEqual({ estrela: true, lidaAte });
+      expect(valor(await servico.marcar(c.membro, conversa.id, { estrela: false }))).toEqual({ estrela: false, lidaAte });
+    });
+
+    it("atribuidoId e filaId filtram; q acha o título sem diferenciar maiúscula", async () => {
+      const c = await espaco("filtros");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966664004" }]);
+      const bia = await contato(c.ws, "Bia", [{ tipo: "whatsapp", valor: "+5511966664005" }]);
+      const canal = await comercial(c.ws);
+      const daAna = valor(await abrir(c, canal, ana)).conversa;
+      const daBia = valor(await abrir(c, canal, bia)).conversa;
+      valor(await servico.atribuir(c.membro, daBia.id, { atribuido: { tipo: "membro", id: "mem_admin" } }));
+      await pool().query("update plataforma.conversas set fila_id = 'fila_vendas', titulo = 'Conversa com João' where workspace_id = $1 and id = $2", [c.ws, daAna.id]);
+      const ids = async (filtro: object) => valor(await servico.listar(c.membro, { ...todas, ...filtro })).itens.map((i) => i.id);
+
+      expect(await ids({ atribuidoId: "mem_admin" })).toEqual([daBia.id]);
+      expect(await ids({ atribuidoId: "mem_ana" })).toEqual([daAna.id]);
+      expect(await ids({ filaId: "fila_vendas" })).toEqual([daAna.id]);
+      expect(await ids({ filaId: "fila_nao_existe" })).toEqual([]);
+      expect(await ids({ q: "joão" })).toEqual([daAna.id]);
+      expect(await ids({ q: "JOÃO" })).toEqual([daAna.id]);
+      expect(await ids({ q: "com jo", filaId: "fila_vendas", atribuidoId: "mem_ana" })).toEqual([daAna.id]);
+      expect(await ids({ q: "com jo", atribuidoId: "mem_admin" })).toEqual([]);
+    });
+
+    it("q é literal: % e _ não viram curinga e aspas não quebram a consulta (T-14-16)", async () => {
+      const c = await espaco("qliteral");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966664006" }]);
+      const bia = await contato(c.ws, "Bia", [{ tipo: "whatsapp", valor: "+5511966664007" }]);
+      const canal = await comercial(c.ws);
+      const daAna = valor(await abrir(c, canal, ana)).conversa;
+      valor(await abrir(c, canal, bia));
+      await pool().query("update plataforma.conversas set titulo = '100% certo_mesmo' where workspace_id = $1 and id = $2", [c.ws, daAna.id]);
+      const ids = async (q: string) => valor(await servico.listar(c.membro, { ...todas, q })).itens.map((i) => i.id);
+
+      expect(await ids("%")).toEqual([daAna.id]);
+      expect(await ids("_")).toEqual([daAna.id]);
+      expect(await ids("%%")).toEqual([]);
+      expect(await ids("a_b")).toEqual([]);
+      expect(await ids("x'; drop table plataforma.conversas; --")).toEqual([]);
+      expect(await contarConversas(c.ws)).toBe(2);
+    });
+
+    it("cada item traz contatoNome: nome e sobrenome, ou o e-mail/telefone principal", async () => {
+      const c = await espaco("contatonome");
+      const completo = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966664008" }]);
+      await pool().query("update plataforma.contatos set sobrenome = 'Silva' where workspace_id = $1 and id = $2", [c.ws, completo]);
+      const semNome = await contato(c.ws, "Provisorio", [{ tipo: "email", valor: "zeca@exemplo.com" }, { tipo: "whatsapp", valor: "+5511966664009" }]);
+      await pool().query("update plataforma.contatos set nome = null where workspace_id = $1 and id = $2", [c.ws, semNome]);
+      const canal = await comercial(c.ws);
+      const a = valor(await abrir(c, canal, completo)).conversa;
+      const b = valor(await abrir(c, canal, semNome)).conversa;
+
+      const itens = valor(await servico.listar(c.membro, todas)).itens;
+      expect(itens.find((i) => i.id === a.id)?.contatoNome).toBe("Ana Silva");
+      expect(itens.find((i) => i.id === b.id)?.contatoNome).toBe("zeca@exemplo.com");
+    });
+
+    it("a lista de outro Espaço não vê a Conversa, e q e filtros não vazam entre Espaços", async () => {
+      const c = await espaco("isolamento");
+      const outro = await espaco("isolamentob");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966664010" }]);
+      const canal = await comercial(c.ws);
+      const { conversa } = valor(await abrir(c, canal, ana));
+      valor(await servico.marcar(c.membro, conversa.id, { estrela: true }));
+
+      expect(valor(await servico.listar(outro.membro, { ...todas, q: "Ana" })).total).toBe(0);
+      expect(valor(await servico.listar(outro.membro, { ...todas, comEstrela: true })).total).toBe(0);
+    });
+
+    it("marcar: {} e lidaAte inválida → 400; outro Espaço → 404; Convidado → 403, e nada é gravado", async () => {
+      const c = await espaco("marcarerros");
+      const outro = await espaco("marcarerrosb");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966664011" }]);
+      const canal = await comercial(c.ws);
+      const { conversa } = valor(await abrir(c, canal, ana));
+
+      expect(recusado(await servico.marcar(c.membro, conversa.id, {}))).toMatchObject({ status: 400, codigo: "VALOR_INVALIDO" });
+      expect(recusado(await servico.marcar(c.membro, conversa.id, { lidaAte: "ontem" }))).toMatchObject({ status: 400, codigo: "VALOR_INVALIDO", campo: "lidaAte" });
+      expect(recusado(await servico.marcar(outro.membro, conversa.id, { estrela: true }))).toMatchObject({ status: 404, codigo: "CONVERSA_NAO_ENCONTRADA" });
+      expect(recusado(await servico.marcar(c.convidado, conversa.id, { estrela: true }))).toMatchObject({ status: 403, codigo: "PERMISSAO" });
+      const { rows } = await pool().query("select count(*)::int as n from plataforma.conversa_marcacoes where workspace_id = $1", [c.ws]);
+      expect(rows[0]?.n).toBe(0);
+    });
+  });
+  // 15-09 (D-15-09, UCR-03): cada gesto de Conversa deixa uma Atividade no mesmo commit.
+  describe("Atividade dos gestos (15-09)", () => {
+    interface LinhaDeAtividade {
+      readonly ator_tipo: string;
+      readonly ator_id: string;
+      readonly acao: string;
+      readonly objeto_tipo: string;
+      readonly objeto_id: string;
+      readonly objeto_nome: string;
+      readonly antes: string | null;
+      readonly depois: string | null;
+      readonly detalhe: string | null;
+    }
+
+    const atividadesDe = async (ws: string, objetoId?: string): Promise<LinhaDeAtividade[]> =>
+      (
+        await pool().query<LinhaDeAtividade>(
+          `select ator_tipo, ator_id, acao, objeto_tipo, objeto_id, objeto_nome, antes, depois, detalhe
+             from plataforma.crm_atividades
+            where workspace_id = $1 and ($2::text is null or objeto_id = $2)
+            order by em, id`,
+          [ws, objetoId ?? null],
+        )
+      ).rows;
+
+    it("mover grava 'Conversa movida para outro Contato' com os nomes de origem e destino, no mesmo commit", async () => {
+      const c = await espaco("ativmover");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966669001" }]);
+      const bia = await contato(c.ws, "Bia", [{ tipo: "whatsapp", valor: "+5511966669002" }]);
+      const canal = await comercial(c.ws);
+      const aberta = valor(await abrir(c, canal, ana));
+
+      const movida = valor(await servico.mover(c.membro, aberta.conversa.id, { contatoId: bia }));
+
+      const linhas = await atividadesDe(c.ws, aberta.conversa.id);
+      expect(linhas).toEqual([
+        {
+          ator_tipo: "member",
+          ator_id: "mem_ana",
+          acao: "Conversa movida para outro Contato",
+          objeto_tipo: "conversation",
+          objeto_id: aberta.conversa.id,
+          objeto_nome: movida.conversa.titulo,
+          antes: "Ana",
+          depois: "Bia",
+          detalhe: null,
+        },
+      ]);
+    });
+
+    /** Conversa aberta de Ana com um WhatsApp novo a cada chamada. */
+    let numero = 0;
+    async function conversaDeAna(c: Contexto) {
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: `+551196667${String(++numero).padStart(4, "0")}` }]);
+      const canal = await comercial(c.ws);
+      return { ...valor(await abrir(c, canal, ana)), canalId: canal };
+    }
+
+    async function recebidaEm(ws: string, conversaId: string, canalId: string, idExterno: string, criadoEm: string) {
+      await criarRepositorioDeMensagensPg(pool()).inserirRecebida(ws, {
+        conversaId,
+        canalId,
+        idExterno,
+        criadoEm,
+        conteudo: "mensagem de teste",
+        anexos: [],
+        assunto: null,
+        enderecosAdicionais: [],
+        remetenteExterno: null,
+        identificadorId: null,
+        cargaBruta: {},
+      });
+    }
+
+    const resumo = (linhas: LinhaDeAtividade[]) => linhas.map((l) => [l.acao, l.antes, l.depois]);
+
+    it("atribuir a um Membro, a um Agente e a ninguém grava uma linha cada, com os nomes", async () => {
+      const c = await espaco("ativatribuir");
+      const { conversa } = await conversaDeAna(c);
+      await pool().query(
+        `insert into plataforma.registros (workspace_id, colecao, id, dados) values ($1, 'agents', 'age_x', $2::jsonb)`,
+        [c.ws, JSON.stringify({ id: "age_x", lifecycle: "ativo", name: "Robô da Triagem" })],
+      );
+
+      valor(await servico.atribuir(c.membro, conversa.id, { atribuido: { tipo: "membro", id: "mem_admin" } }));
+      valor(await servico.atribuir(c.membro, conversa.id, { atribuido: { tipo: "agente", id: "age_x" } }));
+      valor(await servico.atribuir(c.membro, conversa.id, { atribuido: null }));
+
+      expect(resumo(await atividadesDe(c.ws, conversa.id))).toEqual([
+        ["Conversa atribuída", "mem_ana", "mem_admin"],
+        ["Conversa atribuída", "mem_admin", "Robô da Triagem"],
+        ["Atribuído removido da Conversa", "Robô da Triagem", null],
+      ]);
+    });
+
+    it("atribuir recusado (Membro suspenso, Convidado, outro Espaço) não grava", async () => {
+      const c = await espaco("ativatribuirno");
+      const outro = await espaco("ativatribuirnob");
+      await semearMembro(c.ws, { id: "mem_suspenso", base: "membro", state: "suspenso" });
+      const { conversa } = await conversaDeAna(c);
+
+      expect(recusado(await servico.atribuir(c.membro, conversa.id, { atribuido: { tipo: "membro", id: "mem_suspenso" } }))).toMatchObject({ status: 409 });
+      expect(recusado(await servico.atribuir(c.convidado, conversa.id, { atribuido: null }))).toMatchObject({ status: 403 });
+      expect(recusado(await servico.atribuir(outro.membro, conversa.id, { atribuido: null }))).toMatchObject({ status: 404 });
+      expect(await atividadesDe(c.ws)).toEqual([]);
+    });
+
+    it("lixeira e restaurar gravam uma linha cada; a recusa (Conversa aberta) não grava", async () => {
+      const c = await espaco("ativlixeira");
+      const { conversa } = await conversaDeAna(c);
+
+      expect(recusado(await servico.enviarParaLixeira(c.membro, conversa.id))).toMatchObject({ status: 409 });
+      expect(await atividadesDe(c.ws)).toEqual([]);
+
+      valor(await servico.resolver(c.membro, conversa.id));
+      valor(await servico.enviarParaLixeira(c.membro, conversa.id));
+      valor(await servico.restaurar(c.membro, conversa.id));
+      expect(recusado(await servico.restaurar(c.membro, conversa.id))).toMatchObject({ status: 409 });
+
+      expect((await atividadesDe(c.ws, conversa.id)).map((l) => l.acao)).toEqual(["Conversa enviada à lixeira", "Conversa restaurada"]);
+    });
+
+    it("estrela só grava quando o valor muda: marcar duas vezes = 1 linha; desmarcar = mais 1; desmarcar de novo = nenhuma", async () => {
+      const c = await espaco("ativestrela");
+      const { conversa } = await conversaDeAna(c);
+
+      valor(await servico.marcar(c.membro, conversa.id, { estrela: false }));
+      valor(await servico.marcar(c.membro, conversa.id, { estrela: true }));
+      valor(await servico.marcar(c.membro, conversa.id, { estrela: true }));
+      valor(await servico.marcar(c.membro, conversa.id, { estrela: false }));
+      valor(await servico.marcar(c.membro, conversa.id, { estrela: false }));
+
+      const linhas = await atividadesDe(c.ws, conversa.id);
+      expect(linhas.map((l) => l.acao)).toEqual(["Conversa marcada com estrela", "Estrela removida da Conversa"]);
+      expect(linhas.every((l) => l.ator_id === "mem_ana" && l.antes === null && l.depois === null && l.detalhe === null)).toBe(true);
+    });
+
+    it("duas estrelas iguais ao mesmo tempo: a segunda espera a primeira e enxerga o valor dela, então só uma linha nasce", async () => {
+      const c = await espaco("ativestrelapar");
+      const { conversa } = await conversaDeAna(c);
+
+      // A marca a estrela e segura a transação aberta; B (o serviço) pede a mesma estrela no meio.
+      const a = await abrirTransacaoDeA();
+      try {
+        const deA = await criarRepositorioDeMarcacoesPg(a.cliente).gravarComAnterior(c.ws, conversa.id, "mem_ana", { estrela: true });
+        expect(deA.anterior.estrela).toBe(false);
+
+        const b = servico.marcar(c.membro, conversa.id, { estrela: true });
+        expect(await aindaPendenteApos(b, 400)).toBe(true);
+        await a.confirmar();
+        expect(valor(await b)).toEqual({ estrela: true, lidaAte: null });
+      } finally {
+        await a.desfazer();
+      }
+
+      // B leu `estrela = true` como valor anterior (o de A, já confirmado): nada mudou, nenhuma linha.
+      expect(await atividadesDe(c.ws, conversa.id)).toEqual([]);
+    });
+
+    it("leitura só grava quando o lidaAte avança E há Mensagem recebida entre o anterior e o novo", async () => {
+      const c = await espaco("ativleitura");
+      const { conversa, canalId } = await conversaDeAna(c);
+      const agora = Date.now();
+      const iso = (deslocamentoMs: number) => new Date(agora + deslocamentoMs).toISOString();
+      await recebidaEm(c.ws, conversa.id, canalId, "wamid.l1", iso(-7_200_000));
+      await recebidaEm(c.ws, conversa.id, canalId, "wamid.l2", iso(-3_600_000));
+      const acoes = async () => (await atividadesDe(c.ws, conversa.id)).map((l) => l.acao);
+
+      // Primeira leitura, com duas recebidas por ler: uma linha.
+      valor(await servico.marcar(c.membro, conversa.id, { lidaAte: iso(-1_800_000) }));
+      expect(await acoes()).toEqual(["Conversa lida"]);
+      // O mesmo valor de novo: nada.
+      valor(await servico.marcar(c.membro, conversa.id, { lidaAte: iso(-1_800_000) }));
+      // Avançar sem Mensagem recebida nova entre os dois valores: nada.
+      valor(await servico.marcar(c.membro, conversa.id, { lidaAte: iso(-600_000) }));
+      // Recuar: nada.
+      valor(await servico.marcar(c.membro, conversa.id, { lidaAte: iso(-3_000_000) }));
+      expect(await acoes()).toEqual(["Conversa lida"]);
+
+      // Chega Mensagem recebida nova e a pessoa lê de novo: mais uma linha, sem conteúdo nenhum.
+      await recebidaEm(c.ws, conversa.id, canalId, "wamid.l3", iso(-300_000));
+      valor(await servico.marcar(c.membro, conversa.id, { lidaAte: iso(-60_000) }));
+      const linhas = await atividadesDe(c.ws, conversa.id);
+      expect(linhas.map((l) => l.acao)).toEqual(["Conversa lida", "Conversa lida"]);
+      expect(linhas.every((l) => l.antes === null && l.depois === null && l.detalhe === null)).toBe(true);
+    });
+
+    it("marcar recusado (corpo vazio, data torta, outro Espaço, Convidado) não grava Atividade", async () => {
+      const c = await espaco("ativmarcarno");
+      const outro = await espaco("ativmarcarnob");
+      const { conversa } = await conversaDeAna(c);
+
+      recusado(await servico.marcar(c.membro, conversa.id, {}));
+      recusado(await servico.marcar(c.membro, conversa.id, { lidaAte: "ontem" }));
+      recusado(await servico.marcar(outro.membro, conversa.id, { estrela: true }));
+      recusado(await servico.marcar(c.convidado, conversa.id, { estrela: true }));
+      expect(await atividadesDe(c.ws)).toEqual([]);
+    });
+
+    it("mover recusado (destino mesclado, Papel, outro Espaço) não grava Atividade", async () => {
+      const c = await espaco("ativmoverno");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966669003" }]);
+      const absorvido = await contato(c.ws, "Abs", [{ tipo: "whatsapp", valor: "+5511966669004" }]);
+      const canal = await comercial(c.ws);
+      const aberta = valor(await abrir(c, canal, ana));
+      await poolDoDono().query(
+        "update plataforma.contatos set estado = 'mesclado', mesclado_em_id = $3, mesclado_em = now() where workspace_id = $1 and id = $2",
+        [c.ws, absorvido, ana],
+      );
+
+      expect(recusado(await servico.mover(c.membro, aberta.conversa.id, { contatoId: absorvido }))).toMatchObject({ status: 409 });
+      expect(recusado(await servico.mover(c.convidado, aberta.conversa.id, { contatoId: absorvido }))).toMatchObject({ status: 403 });
+      expect(await atividadesDe(c.ws)).toEqual([]);
     });
   });
 });

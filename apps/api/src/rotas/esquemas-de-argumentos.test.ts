@@ -102,7 +102,7 @@ describe("esquemas-de-argumentos — a forma dos args, não a regra", () => {
     expect(ESQUEMAS.runScheduledAutomations.safeParse(["l1", "2026-01-01"]).success).toBe(false);
   });
 
-  it("(h) nenhuma operação cai em fallback — esquemaDeArgumentos(nome) é o próprio ESQUEMAS[nome] para todas as 268", () => {
+  it("(h) nenhuma operação cai em fallback — esquemaDeArgumentos(nome) é o próprio ESQUEMAS[nome] para todas as operações do registro", () => {
     const esquemasPorNome = ESQUEMAS as Record<string, unknown>;
     for (const nome of Object.keys(OPERACOES)) {
       expect(esquemaDeArgumentos(nome as NomeDeOperacao)).toBe(esquemasPorNome[nome]);
@@ -119,11 +119,13 @@ describe("esquemas-de-argumentos — a forma dos args, não a regra", () => {
     expect(ESQUEMAS.convertChecklistItem.safeParse(["tsk_1", "chk_1", "cki_1", "tsk_pai"]).success).toBe(false);
   });
 
-  it("(j) ESQUEMAS cobre exatamente OPERACOES — mesmas chaves, 301, todas nomes de operação válidos", () => {
+  it("(j) ESQUEMAS cobre exatamente OPERACOES — mesmas chaves, a contagem é a de Object.keys(OPERACOES), todas nomes de operação válidos", () => {
     const chaves = Object.keys(ESQUEMAS);
     expect(chaves.sort()).toEqual(Object.keys(OPERACOES).sort());
-    // 132 + solicitarAprovacao + decideProcessApproval (Plan 02-04, D-06/D-09) + 65 de Ferramentas (notas, captacao, comunidades, grupos, flows) + iniciarConversa + converterSolicitacaoEmContaAPagar (Plan 03-06, D3-08) + alterarStatusEmLote (Plan 03-12, PAG-05) − 5 de Metas (removidas) = 197; +67 do frontend do main, 2026-09-25 (canais, tarefas-conversacionais, updateCompany/addCompanyNote e a IA: agentes, editor de Automação, conhecimento, habilidades, integrações) = 264; + alterarEmailDoConvite e alterarPapelDoMembro (2026-09-28) = 266; + usarCampoHerdado (checklist 1.1, 2026-10-01) = 267; + enviarLinkDeConvite (main a91b852, 2026-10-02) = 268; + updateContainer, archiveContainer, unarchiveContainer, trashContainer e restoreContainer (POSC-09, 2026-10-13) = 273; + createTag, updateTag, archiveTag e restoreTag (AVIS-02, 2026-10-14) = 277; + editTaskComment e deleteTaskComment (FUND-10, 2026-10-14) = 279; + removeChecklist e removeChecklistItem (PARA-01, 2026-10-14) = 281; + spawnCalendarOccurrence e runCalendarRecurrences (FUND-17, 2026-10-14) = 283; + purgeTask e purgeExpiredTasks (PARD-10, 2026-10-14) = 285; + unarchiveForm (POSC-10, 2026-10-14) = 286; + setContainerDefaultViews (Fase 10, 10-01) = 287; + setContainerBlock (Fase 10, 10-02) = 288; + moveContainer (Fase 10, 10-03) = 289; + reorderContainers (Fase 10, 10-04) = 290; − setMemberCapacity (Fase 10, 10-21, D-13) = 289; + 12 da Sessão 12 (createRole, updateRole, createTeam, updateTeam, addMemberToTeam, removeMemberFromTeam, deleteTeam, concederAcesso, revogarAcesso, aceitarConvite, suspenderMembro, reativarMembro) = 301.
-    expect(chaves.length).toBe(301);
+    // A contagem não é um número escrito à mão: é o tamanho do registro. Na 15-32 saíram as 40 operações do CRM antigo
+    // (deals 12, Conversa 6, Contato e Empresa 19, iniciarConversa 1, criarCanal e configurarCanal 2): 285 -> 245. Antes
+    // disso, o histórico das entradas e saídas ficou nos comentários dos planos que as mexeram.
+    expect(chaves.length).toBe(Object.keys(OPERACOES).length);
     for (const chave of chaves) expect(ehNomeDeOperacao(chave)).toBe(true);
   });
 });

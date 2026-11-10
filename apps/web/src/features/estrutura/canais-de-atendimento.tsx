@@ -7,9 +7,11 @@
  *
  * Quatro linhas, uma por tipo — WhatsApp, E-mail, Instagram, LinkedIn —, cada
  * uma com o seu Toggle. Ligar a linha abre, embaixo dela, as CONTAS já
- * conectadas a nível global daquele tipo (os Canais do Espaço de Trabalho),
- * para marcar as que esta Lista usa, e o botão "Adicionar" que conecta uma
- * conta nova ali mesmo. Desligar a linha desmarca as contas dela. A Lista
+ * cadastradas a nível global daquele tipo (os Canais de `plataforma.canais`,
+ * lidos por `useCanais`), para marcar as que esta Lista usa, e o botão
+ * "Adicionar", que abre o popup de escolher uma conta — e de lá leva à página
+ * de conectar, o único lugar onde um Canal nasce (D-15-12). Desligar a linha
+ * desmarca as contas dela. A Lista
  * guarda só os ids dos Canais marcados; as linhas ligadas são derivadas deles
  * — mais o que a pessoa abriu para olhar e ainda não marcou.
  *
@@ -22,18 +24,18 @@
  * Uma conta `desconectada` que ainda não está marcada não se marca aqui: a
  * conversa não nasceria por ela. Uma que JÁ está marcada e caiu continua
  * marcada, com o aviso — a conexão é transitória, e é o domínio quem recusa
- * abrir a conversa. Quem não administra o Espaço de Trabalho vê "Adicionar"
- * desligado com o motivo (B35); quem não administra a Lista vê tudo
- * desligado com o motivo dela.
+ * abrir a conversa. Quem não administra a Lista vê tudo desligado com o motivo
+ * dela; quem não pode conectar Canal vê o link de conectar desligado no popup.
  */
 
 import { Check, Plus } from "lucide-react";
 import { useId, useState } from "react";
+import { useCanais } from "@/dados/crm/canais";
 import { useData } from "@/dados/store";
-import { useSession } from "@/dados/store";
 import { CHANNEL_ICON } from "@/features/crm/conversation-thread";
-import { FORMA_DO_IDENTIFICADOR, ROTULO_DO_TIPO_DE_CANAL, TIPOS_DE_ATENDIMENTO, recusaDeGerirCanais, type TipoDeAtendimento } from "@n1/dominio/operations/canais";
-import type { Channel, Id } from "@n1/dominio/types";
+import type { Canal } from "@n1/dominio/crm/canais";
+import { FORMA_DO_IDENTIFICADOR, ROTULO_DO_TIPO_DE_CANAL, TIPOS_DE_ATENDIMENTO, type TipoDeAtendimento } from "@n1/dominio/operations/canais";
+import type { Id } from "@n1/dominio/types";
 import { Button, ConditionMarker, Icone, Toggle } from "@/features/shell/ui";
 
 const DESCONECTADO = "Desconectado — reconecte nas configurações da Caixa de Entrada.";
@@ -50,7 +52,7 @@ export function CanaisDeAtendimento({
   /** Os ids dos Canais marcados, na ordem em que foram marcados. */
   readonly valor: readonly Id[];
   readonly onChange: (ids: readonly Id[]) => void;
-  /** Abre o popup de conectar uma conta nova daquele tipo. */
+  /** Abre o popup de escolher uma conta daquele tipo. */
   readonly onAdicionar: (tipo: TipoDeAtendimento) => void;
   /** Por que nada aqui muda (quem não administra a Lista): desliga tudo e vira o `title`. */
   readonly motivo?: string;
@@ -59,16 +61,17 @@ export function CanaisDeAtendimento({
   /** A conta recém-conectada acende como recente. */
   readonly recente?: Id | null;
 }) {
-  const state = useData((data) => data);
-  const session = useSession();
-  const canais = state.channels.filter((c) => c.lifecycle === "ativo");
+  // Setor e Origem continuam configuração do Espaço (store); a conta em si vem da tabela (D-15-12).
+  const filas = useData((data) => data.queues);
+  const origens = useData((data) => data.catalog);
+  const canaisDaTabela = useCanais({ estado: "ativo", limite: 100 });
+  const canais: readonly Canal[] = canaisDaTabela.data?.itens ?? [];
   const marcados = new Set(valor);
-  const recusaDeAdicionar = recusaDeGerirCanais(state, session.memberId);
 
   // As linhas abertas: as que têm conta marcada, mais as que a pessoa abriu
   // para olhar. Desligar fecha e desmarca; ligar abre.
   const [abertos, setAbertos] = useState<ReadonlySet<TipoDeAtendimento>>(() => new Set());
-  const ligado = (tipo: TipoDeAtendimento) => abertos.has(tipo) || canais.some((c) => c.channelType === tipo && marcados.has(c.id));
+  const ligado = (tipo: TipoDeAtendimento) => abertos.has(tipo) || canais.some((c) => c.tipo === tipo && marcados.has(c.id));
 
   const ligar = (tipo: TipoDeAtendimento, proximo: boolean) => {
     if (proximo) {
@@ -80,11 +83,11 @@ export function CanaisDeAtendimento({
       copia.delete(tipo);
       return copia;
     });
-    const restantes = valor.filter((id) => canais.find((c) => c.id === id)?.channelType !== tipo);
+    const restantes = valor.filter((id) => canais.find((c) => c.id === id)?.tipo !== tipo);
     if (restantes.length !== valor.length) onChange(restantes);
   };
 
-  const alternar = (canal: Channel) => {
+  const alternar = (canal: Canal) => {
     if (marcados.has(canal.id)) onChange(valor.filter((id) => id !== canal.id));
     else onChange([...valor, canal.id]);
   };
@@ -99,17 +102,16 @@ export function CanaisDeAtendimento({
             tipo={tipo}
             primeira={i === 0}
             ligada={ligado(tipo)}
-            contas={canais.filter((c) => c.channelType === tipo)}
+            contas={canais.filter((c) => c.tipo === tipo)}
             marcados={marcados}
             onLigar={(proximo) => ligar(tipo, proximo)}
             onAlternar={alternar}
             onAdicionar={() => onAdicionar(tipo)}
             {...(motivo ? { motivo } : {})}
-            {...(recusaDeAdicionar ? { motivoDeAdicionar: recusaDeAdicionar } : {})}
             ultimoNaoSai={!podeFicarVazio && valor.length === 1}
             recente={recente}
-            filas={state.queues}
-            origens={state.catalog}
+            filas={filas}
+            origens={origens}
           />
         ))}
       </div>
@@ -130,7 +132,6 @@ function LinhaDeTipo({
   onAlternar,
   onAdicionar,
   motivo,
-  motivoDeAdicionar,
   ultimoNaoSai,
   recente,
   filas,
@@ -139,13 +140,12 @@ function LinhaDeTipo({
   readonly tipo: TipoDeAtendimento;
   readonly primeira: boolean;
   readonly ligada: boolean;
-  readonly contas: readonly Channel[];
+  readonly contas: readonly Canal[];
   readonly marcados: ReadonlySet<Id>;
   readonly onLigar: (proximo: boolean) => void;
-  readonly onAlternar: (canal: Channel) => void;
+  readonly onAlternar: (canal: Canal) => void;
   readonly onAdicionar: () => void;
   readonly motivo?: string;
-  readonly motivoDeAdicionar?: string;
   readonly ultimoNaoSai: boolean;
   readonly recente: Id | null;
   readonly filas: ReadonlyArray<{ readonly id: Id; readonly name: string }>;
@@ -197,10 +197,10 @@ function LinhaDeTipo({
             <ul className="pilha-solta" role="group" aria-label={`Contas de ${rotulo}`}>
               {contas.map((canal) => {
                 const marcado = marcados.has(canal.id);
-                const desconectada = canal.connection === "desconectada" && !marcado;
+                const desconectada = canal.conexao === "desconectada" && !marcado;
                 const motivoDaConta = motivo ?? (desconectada ? DESCONECTADO : marcado && ultimoNaoSai ? ULTIMO_CANAL : undefined);
-                const fila = canal.defaultQueueId ? filas.find((f) => f.id === canal.defaultQueueId)?.name : undefined;
-                const origem = canal.defaultOriginId ? origens.find((o) => o.id === canal.defaultOriginId)?.name : undefined;
+                const fila = canal.filaPadraoId ? filas.find((f) => f.id === canal.filaPadraoId)?.name : undefined;
+                const origem = canal.origemPadraoId ? origens.find((o) => o.id === canal.origemPadraoId)?.name : undefined;
                 return (
                   <li key={canal.id}>
                     <button
@@ -221,15 +221,15 @@ function LinhaDeTipo({
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="app-base flex flex-wrap items-center gap-2" style={{ color: "var(--texto)" }}>
-                          {canal.name}
-                          {canal.connection === "comErro" ? <ConditionMarker tone="warning">Com erro</ConditionMarker> : null}
-                          {canal.connection === "desconectada" ? <ConditionMarker tone="danger">Desconectado</ConditionMarker> : null}
+                          {canal.nome}
+                          {canal.conexao === "com_erro" ? <ConditionMarker tone="warning">Com erro</ConditionMarker> : null}
+                          {canal.conexao === "desconectada" ? <ConditionMarker tone="danger">Desconectado</ConditionMarker> : null}
                         </span>
                         <span className="app-sm block" style={{ color: "var(--texto-3)" }}>
                           {/* O identificador só aparece quando diz algo que o nome não disse. */}
-                          {canal.externalId !== canal.name ? (
+                          {canal.identificadorExterno !== canal.nome ? (
                             <>
-                              <span className="app-numero">{canal.externalId}</span>
+                              <span className="app-numero">{canal.identificadorExterno}</span>
                               {" · "}
                             </>
                           ) : null}
@@ -248,8 +248,8 @@ function LinhaDeTipo({
               variant="ghost"
               icon={<Icone de={Plus} tamanho="xs" />}
               onClick={onAdicionar}
-              disabled={(motivo ?? motivoDeAdicionar) !== undefined}
-              disabledReason={motivo ?? motivoDeAdicionar ?? ""}
+              disabled={motivo !== undefined}
+              disabledReason={motivo ?? ""}
             >
               Adicionar {rotulo}
             </Button>

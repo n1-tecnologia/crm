@@ -17,7 +17,6 @@ import { type ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { buildSeed } from "@n1/dominio/seed";
-import { MEUS_NEGOCIOS_ID } from "@n1/dominio/seed-comercial";
 import type { Ordens } from "@n1/dominio";
 import { createFolder, createList, recusaDeMover } from "@n1/dominio/operations";
 import type { DataState } from "@n1/dominio/state";
@@ -25,6 +24,9 @@ import { StoreProvider } from "@/dados/store";
 import type { RespostaDeGravacao, Transporte } from "@/dados/transporte";
 import { AppShell } from "@/features/shell/app-shell";
 import { TIPO_DE_ARRASTO } from "@/features/shell/arrastar-na-arvore";
+
+/** A Pasta que ainda se chama «Meus negócios» nos Espaços de teste: uma Pasta comum (15-41, D-15-14); a constante do domínio saiu no 15-43. */
+const MEUS_NEGOCIOS_ID = "fld_meus_negocios";
 
 // O robô flutuante mede a tela com APIs que o jsdom não tem, e o Guia do Financeiro não é o assunto aqui.
 vi.mock("@/features/shell/robo-flutuante", () => ({ RoboFlutuante: () => null }));
@@ -122,6 +124,43 @@ function servidorFalso(): Servidor {
 }
 
 let state: DataState;
+
+/**
+ * A Pasta «Meus negócios», agora comum (15-41, D-15-14), com uma Lista de Funil dentro. O seed não as cria mais (15-31,
+ * D-15-13): os casos que as usam as montam no próprio arranjo, onde ficavam (Comercial, ordem 3) — é o que ainda existe
+ * nos Espaços de teste com Tarefas espelho.
+ */
+function montarMeusNegocios(): void {
+  const origem = { kind: "member", id: "mem_julia" } as const;
+  state.folders.push({
+    id: MEUS_NEGOCIOS_ID,
+    workspaceId: state.workspace.id,
+    createdBy: origem,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    lifecycle: "ativo",
+    name: "Meus negócios",
+    order: 3,
+    isPrivate: false,
+    modes: {},
+    blocks: {},
+    parentType: "space",
+    parentId: "spc_com",
+  });
+  state.lists.push({
+    id: "lst_funil_closer",
+    workspaceId: state.workspace.id,
+    createdBy: origem,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    lifecycle: "ativo",
+    name: "Closer",
+    order: 0,
+    isPrivate: false,
+    modeloDeTarefa: "operacional",
+    modes: {},
+    parentType: "folder",
+    parentId: MEUS_NEGOCIOS_ID,
+  });
+}
 let servidor: Servidor;
 
 const THIAGO = "mem_thiago"; // Proprietário
@@ -486,20 +525,24 @@ describe("Arrastar na árvore — reordenar, Espaços, diálogo, recusa e árvor
     expect(filhosDe(P)).toEqual([GAMA, ALFA, BETA]);
   });
 
-  it("a Pasta «Meus negócios» e as Listas dela não arrastam nem recebem soltura (A9)", async () => {
+  it("a Pasta «Meus negócios» é uma Pasta comum: arrasta, recebe soltura e as Listas dela também arrastam (15-41)", async () => {
+    montarMeusNegocios();
     await abrirArvore();
     await waitFor(() => expect(temLinha(MEUS_NEGOCIOS_ID)).toBe(true));
     const listaDeNegocios = filhosDe(MEUS_NEGOCIOS_ID)[0];
     expect(listaDeNegocios).toBeTruthy();
 
-    expect(linha(MEUS_NEGOCIOS_ID).getAttribute("draggable")).toBeNull();
-    expect(linha(listaDeNegocios!).getAttribute("draggable")).toBeNull();
+    expect(linha(MEUS_NEGOCIOS_ID).getAttribute("draggable")).toBe("true");
+    expect(linha(listaDeNegocios!).getAttribute("draggable")).toBe("true");
 
     comecar(ALFA);
-    expect(passarSobre(MEUS_NEGOCIOS_ID, 50)).toBe(false);
-    expect(zonaAcesa(MEUS_NEGOCIOS_ID)).toBeNull();
+    expect(passarSobre(MEUS_NEGOCIOS_ID, 50)).toBe(true);
+    expect(zonaAcesa(MEUS_NEGOCIOS_ID)).toBe("dentro");
     soltarEm(MEUS_NEGOCIOS_ID, 50);
-    expect(servidor.gravar).not.toHaveBeenCalled();
+    await waitFor(() => expect(servidor.gravar).toHaveBeenCalledTimes(1));
+    const chamada = servidor.gravar.mock.calls[0]?.[0]?.chamadas[0];
+    expect(chamada?.nome).toBe("moveContainer");
+    expect(chamada?.args.slice(0, 3)).toEqual(["list", ALFA, { parentType: "folder", parentId: MEUS_NEGOCIOS_ID }]);
   });
 
   it("o Convidado vê a árvore inerte: nenhuma linha é arrastável e a soltura não grava (D-09)", async () => {

@@ -1,19 +1,19 @@
 ---
 gsd_state_version: "1.0"
 milestone: v1.0
-current_phase: 12
-current_phase_name: "Clone ClickUp: gravação mais rápida"
-status: verifying
-stopped_at: Completed 12-10-PLAN.md
-last_updated: "2026-11-02T19:09:23.115Z"
-last_activity: 2026-10-30
-last_activity_desc: Phase 12 execution started
-state_head: 836c7bea139aec7c1af8da6c2d907ae9568a917a
+current_phase: 16
+current_phase_name: "Base da mensageria: entrada, saída, tempo real e mídia"
+status: executing
+stopped_at: Completed 16-21-PLAN.md
+last_updated: "2026-11-10T18:29:30.294Z"
+last_activity: 2026-11-10
+last_activity_desc: Phase 16 execution started
+state_head: 41f000cada2d3b87f916189092e7539448ef1600
 progress:
-  total_phases: 12
+  total_phases: 16
   completed_phases: 6
-  total_plans: 209
-  completed_plans: 205
+  total_plans: 294
+  completed_plans: 290
 milestone_name: milestone
 ---
 
@@ -24,14 +24,16 @@ milestone_name: milestone
 See: .planning/PROJECT.md (updated 2026-10-29)
 
 **Core value:** Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de ponta a ponta sem abrir o ClickUp — dados no Postgres próprio, regras de `@n1/dominio` intactas.
-**Current focus:** Phase 12 — Clone ClickUp: gravação mais rápida
+**Current focus:** Phase 16 — Base da mensageria: entrada, saída, tempo real e mídia
 
 ## Current Position
 
-Phase: 12 (Clone ClickUp: gravação mais rápida) — EXECUTING
-Plan: 10 of 10
-Status: Phase complete — ready for verification
-Last activity: 2026-10-30 — Phase 12 execution started
+Phase: 16 (Base da mensageria: entrada, saída, tempo real e mídia) — EXECUTING
+Plan: 21 of 22 executed (lacunas 16-17 a 16-22); próximo 16-22
+Status: Ready to execute
+Last activity: 2026-11-10 — Phase 16 execution started
+
+> Nota: `phase.complete` apontou a Fase 2 como "próxima" por ela estar sem `[x]` no ROADMAP; corrigido à mão para a Fase 16 (que declara `Depends on: Phase 15`). As Fases 2, 4 e 8 seguem abertas no ROADMAP e não foram tocadas.
 
 **Fase 06 planejada à mão em 2026-09-29 (Conferência do Resumo e anexos), pronta para `/gsd-execute-phase 6`:**
 `.planning/phases/06-conferencia-do-resumo-e-anexos/` — `06-CONTEXT.md` (13 decisões com padrão e variável de troca) e seis planos em três ondas: 06-01 domínio · 06-02 contrato v1.1 no `financeiro-tria` · 06-03 ponte em dois momentos · 06-04 tela e jornada · 06-05 S5/S6 na Solicitação · 06-06 docs e provas `[BLOCKING]`. Origem: `docs/08-migracao-financeiro/09-…` (desenho) e `10-…` (levantamento etapa por etapa com `arquivo:linha`). Ponto de partida do código: `crm-n1-integracao@3d6f735` (branch `integra-frontend-main`, sem push) e `financeiro-tria@c272dad` (`main`, 99 commits sem push, 89 arquivos sujos só de EOL — `git add` sempre por caminho). O dono ainda não respondeu às quatro perguntas do doc 10; os padrões de D6-01..D6-04 seguem "como no ClickUp", exceto Integração manual (o seguro).
@@ -278,7 +280,7 @@ Progress: [██████░░░░] 63%
 
 **Velocity:**
 
-- Total plans completed: 46
+- Total plans completed: 109
 - Average duration: —
 - Total execution time: 0 hours
 
@@ -289,6 +291,8 @@ Progress: [██████░░░░] 63%
 | 05 | 25 | - | - |
 | 07 | 13 | - | - |
 | 11 | 8 | - | - |
+| 14 | 19 | - | - |
+| 15 | 44 | - | - |
 
 **Recent Trend:**
 
@@ -424,6 +428,87 @@ Progress: [██████░░░░] 63%
 | Phase 12 P08 | 20min | 2 tasks | 8 files |
 | Phase 12 P09 | 25 min | 2 tasks | 8 files |
 | Phase 12 P10 | 50min | 3 tasks | 2 files |
+| Phase 14 P01 | 8 min | 2 tasks | 17 files |
+| Phase 14 P02 | 6 min | 2 tasks | 8 files |
+| Phase 14 P03 | 14 min | 2 tasks | 7 files |
+| Phase 14 P04 | 8 min | 2 tasks | 7 files |
+| Phase 14 P05 | 6 min | 2 tasks | 10 files |
+| Phase 14 P06 | 10 min | 2 tasks | 17 files |
+| Phase 14 P07 | 12 min | 2 tasks | 10 files |
+| Phase 14 P08 | 22 min | 3 tasks | 13 files |
+| Phase 14 P09 | 12 min | 3 tasks | 14 files |
+| Phase 14 P10 | 9 min | 2 tasks | 9 files |
+| Phase 14 P11 | 13 min | 3 tasks | 13 files |
+| Phase 14 P12 | 7 min | 3 tasks | 14 files |
+| Phase 14 P13 | 22 min | 3 tasks | 11 files |
+| Phase 14 P14 | 25 min | 2 tasks | 8 files |
+| Phase 14 P15 | 25 min | 3 tasks | 9 files |
+| Phase 14 P16 | 20 min | 3 tasks | 15 files |
+| Phase 14 P17 | 18 min | 2 tasks | 18 files |
+| Phase 14 P18 | 14 min | 2 tasks | 3 files |
+| Phase 14 P19 | 10 min | 2 tasks | 1 files |
+| Phase 15 P01 | 9 min | 3 tasks | 14 files |
+| Phase 15 P02 | 9 min | 3 tasks | 16 files |
+| Phase 15 P03 | 10 min | 2 tasks | 15 files |
+| Phase 15 P04 | 12 min | 2 tasks | 10 files |
+| Phase 15 P05 | 40 min | 3 tasks | 14 files |
+| Phase 15 P06 | 15 min | 3 tasks | 16 files |
+| Phase 15 P07 | 32 min | 3 tasks | 17 files |
+| Phase 15 P08 | 11 min | 2 tasks | 14 files |
+| Phase 15 P36 | 8 min | 2 tasks | 9 files |
+| Phase 15 P37 | 8 min | 2 tasks | 9 files |
+| Phase 15 P38 | 5 min | 2 tasks | 6 files |
+| Phase 15 P39 | 12 min | 2 tasks | 12 files |
+| Phase 15 P17 | 33 min | 3 tasks | 9 files |
+| Phase 15 P11 | 15 min | 2 tasks | 10 files |
+| Phase 15 P12 | 16 min | 3 tasks | 16 files |
+| Phase 15 P13 | 8 min | 2 tasks | 18 files |
+| Phase 15 P14 | 18 min | 3 tasks | 20 files |
+| Phase 15 P16 | n/d | 2 tasks | 16 files |
+| Phase 15 P09 | 41 min | 3 tasks | 24 files |
+| Phase 15 P10 | 13min | 2 tasks | 14 files |
+| Phase 15 P15 | 10 min | 2 tasks | 6 files |
+| Phase 15 P20 | 15 min | 3 tasks | 17 files |
+| Phase 15 P18 | 15 min | 3 tasks | 13 files |
+| Phase 15 P19 | 14 min | 3 tasks | 28 files |
+| Phase 15 P21 | 14 min | 2 tasks | 14 files |
+| Phase 15 P22 | 17 min | 3 tasks | 20 files |
+| Phase 15 P24 | ~65 min | 3 tasks | 9 files |
+| Phase 15 P25 | 11 min | 3 tasks | 7 files |
+| Phase 15 P26 | 27 min | 2 tasks | 15 files |
+| Phase 15 P23 | 16 min | 3 tasks | 15 files |
+| Phase 15 P40 | 50 min | 2 tasks | 13 files |
+| Phase 15 P27 | 35 min | 3 tasks | 18 files |
+| Phase 15 P28 | 32 min | 3 tasks | 17 files |
+| Phase 15 P29 | 6 min | 2 tasks | 8 files |
+| Phase 15 P30 | 15 min | 2 tasks | 2 files |
+| Phase 15 P31 | 31 min | 3 tasks | 59 files |
+| Phase 15 P32 | 45 min | 3 tasks | 66 files |
+| Phase 15 P33 | 70 min | 3 tasks | 28 files |
+| Phase 15 P41 | 10 min | 2 tasks | 16 files |
+| Phase 15 P42 | 65 min | 3 tasks | 59 files |
+| Phase 15 P43 | 70 min | 2 tasks | 42 files |
+| Phase 15 P34 | 45 min | 3 tasks | 9 files |
+| Phase 15 P44 | 35min | 4 tasks | 25 files |
+| Phase 16 P01 | 8 min | 3 tasks | 11 files |
+| Phase 16 P02 | 7 min | 3 tasks | 11 files |
+| Phase 16 P03 | 9 min | 3 tasks | 12 files |
+| Phase 16 P04 | 9 min | 3 tasks | 13 files |
+| Phase 16 P05 | 16 min | 3 tasks | 7 files |
+| Phase 16 P06 | 11 min | 3 tasks | 12 files |
+| Phase 16 P07 | 22 min | 3 tasks | 17 files |
+| Phase 16 P08 | 14 min | 2 tasks | 5 files |
+| Phase 16 P09 | 17min | 3 tasks | 16 files |
+| Phase 16 P10 | 20 min | 3 tasks | 12 files |
+| Phase 16 P11 | 9 min | 3 tasks | 9 files |
+| Phase 16 P12 | 11 min | 3 tasks | 15 files |
+| Phase 16 P13 | 16 min | 2 tasks | 8 files |
+| Phase 16 P14 | 16 min | 3 tasks | 15 files |
+| Phase 16 P17 | 25 min | 3 tasks | 11 files |
+| Phase 16 P18 | 14 min | 2 tasks | 7 files |
+| Phase 16 P19 | 7 min | 2 tasks | 7 files |
+| Phase 16 P20 | 25 min | 2 tasks | 7 files |
+| Phase 16 P21 | 3 min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -433,6 +518,8 @@ Progress: [██████░░░░] 63%
 - Phase 8 added (2026-10-12): Canais de comunicação — escolher e conectar Canais (WhatsApp oficial/não oficial, Instagram, E-mail) com orientação por tipo (mockup), mais de um Canal por tipo, Canal/Conversa/Mensagem no Postgres (008) e o chat ciente do Canal de origem/resposta; sem provedor real
 - Phase 9 added (2026-10-22): Segurança dos dados e base de produção — Sessão 1 do cronograma (`docs/09-planejamento/TAREFAS-POR-SESSAO.md`): recorte do `GET /estado`/`POST /operacoes`, conferências de escrita, migração `009` + usuário `n1_api`, cofre de credenciais, logs sem segredo, `limit_req` no nginx, homologação/backup/monitoramento. Aberta antes da Sessão 0 por decisão do dono; a Fase 8 segue em verificação e as Fases 2 e 4 seguem abertas
 - Phases 10, 11 e 12 added (2026-10-28): Sessão 2 do cronograma (Clone ClickUp: ajustes e lacunas, 42 subtarefas) dividida em três fases por decisão do dono, cortadas pelos arquivos que cada parte toca e não pela numeração do doc: Phase 10 Contêineres (2.1, 2.3, 2.5, 2.6.1–2.6.5; 23 subtarefas), Phase 11 Tarefa (2.4, 2.6.6–2.6.9; 9), Phase 12 gravação mais rápida (2.2; 10, começa por medir). A 2.7 (itens relatados nos testes) não vira fase: cada item entra na fase que mexe na tela dele. A lista de testes da Estrutura estava vazia em 2026-10-28
+- Phase 13 registrada (2026-11-04): Gravação em menos idas e voltas ao banco — o passo 1 já saiu (commit `1d0c554`, 7 idas viram 2); passos 2 (cache em processo) e 3 (API perto do banco) abertos. Fora do cronograma das sessões; registrada porque os commits já a chamavam de Fase 13.
+- Phases 14, 15 e 16 added (2026-11-04): Sessão 3 do cronograma (Base da mensageria e unificação do CRM, 52 subtarefas) dividida em três fases por decisão do dono: Phase 14 modelo novo ganha o que falta e Tarefa conversacional (3.1 a 3.3, 20 subtarefas, 5 decisões), Phase 15 telas no modelo novo e remoção do antigo (3.4 e 3.5, 14), Phase 16 base da mensageria (3.6 a 3.9, 18, 1 decisão).
 
 ### Decisions
 
@@ -640,6 +727,138 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 12]: 12-09: a guarda de navegação cancela na captura do document o click, o auxclick, o cmd/ctrl+clique e o clique de teclado numa âncora com id pendente; o botão direito (menu do navegador) não é interceptável — O Link navega dentro do onClick do React (contêiner raiz, abaixo do document), então parar a propagação na captura o impede de rodar; o cmd/ctrl+clique abriria uma aba nova numa página que não existe
 - [Phase 12]: 12-09: router.push direto para id local não passa pela guarda de âncoras; Editar conta (financeiro) e a Reunião do Quadro do Funil esperam o id (Salvando…); iniciar-conversa-dialog.tsx:113 ficou em aberto — D-15: nunca leva a uma página de id que não existe; trocar o diálogo de iniciar conversa por runConfirmado muda o ritmo do diálogo e é decisão de produto
 - [Phase 12]: 12-10: coluna Meta 'sem alvo numerico' (b-ganho-basta); a trava custou uma ida e volta (~51 ms) e o pedidoMs isolado subiu 11% a 17%; D-03 do depois e a conferencia do dono na tela NAO OBSERVADOS; opcao do Pitfall 9 registrada para o dono decidir — A medicao de um pedido isolado nao capta o ganho da fase (a tela e a concorrencia).
+- [Phase 14]: 14-01: NegocioDetalhado.contato.estado e seloDoEstado passam a EstadoDoContato; Conversa na lixeira por SQL exige na_lixeira_em (conversas_na_lixeira_em_ck da 011)
+- [Phase 14]: 14-01: guardas de D-06 varrem o texto inteiro (comentario incluso) por funilDaLista|iniciar-conversa; listas congeladas so encolhem
+- [Phase 14]: 14-02: vinculosDoCrmDaTarefa lê só Vínculos; lixeira e mesclado são da api (3.3.2)
+- [Phase 14]: 14-02: as quatro operações NasTabelas ficam fora de OPERACOES; alvoConferido só nasce no servidor
+- [Phase 14]: 14-03: lerDoCrm recebe o state hidratado; gravarNoCrm pode devolver recusa que vira excecao interna e volta como valor; o tempo de lerDoCrm soma em hidratarMs sem campo novo na medicao
+- [Phase 14]: 14-04: a recusa CONTATO_MESCLADO mora no helper escrita de contatos.ts (antes de qualquer regra de transição) e em conferirContato/carregarContato; Contato arquivado segue aceito em Negócio
+- [Phase 14]: 14-05: mover e atribuir recusam por regra do domínio com 409 MOVER_INVALIDO / ATRIBUIDO_INVALIDO; travas em ordem Contatos (id) e depois Conversa, para não haver deadlock com a mesclagem
+- [Phase 14]: 14-06: a transferência de Identificador trava os dois Contatos em ordem de id (escrita ganhou o parâmetro tambem) e recusa tudo como 409 TRANSFERENCIA_RECUSADA com o campo do domínio; Convidado lê notas e é 403 ao escrever; nota e transferência não gravam Registro de Atividade.
+- [Phase 14]: 14-07: comEstrela=false filtra as Conversas que o Membro nao marcou; sem o parametro, as duas
+- [Phase 14]: 14-07: PUT /conversas/:id/marcacao devolve a marcacao inteira (estrela, lidaAte) e grava sempre com o Membro da sessao
+- [Phase 14]: 14-08: validarNovoConsentimento dá 5 min de folga ao relógio da tela em em; sem a finalidade Marketing no Catálogo o envio de modelo de marketing recusa; contato arquivado aceita consentimento
+- [Phase 14]: 14-09: consentimentos do absorvido sao copiados (nao movidos); vinculo com Empresa que colide funde admin e encerra o do absorvido; colisao de Conversa segue RN-CXE-10 (OQ3 a confirmar)
+- [Phase 14]: 14-10: as Conversas do Membro removido são liberadas (não passam ao Sucessor); suposição OQ2/A8, a confirmar com o dono. aoConfirmar de removeMember só passa registros a Sucessor Membro ativo.
+- [Phase 14]: 14-11: Mesclar com… não exige digitar o nome do absorvido (o diálogo antigo exigia); o aviso de irreversível e o seletor da api bastam. Reversível de adotar depois.
+- [Phase 14]: 14-11: Notas e Consentimentos revalidam só a chave do próprio Contato (/contatos/<id>/notas, /consentimentos); o vigente do consentimento é calculado na tela por consentimentoVigente.
+- [Phase 14]: 14-12: definirCanaisDaLista e createList conferem Canais em plataforma.canais por lerDoCrm (mapa LER_DO_CRM); o canais do navegador é descartado; ramo state.channels sai na 3.5.4
+- [Phase 14]: 14-13: a resposta de POST /tarefas-conversacionais é o corpo de POST /operacoes recortado (Tarefa em value.task) mais conversa { id, aberta }; o resumo devolve { ok, itens, total }
+- [Phase 14]: 14-13: no resumo, Negócio na lixeira não aparece (RN-TAR-15) e Mensagem com marcacao_exclusao não é candidata a última Mensagem; OQ6 segue a confirmar
+- [Phase 14]: Plan 14-14: trocar o Canal e ligar ou criar o Negócio da Tarefa são gestos mistos; o Contato vem do Vínculo lido no servidor (o sobrevivente, se mesclado), nunca do corpo. criarNegocioNoCliente e prepararNegocioNovo foram extraídos de POST /negocios: lerDoCrm pré-checa Funil, Etapa e Contato (a recusa volta como valor) e gravarNoCrm só insere o Negócio depois que a operação aceitou o Vínculo, então nunca há Negócio órfão. Contato arquivado recusa criar Negócio pela Tarefa (409 CONTATO_INATIVO). Sem Conversa aberta e sem mensagem, o 400 de D-07 vem antes da recusa de Canal fora da Lista ou desconectado.
+- [Phase 14]: 14-15: o provedor do resumo cobre a página inteira da Lista e todas as Tarefas dela (filtro e busca não refazem a chamada); a chave de SWR leva os três ids de cada Tarefa; sem ponte (D-01), Empresa, temperatura e estado da Conversa saíram do cartão e da ficha até a api os devolver no resumo
+- [Phase 14]: 14-15: a ficha da Tarefa mantém a leitura antiga só para o fio de Mensagens e os três gestos de escrita (14-16); depois da migração o fio some da ficha até a Fase 15 entregar a Caixa no modelo novo
+- [Phase 14]: 14-16: trocar o Canal da ficha confirma num diálogo que pede a primeira Mensagem só sem Conversa aberta (conversaAbertaDoPar = aberta ou pendente, 2 perguntas a GET /conversas); rehidratar() depois de cada sucesso (A5); só no deploy da Fase 15
+- [Phase 14]: 14-17: contatoDaTarefa, canalDaTarefa e conversaDaTarefa ficam (o fio da ficha as lê até a 3.4.2); só ultimaMensagemDaTarefa saiu, e contatoAlcancado virou detalhe interno de contatoDaTarefa
+- [Phase 14]: 14-18: o gate da Fase 14 foi registrado como verde exceto o flake de baseline de outbox-worker (h a k), com o arquivo isolado em banco novo passando 15/15; nenhum outro teste falhou
+- [Phase 14]: 14-18: a fronteira de deploy fica em 14-PROVAS.md; 14-01 a 14-14 aditivos, 14-15 a 14-17 so com a Fase 15; as linhas de andamento.mjs ficam sugeridas para o dono colar
+- [Phase 14]: 14-19: a 011 foi ensaiada sobre a cópia dos dados reais (2128 registros do CRM antigo, 18 Espaços) e aplicou limpa; contagens iguais antes e depois, tabelas novas com 0 linhas, hidratar sem falha; só ws_n1 é Espaço real e o resto é resíduo de teste — O ensaio não cobre constraints e backfill sobre linhas reais de contatos e conversas (produção: 2 Contatos ativo, 0 Conversas) nem o banco:conceder com o papel n1_api; a cópia foi tirada pelo agente, em leitura, a pedido do dono
+- [Phase 15]: 15-01: LeituraDoCrm ganha argumento(lido); tabelas de gesto misto por módulo em rotas/gesto-no-crm, composição lança na carga se um nome repete
+- [Phase 15]: 15-02: 40P01 vira 409 CONFLITO_TRANSITORIO em comTransacao; Negócio.editar não foi reordenado (Negócio antes do Contato)
+- [Phase 15]: 15-02: resumo da Tarefa conversacional mantém o primeiro Vínculo de cada tipo (lista de candidatos fica aberta); Conversa só tem ativo/na_lixeira
+- [Phase 15]: D-15-08: na remocao de um Membro, as Conversas de que ele e Atribuido passam ao Sucessor como Atribuido (emenda B28-a, RN-ET-09, RN-CXE-24); Conversa de Agente nao muda
+- [Phase 15]: 15-04 D-15-09: crm_atividades (012) espelha ActivityRecord, sem FK para o objeto, so insercao por contrato do repositorio; registrarAtividade grava no mesmo cliente do comTransacao
+- [Phase 15]: 15-04: objeto_tipo da Atividade usa as cadeias do modelo antigo (contact, company, deal, conversation, funnel, channel), sem check de lista no banco
+- [Phase 15]: 15-05: a Empresa do cartao da Tarefa conversacional e o vinculo vigente admin mais antigo (a 007 nao tem vinculo principal); a confirmar com o dono
+- [Phase 15]: 15-05: qualificacao e Atribuido saem do resumo como ids; a web resolve rotulo/nome em catalog, members e agents; temperatura nao volta (D-15-06)
+- [Phase 15]: 15-06: naoLidas de GET /conversas e condicao no WHERE (exists/not exists sobre mensagens recebidas depois do lida_ate), com o Membro da sessao pelo $3 ja existente; marcarConversa so com lidaAte invalida so /conversas/<id>
+- [Phase 15]: 15-06: guardas sem-crm-antigo congelam 33 arquivos no dominio, 6 na api e 57 na web; so conferem 'nenhum arquivo novo', a metade 'so encolhe' fica para 15-33 e 15-43
+- [Phase 15]: CRM_DO_NAVEGADOR mora em esquemas/fragmentos.ts (fragmento de três módulos) e grupos.ts o reexporta; a leitura das Ferramentas segue chamada LER_DO_CRM_FERRAMENTAS
+- [Phase 15]: As Ações de Automação contato.adicionarTag e contato.definirCampo falham dizendo que o Contato do CRM novo não guarda Tag nem Campo (WINDOWS.md, deviation aberto); destino a decidir no 15-17 ou 15-22
+- [Phase 15]: Contatos das Ferramentas lidos só pelos ids dos args e da Participação ou Pedido alvo (resumidosPorIds, teto 500), nunca por todas as Participações do Grupo
+- [Phase 15]: 15-08: LeituraDoCrm.ler recebe o Membro da sessao (5o parametro) para conferir podeNoCrm(ler) antes de ler o nome da Ancora da IA — O contrato do 15-01 nao dizia quem pede; mudanca aditiva, as demais leituras a ignoram
+- [Phase 15]: 15-08: nomes (NomesDasAncoras) e o ultimo parametro opcional de createChatSession, configureChatSession e ensaiarAgente; NOMES_DO_NAVEGADOR em esquemas/fragmentos.ts — Servidor sobrescreve a posicao (T-15-24); web compila ate o 15-21 mandar nomes
+- [Phase 15]: 15-36: atender Conversa passa ao Sucessor mas nao e propriedade; registrosPossuidos exclui conversation das checagens de rebaixamento a Convidado
+- [Phase 15]: 15-37: GET /atividades responde { ok, itens } sem total (paginacao por tempo, ate exclusivo); useAtividades filtra state.activity por objectType e objectId — Cursor de tempo nao tem total honesto; id de Negocio e de Contato nao podem se misturar na linha do tempo
+- [Phase 15]: 15-38: comIdentificador filtra GET /contatos por tipo de Identificador (exists amarrado ao Espaco, tipo por $n, z.enum do dominio); QUERY_LISTA de comum.ts intacto
+- [Phase 15]: 15-17: o Proprietário e a Origem do Contato criado por Participante de Grupo são decididos no aoConfirmar (padroesDoContatoCriado, estado de depois); ContatoACriar segue {id, nome, whatsapp} e a operação pura nunca inventa id nem escreve em state.contacts — Mantém o contrato do 15-01/15-07; o Proprietário depende de Canal, Fila, Caixa e Espaço que só o servidor enxerga na transação. Eventos do provedor reaproveitam lerContatosDosParticipantes e confirmarContatosDosParticipantes quando ganharem rota.
+- [Phase 15]: 15-11: a estrela da Caixa grava em fila por Conversa com valor otimista; Sem Atribuido/Sem Fila/Adiadas recortam a pagina de 200 na tela (WINDOWS 18); previa da ultima Mensagem some da lista (WINDOWS 19)
+- [Phase 15]: 15-12: o popup Adicionar Canal das Listas so escolhe entre useCanais e leva a pagina de conectar; Canal nasce so por la (D-15-12)
+- [Phase 15]: 15-13: fichas de Contato, Empresa e Negocio sem recuo; 404 da api e 'nao encontrado' mesmo para id do modelo antigo (sem ponte por crm_de_para); deal-screen.tsx fica ate o 15-40
+- [Phase 15]: 15-14: o selo global soma o total de GET /conversas por situacao (aberta + pendente), nao a pagina de 20; sem resposta da api nenhuma Conversa entra
+- [Phase 15]: 15-14: Lixeira restaura Empresa por restaurarEmpresa(id) sem corpo; na recusa EMPRESA_SEM_ADMIN manda abrir a ficha (onde o dialogo de admin existe)
+- [Phase 15]: 15-16: Espaco novo nasce sem Funil; Workspace perde defaultFunnelId e o Funil padrao e o de plataforma.funis.padrao (D-15-13). Configuracoes mostra o padrao de useFunis ou 'Crie seu primeiro Funil'
+- [Phase 15]: 15-16: Campos, Tags e Catalogos trocam a contagem do CRM antigo (Contato, Empresa, Negocio, Conversa) por 'O uso no CRM nao aparece aqui.'; o uso em Tarefas continua
+- [Phase 15]: 15-09: cursor composto (em, id) em GET /atividades; ate sozinho continua exclusivo; em gravado em milissegundos — A sucessao grava varias Atividades no mesmo instante e o cursor so de tempo as perde na fronteira da pagina (teste (g): 0 de 5); fecha o WINDOWS #15 do 15-37
+- [Phase 15]: 15-09: estrela e leitura so gravam Atividade quando mudam, sob trava consultiva por Espaco, Conversa e Membro — Sem a trava duas estrelas iguais em paralelo gravariam duas linhas (provado por mutacao); T-15-26
+- [Phase 15]: 15-09: Negocio, Contato e Empresa do CRM novo nao gravam Atividade nesta fase — Escopo de D-15-09; pergunta ao dono registrada em WINDOWS.md #26
+- [Phase 15]: 15-10: POST /crm/nomes nao filtra por estado (a lixeira ainda tem nome) e devolve null igual para tipo negado, id desconhecido e id de outro Espaco; Membro suspenso recebe 403 por ser POST (WR-03, WINDOWS aberto)
+- [Phase 15]: 15-15: o Funil e a Etapa da Reuniao vem do NegocioDetalhado (sem useFunil); Negocio na lixeira, 403 e 404 contam como ausente; Diagnostico, Roteiro, Temperatura, LinkedIn e TikTok saem da Reuniao (modelo novo nao os guarda, WINDOWS #29)
+- [Phase 15]: 15-20: o Canal da aba do fio vem de canalSelecionado, do clique, da Conversa pedida, de canalPreferidoId, do Canal da ultima recebida e da Conversa mais recente; a Conversa mais recente e a de maior entre ultimaRecebidaEm e atualizadoEm — A lista de Conversas nao traz a ultima Mensagem de qualquer direcao; a regra antiga olhava as Mensagens
+- [Phase 15]: 15-20: sem Conversa no Canal da aba o campo vira Primeira Mensagem e Enviar abre a Conversa COM a Mensagem (POST /conversas); com Conversa no par reaproveita por POST /mensagens — INV-CXE-05 e F14-D-07: nao existe Conversa vazia
+- [Phase 15]: 15-20: o fio nao tem Rascunho de IA nem Mensagem de modelo; fora da janela do WhatsApp oficial o envio se desliga dizendo por que (WINDOWS 31) — D-15-11 e plataforma.canais nao guarda modelos
+- [Phase 15]: 15-18: o agregado do Início sai do servidor (GET /crm/inicio/{panorama,leads-a-atender,estatisticas}); "meu" é sempre o Membro da sessão e o querystring .strict() recusa membroId — Com o CRM fora do store só um agregado no servidor dá o número certo (paginaMaxima é 200); "Conversas resolvidas" passa a contar as resolvidas de que o Membro é o Atribuído (suposição a confirmar com o dono, WINDOWS 33)
+- [Phase 15]: 15-19: o cliente lido pelo servidor leva nome e Proprietario; clientes e clientesConhecidos opcionais com padrao vazio recusam — Titulo das contas e concessao de comentar ao dono do cliente precisam desses campos; esquecer o argumento nunca deve deixar passar
+- [Phase 15]: 15-19: automations.ts le nome e dono do cliente em state.contacts (contatoDoCliente) e entrou na lista congelada do sem-crm-antigo do dominio — clienteDe devolve so a referencia; injetar nome e dono por OpcoesDaAgenda fica para antes do 3.5.4 (WINDOWS #35)
+- [Phase 15]: 15-21: o diálogo da Âncora e o do ensaio ganharam o campo 'Buscar registro' (q para a api, 30 por busca); a escolha leva o nome para nomes e a Âncora do pedido leva só tipo e id
+- [Phase 15]: 15-21: useFunisDoEscopo lê Funis ativos e arquivados de GET /funis; inoperanteComFunis não acusa escopo eliminado enquanto a lista não chegou (ou se a api a recusou)
+- [Phase 15]: 15-22: as Ferramentas mandam o crm (Canais de GET /canais, Contatos escolhidos) como ultimo argumento; o servidor o descarta e relê. Seletor de Contatos com WhatsApp em useSeletorDeContatos (comIdentificador + q); eventos so locais usam crmParaSimular
+- [Phase 15]: 15-22: Conversa do Grupo e Conversa 1:1 do envio de Flow seguem em state.conversations (F14-D-05); nome de Contato por POST /crm/nomes, com numero da Participacao ou titulo da Conversa quando a api nao nomeia
+- [Phase 15]: 15-24: a pagina da Conversa so recua para o Grupo no 404 da api; Conversa 1:1 antiga diz 'nao encontrada' (F14-D-01); o ramo do Grupo mora em conversa-de-grupo-na-caixa.tsx e ainda usa as operacoes antigas de Conversa — F14-D-05: Grupo e Flow ficam no modelo antigo ate as Sessoes 6 e 7
+- [Phase 15]: 15-24: a Empresa do cartao do Contato e o vinculo vigente admin de menor inicio (ContatoDetalhado nao traz criado_em do vinculo); o destino de mover vem do SeletorDeRegistro (GET /contatos?q=) — Mesma regra do 15-05 com o dado que a api devolve; reaproveita o seletor dos dialogos de mesclar e transferir
+- [Phase 15]: 15-25: o aviso de consentimento de marketing do fio e aviso (nao bloqueia) e aparece sempre que o vigente de Marketing no tipo do Canal da aba nao e concedido, inclusive sem registro — o fio novo nao tem seletor de modelo; amarrar o aviso ao modelo o apagaria. Ruido possivel registrado em WINDOWS #43
+- [Phase 15]: 15-25: o Contato do fio da ficha da Tarefa e o do resumo quando chegou (contato null volta ao layout de sempre) e o do Vinculo enquanto nao chegou; o Canal e o do resumo — evita trocar de layout ao carregar no caso comum e respeita o sobrevivente de mesclagem
+- [Phase 15]: 15-26: o filtro Meus (?meus=1 -> GET /negocios?proprietarioId=) mora em /crm/negocios, onde QuadroDoFunil e desenhado; /crm/funis/[funil] e a ficha do Funil e nao tem quadro. Atalho Meus negocios do menu = /crm/negocios?meus=1. — O plano e F14-D-06 citavam o quadro de /crm/funis/[funil], que nao existe; a intencao (Meus negocios = filtro do quadro do Funil) foi mantida no unico quadro existente. Linha deviation aberta no WINDOWS.md.
+- [Phase 15]: 15-23: as estatisticas do Inicio pedem duas janelas (atual e anterior) a api, porque ela aceita 400 dias por pedido e o ano com o anterior passa de 700; as janelas sao estaveis o dia inteiro (chave do SWR)
+- [Phase 15]: 15-23: leitura parcial dita por alvo: Mensagens novas diz 'nas primeiras N de M Conversas' e o Painel marca 'Parcial: primeiros 200' so nos Widgets cuja Fonte e do CRM (Tarefa nunca e parcial)
+- [Phase 15]: 15-23: Origem e Motivo de Perda do Painel ficam sem linhas ate NegocioResumo trazer origem/motivoPerda; Paineis semeados com ids antigos de Funil/Fila abrem zerados no CRM novo (WINDOWS, Sessao 20.3)
+- [Phase 15]: 15-40: quadro-negocios.tsx virou quadro-conversacional.tsx (era tambem o quadro da Lista conversacional); Canais da Lista via useCanais; CONGELADOS de sem-listas-espelho (web) chegou a zero
+- [Phase 15]: 15-27: a conferencia do 'guardar' exige copia IDENTICA (dados e ordem) para o que sai de registros; copia velha que difere barra o apagar — count(origem)=count(copia) aceitaria uma copia velha de linha reinserida e alterada, e o delete perderia a versao nova
+- [Phase 15]: 15-27: Etapa no crm_de_para usa colecao_antiga='funnels/stages' e id_antigo='<funil>/<etapa>'; Funil preserva o id antigo — o id da Etapa so e unico dentro do Funil; o 15-28 troca o stageId dos Negocios por essa linha
+- [Phase 15]: 15-27: repetir --guardar/--migrar devolve fail('nada a fazer') da operacao: executar() desfaz sem subir a revisao do Espaco — evita re-hidratar os navegadores abertos por uma execucao sem escrita
+- [Phase 15]: 15-28: o id antigo de Contato, Empresa, Funil, Negocio, Canal, Conversa e Mensagem vira o id novo; Identificador, vinculo Contato-Empresa e Etapa ganham id novo com linha em crm_de_para — Vinculo de Tarefa, provenance, escopo e canaisDeAtendimento ficam em registros e nao sao reescritos; so onde a chave nao e unica no Espaco o id muda
+- [Phase 15]: 15-28: o mapeador decide as constraints do banco antes do insert (Empresa sem admin vigente nao migra com os Negocios dela; --funil=guardar nao migra Negocio); o que fica de fora vai para o relatorio Nao migrados, so colecao e id — Uma constraint deferida (empresa_exige_admin) derrubaria o commit do Espaco inteiro; o --migrar nao e desfazivel (D-15-02), entao o dono le o --seco antes de escrever
+- [Phase 15]: 15-29: o demo do CRM so roda em banco local; o host de DATABASE_URL e conferido na CLI antes do pool e no carregador antes da primeira consulta, e toda recusa lanca RecusaDoDemo (saida 2)
+- [Phase 15]: 15-30: o ensaio usou a copia de 2026-11-05 importada pelo .dump (dado real da Pasta Meus negocios); o Funil Padrao do ws_n1 e vazio, entao --funil=guardar nao muda o CRM novo e --funil=migrar acrescenta um Funil vazio (3 Funis); o dono decide no --seco do dia
+- [Phase 15]: 15-31: buildSeed() nasce sem o CRM antigo; semearCrmAntigo (seed-crm-antigo.ts) devolve o estado e so serve a testes de codigo que sai — O seed guarda as referencias por id (nome escrito, numero calculado); a fidelidade do construtor foi medida contra uma foto do seed anterior.
+- [Phase 15]: 15-31: ferramentas.test.ts usa semearCrmAntigo por divida registrada em WINDOWS; o 15-43 precisa dar a ele fixture propria antes de apagar o construtor — Reescrever as 933 linhas passou do escopo do plano; Grupo e Flow ficam ate as Sessoes 6 e 7.
+- [Phase 15]: 15-32: 40 nomes (nao 45) saem de OPERACOES e respondem 404; as 5 operacoes da Conversa de grupo (resolve, reopen, assign, trash, toggleConversationStar) ficam em ferramentas/conversa-de-grupo.ts porque a Conversa de grupo na Caixa ainda as chama (F14-D-05) — Grupo e Flow ficam no modelo antigo ate as Sessoes 6 e 7; apagar conversations.ts quebraria Grupo, Flow e Automacao
+- [Phase 15]: 15-32: capacidadesDoCanal e os tipos de Canal moram em packages/dominio/src/crm/capacidades.ts; types/crm.ts os reexporta ate o 15-43 — o CRM novo e as Ferramentas nao dependem do modelo antigo de Conversa
+- [Phase 15]: 15-33: a ponte dos Canais saiu de GET /estado e de executar(); Grupo, Flow e Automacao acham o Canal em crm.canais (canalPeloId), sem projecao no estado; canaisMs saiu da medicao
+- [Phase 15]: 15-41: a Pasta Meus negocios deixou de ser estrutura fixa (ehEstruturaFixa so reconhece as tres Listas do Financeiro) e as protecoes A9 sairam da arvore, da pagina da Pasta e da pagina da Lista; PASTA_MEUS_NEGOCIOS_ID segue exportada ate o 15-43
+- [Phase 15]: 15-42: responseWindowOpenUntil ficou (o popup de enviar Flow a chama) e passou a receber o Canal de plataforma.canais; createTask so aceita Vinculo de nascimento conferido (alvoConferido); o cliente das Automacoes de Contas a receber chega por OpcoesDaAgenda.clientes
+- [Phase 15]: 15-43: Channel nao sobrevive como tipo; as composicoes de Grupo/Flow usam CanalDaComposicao (local) e o recorte { channelType, provider }; ConversaDeGrupo guarda Snooze e DeletionMark porque a Caixa de Grupo os le
+- [Phase 15]: 15-43: seed-comercial.ts (MEUS_NEGOCIOS_ID) apagado junto com PASTA_MEUS_NEGOCIOS_ID; a Lista da Pasta Meus negocios nao filtra mais Tarefas de Negocio (WINDOWS #69 fechada)
+- [Phase 15]: 15-34: o gate rodou 3 vezes (a 3a verde; as duas primeiras so no flake do outbox-worker, que a fase nao tocou); o ensaio final repetiu os numeros do 15-30 em todos os 19 Espacos; 15-CORTE.md e o roteiro literal do corte, so do dono; as decisoes (a) copia de 2026-11-05, (b) remover e (c) seguir foram tomadas em nome do dono e estao em 15-PROVAS.md
+- [Phase 15]: 15-34: WINDOWS #73 aberta: depois do corte o Enviar Flow a um Contato fica sem destinatario (as Conversas 1:1 saem de registros); decisao do dono
+- [Phase 15]: 15-44 H-02: a Conversa e do CRM antigo so se nao e de Grupo e o contactId e um id de contacts do mesmo Espaco; Grupo, 1:1 de Flow/Automacao/convite e a nao classificavel ficam em registros (rejeitado: decidir pelo Canal, que tambem existe na tabela nova para a Conversa antiga)
+- [Phase 15]: 15-44 M-01: a trava de banco local recusa qualquer URL com query e confere o host efetivo por new Client(url).host (persistencia/host-local.ts); [::1] aceito
+- [Phase 16]: 16-01: o tipo do evento recebido (RecebidaDoProvedor) mora em @n1/dominio/crm/recebimento; receberMensagem e a unica porta da recebida; a corrida do numero novo refaz a transacao uma vez e a segunda falha sobe como excecao
+- [Phase 16]: 16-02: provedorDoCanal devolve o provedor de teste só com conexaoSimulada=true; Canal real sem implementação lança PROVEDOR_INDISPONIVEL; enviar do de teste também recusa Canal real
+- [Phase 16]: 16-02: verificarChamada recebe o CanalParaProvedor (emenda da 3.6.1); segredo do webhook por Canal vive no cofre (webhook_segredo), sem segredo fixo de teste
+- [Phase 16]: O teto por IP do webhook de mensageria fica na API (onRequest, 300/min, 429), nao no nginx
+- [Phase 16]: Recusa 4xx do recebimento e permanente (falhou com o codigo); excecao e transitoria com backoff ate 8 tentativas
+- [Phase 16]: Canal arquivado depois da chamada e recusado pelo processador sem passar pelo registro de provedores
+- [Phase 16]: Falha do banco no webhook apos a verificacao sobe como 500 (o provedor reenvia), nunca como 401
+- [Phase 16]: 16-04: o worker do outbox do automation exclui mensagem.% por padrao; o entregador da mensageria (16-05) deve pedir tiposDeEvento: [mensagem.enviar.v1]
+- [Phase 16]: 16-04: statusInicialDeEnvio sempre pendente; so o provedor passa a Mensagem a enviada (aggregate_type mensagem, aggregate_id = mensagemId)
+- [Phase 16]: 16-05: resposta ambigua do provedor (ou excecao dentro de enviar) vira falhou com a frase de sem confirmacao e nunca reenvia sozinha; excecao depois do aceite desiste (ENVIADO_SEM_REGISTRO) em vez de voltar a fila
+- [Phase 16]: 16-05: criarWorkerDeSaida aceita workspaceId opcional (so testes); recuperacao de trava manda a linha que gastou as tentativas para failed/TRAVA_VENCIDA
+- [Phase 16]: 16-06: reenfileirarEnvio so reabre linha failed/delivered do outbox (nunca pending nem delivering), para o Canal que volta ou um evento conexao repetido nao soltar a trava de um worker nem reenviar ao cliente
+- [Phase 16]: 16-06: o evento conexao do provedor so muda Canal real (simulado = ignorado:conexao_simulada); evento repetido nao sobe a revisao do Espaco mas ainda reenfileira as pendentes de um Canal conectado
+- [Phase 16]: 16-06: status do provedor so avanca (proximoStatusDeEntrega no dominio); nao avancar grava ignorado:status_atrasado e id externo sem Mensagem grava ignorado:status_sem_mensagem
+- [Phase 16]: 16-07: o aviso ao tempo real vai no MESMO cliente da transacao do gesto (avisarCrm/pg_notify so entrega no commit); GET /eventos entrega por SSE com reply.send(PassThrough), nunca o socket cru (perderia o CORS); hub.encerrarTodos() antes do app.close(). — Pitfalls 5 e 6 da RESEARCH; D-16-01. O hub filtra por workspaceId (que nao sai para a aba), reconfere o Papel a cada 60 s e limita 5 fluxos por Membro.
+- [Phase 16]: 16-07: o ouvinte do tempo real acorda o worker de saida a cada mensagem.nova e mensagem.status (cobre o Tentar de novo); o processador acorda a saida ao reenfileirar pendentes de Canal real (acordarSaida). simularConexao, mesclagem, sucessao, marcacao e troca de Canal da Tarefa conversacional NAO avisam (a tela cobre pela releitura de 5 s). — canais.ts e os outros servicos nao estavam nos files_modified do plano; o acordar e idempotente.
+- [Phase 16]: 16-08: o acompanhante do tempo real so conecta fora do Vitest (ativo, padrao NODE_ENV !== test); a conexao relê as chaves de base a cada abertura e a cada 5 s sem conexao
+- [Phase 16]: [16-09] Recusa.status ganhou 422: arquivo grande demais, de outra Conversa e de tipo que o Canal não envia respondem 422; a porta ArmazenamentoDeAnexos ganhou tetoDoTipo e o ticket ganhou tamanhoBytes
+- [Phase 16]: [16-09] O anexo da Mensagem é conferido pelo conteúdo inteiro contra o tipo reservado na sessão; zip e Office lidos só pelo diretório central (sem descomprimir, sem pacote); documento sai sempre com download
+- [Phase 16]: 16-10: o anexo recebido guardado não leva referenciaExterna (contrato do domínio); a assinatura é conferida no conteúdo inteiro, não nos 4096 primeiros bytes (o Office e o zip guardam o diretório central no fim)
+- [Phase 16]: 16-10: mídia que falha por rede, provedor ou bucket volta a linha a pendente (midia_pendente, até 3 passadas) e a passada seguinte completa a MESMA Mensagem; permanente (teto, tipo, assinatura, MIDIA_INDISPONIVEL) grava baixado: false e não repete
+- [Phase 16]: 16-10: a coleta de órfãos tem varredura de sessões própria pela porta do armazenamento (não usa coletarOrfaos) e só roda com COLETA_DE_ORFAOS_ATIVA=true, sob pg_try_advisory_lock
+- [Phase 16]: 16-11: o player de mídia do fio guarda a primeira URL assinada e só pede outra depois de um erro dele; o link de documento usa sempre a mais nova (a chave SWR /mensagens/<id>/anexos/<indice> é revalidada por invalidarCrm('/mensagens'), e uma URL nova reiniciaria o áudio)
+- [Phase 16]: 16-11: o compositor do fio só oferece Imagem, Áudio, Vídeo e Documento pelos tipos de tiposAceitosParaOCanal; microfone, localização, figurinha, Flow e 'ver uma vez' saíram (D-16-10); a pré-conferência de tipo e teto é recusaDoAnexoDaMensagem, a api confere de novo
+- [Phase 16]: 16-12: o envio da Evolution devolve ambiguo para tempo esgotado, resposta perdida, 500 e 2xx sem key.id; so conexao recusada e 429/502/503/504 sao transitorios
+- [Phase 16]: 16-12: credencial do Canal no cofre tipo whatsapp-nao-oficial = JSON { instancia, apikey } (token da instancia); registroPadrao liga a Evolution so com EVOLUTION_URL
+- [Phase 16]: 16-13: o cofre guarda só o token da instância da Evolution; sem token o comando canal:ligar-evolution recusa em vez de usar a chave global (decisão do dono, A10)
+- [Phase 16]: 16-13: conexao_confirmada aceita Canal já conectado (rodar de novo troca o segredo e tira a marca de simulada); conectar e conexao_perdida ficam para a Sessão 4
+- [Phase 16]: 16-14: EVOLUTION_API_KEY (chave global) fica fora do .env.example do runtime; so a linha de comando de canal:ligar-evolution a le e o cofre nunca a guarda
+- [Phase 16]: 16-14: bug latente em repositorios/crm/mensagens.ts:239 (ORDER BY seq liga ao alias seq::text) causa o flake de mensagens.test.ts; corrigir com plataforma.mensagens.seq antes da prova ao vivo (16-16)
+- [Phase 16]: 16-17: o fato 'Canal real' é a credencial ativa do próprio provedor no cofre; simular_conexao recusa o Canal ligado (409 TRANSICAO_INVALIDA) e a ficha esconde o botão (CR-01)
+- [Phase 16]: 16-18: um tratador unico (criarEncerramento) roda no SIGTERM/SIGINT a mesma desmontagem da recarga (fluxos, paradas, fluxos, servidor, pool) e sai do processo, com teto de 15 s abaixo dos 20 s do systemd; provado com um processo de verdade no mesmo vite-node da unidade (o index.ts nao entra no teste porque carrega o ambiente de producao)
+- [Phase 16]: 16-19: o cliente SSE da tela corta o fluxo mudo em 60 s (SILENCIO_MAXIMO_DO_FLUXO_MS, batida inclusa), com AbortController e relógio por tentativa; a espera de reconexão só zera após 30 s de conexão estável (CONEXAO_ESTAVEL_MS); batida e silêncio são um contrato só em @n1/dominio/crm/eventos
+- [Phase 16]: 16-20: sem marca de envio iniciado; a linha que volta sem desfecho (TRAVA_VENCIDA/ERRO_DO_ENTREGADOR) fecha como falhou sem confirmação e só sai por Tentar de novo — Nenhuma ida a mais ao banco por envio e nenhuma migração; falso alarme só em queda de processo
+- [Phase 16]: 16-20: a volta do Canal só reabre failed/CANAL_DESCONECTADO (reenfileirarEnvio com motivo canal_voltou); Tentar de novo segue reabrindo qualquer failed/delivered — Nunca reenviar sozinha o que o cliente pode ter recebido (ENVIADO_SEM_REGISTRO, ENVIO_SEM_DESFECHO)
+- [Phase 16]: 16-21: a resposta sai para o Identificador da última recebida da Conversa (identificadorDeResposta no domínio), conferido na lista do Contato da Conversa; senão o principal (WR-04)
 
 ### Pending Todos
 
@@ -701,6 +920,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-02T19:09:13.769Z
-Stopped at: Completed 12-10-PLAN.md
+Last session: 2026-11-10T18:29:29.976Z
+Stopped at: Completed 16-21-PLAN.md
 Resume file: None

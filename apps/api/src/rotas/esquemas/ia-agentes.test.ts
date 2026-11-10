@@ -43,9 +43,14 @@ describe("esquemas/ia-agentes — a forma dos args de ia/agentes.ts", () => {
     expect(
       IA_AGENTES.ensaiarAgente.safeParse(viaJson(["agt_1", { texto: "oi", anchor: { type: "task", id: "tsk_1" } }])).success,
     ).toBe(true);
+    // 15-08 — o `nomes` do navegador (3.4.9): aceito na forma, descartado pelo servidor.
+    expect(
+      IA_AGENTES.ensaiarAgente.safeParse(viaJson(["agt_1", { texto: "oi", anchor: { type: "deal", id: "neg_1" } }, { neg_1: "Proposta" }])).success,
+    ).toBe(true);
   });
 
   it("(c) formas hostis caem", () => {
+    expect(IA_AGENTES.ensaiarAgente.safeParse(viaJson(["agt_1", { texto: "oi" }, { neg_1: 7 }])).success).toBe(false);
     expect(IA_AGENTES.ensaiarAgente.safeParse(["agt_1", { text: "oi" }]).success).toBe(false);
     expect(IA_AGENTES.ensaiarAgente.safeParse(["agt_1", { texto: "oi", anchor: { type: "task" } }]).success).toBe(false);
     expect(IA_AGENTES.transferirAgente.safeParse(["agt_1"]).success).toBe(false);

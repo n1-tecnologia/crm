@@ -27,7 +27,7 @@ import type { EntradaDeContaAReceberHistorica } from "@n1/dominio/operations/imp
 
 import { bootstrapGestao } from "../../bootstrap/gestao";
 import { carregarEnv, encerrar, pool } from "../../persistencia/conexao";
-import { hashCanonico, importarLote, reconciliar, type EntradaParaImportar } from "./importar-contas-a-receber";
+import { construirCatalogoDeClientes, hashCanonico, importarLote, reconciliar, type EntradaParaImportar } from "./importar-contas-a-receber";
 
 carregarEnv();
 const temBanco = Boolean(process.env.DATABASE_URL);
@@ -99,6 +99,59 @@ async function comentariosDaTarefa(legacyTaskId: string): Promise<number> {
   return Number(r.rows[0]?.n ?? "0");
 }
 
+
+/** Contatos e Empresas do Espaço de teste nas TABELAS do CRM (Fase 15, 3.4.10), numa transação: a restrição de admin da Empresa é adiada até o commit. */
+async function semearClientesNasTabelas(): Promise<{ contatoAtivo: string; contatoNaLixeira: string; empresaAtiva: string; empresaNaLixeira: string }> {
+  const cliente = await pool().connect();
+  try {
+    await cliente.query("begin");
+    const novoContato = async (nome: string, estado: string): Promise<string> =>
+      (
+        await cliente.query<{ id: string }>(
+          "insert into plataforma.contatos (workspace_id, nome, estado, proprietario_id, criado_por) values ($1, $2, $3, $4, $4) returning id",
+          [WORKSPACE, nome, estado, ATOR],
+        )
+      ).rows[0]!.id;
+    const novaEmpresa = async (nome: string, estado: string, admin: string): Promise<string> => {
+      const id = (
+        await cliente.query<{ id: string }>(
+          "insert into plataforma.empresas (workspace_id, nome_fantasia, estado, proprietario_id, criado_por) values ($1, $2, $3, $4, $4) returning id",
+          [WORKSPACE, nome, estado, ATOR],
+        )
+      ).rows[0]!.id;
+      await cliente.query("insert into plataforma.contato_empresa (workspace_id, contato_id, empresa_id, admin, criado_por) values ($1, $2, $3, true, $4)", [WORKSPACE, admin, id, ATOR]);
+      return id;
+    };
+    const contatoAtivo = await novoContato("Ana Lima", "ativo");
+    const contatoNaLixeira = await novoContato("Carla Dias", "na_lixeira");
+    const empresaAtiva = await novaEmpresa("Acme da tabela", "ativo", contatoAtivo);
+    const empresaNaLixeira = await novaEmpresa("Empresa na lixeira", "na_lixeira", contatoAtivo);
+    await cliente.query("commit");
+    return { contatoAtivo, contatoNaLixeira, empresaAtiva, empresaNaLixeira };
+  } catch (erro) {
+    await cliente.query("rollback");
+    throw erro;
+  } finally {
+    cliente.release();
+  }
+}
+
+async function limparClientesDasTabelas(): Promise<void> {
+  const cliente = await pool().connect();
+  try {
+    await cliente.query("begin");
+    for (const tabela of ["contato_empresa", "empresas", "contato_identificadores", "contatos"]) {
+      await cliente.query(`delete from plataforma.${tabela} where workspace_id = $1`, [WORKSPACE]);
+    }
+    await cliente.query("commit");
+  } catch (erro) {
+    await cliente.query("rollback");
+    throw erro;
+  } finally {
+    cliente.release();
+  }
+}
+
 d("importarLote / reconciliar de Contas a receber (Postgres real)", () => {
   beforeAll(async () => {
     const cliente = await pool().connect();
@@ -116,6 +169,7 @@ d("importarLote / reconciliar de Contas a receber (Postgres real)", () => {
     await pool().query("delete from plataforma.registros where workspace_id = $1 and colecao in ('tasks', 'activity', 'automationExecutions')", [WORKSPACE]);
     await pool().query("delete from plataforma.importacao_ledger where origem = $1", [ORIGEM_DE_TESTE]);
     await pool().query("delete from plataforma.integration_outbox where workspace_id = $1", [WORKSPACE]);
+    await limparClientesDasTabelas();
   });
 
   afterAll(async () => {
@@ -309,6 +363,54 @@ d("importarLote / reconciliar de Contas a receber (Postgres real)", () => {
       expect(reconciliacao.porResultado.avisada).toBe(1);
       expect(reconciliacao.tarefasNoEspaco).toBe(2);
       expect(reconciliacao.bateComOLedger).toBe(true);
+    } finally {
+      cliente.release();
+    }
+  });
+  it("(j) construirCatalogoDeClientes lê Contatos e Empresas ATIVOS das tabelas, não os do modelo antigo em registros (3.4.10)", async () => {
+    const ids = await semearClientesNasTabelas();
+    // Um Contato do modelo antigo, só em `registros`: não pode entrar no catálogo.
+    await pool().query(
+      `insert into plataforma.registros (workspace_id, colecao, id, dados) values ($1, 'contacts', 'cnt_legado_cr', $2::jsonb)`,
+      [WORKSPACE, JSON.stringify({ id: "cnt_legado_cr", workspaceId: WORKSPACE, lifecycle: "ativo", firstName: "Legado", lastName: "Antigo", ownerMemberId: ATOR, identifiers: [], consents: [], addresses: [], tagIds: [], fieldValues: [], comments: [] })],
+    );
+    const { catalogoDeClientes } = await construirCatalogoDeClientes(WORKSPACE);
+    expect(catalogoDeClientes).toEqual(
+      expect.arrayContaining([
+        { tipo: "contact", id: ids.contatoAtivo, nome: "Ana Lima" },
+        { tipo: "company", id: ids.empresaAtiva, nome: "Acme da tabela" },
+      ]),
+    );
+    expect(catalogoDeClientes.map((c) => c.id)).not.toContain(ids.contatoNaLixeira);
+    expect(catalogoDeClientes.map((c) => c.id)).not.toContain(ids.empresaNaLixeira);
+    expect(catalogoDeClientes.map((c) => c.id)).not.toContain("cnt_legado_cr");
+    expect(catalogoDeClientes).toHaveLength(2);
+  });
+
+  it("(k) importarLote só aceita o clienteRef que está no catálogo recebido: o da tabela vira Vínculo, o de fora é rejeitado com o motivo", async () => {
+    const ids = await semearClientesNasTabelas();
+    const { catalogoDeClientes } = await construirCatalogoDeClientes(WORKSPACE);
+    const runId = randomUUID();
+    const cliente = await pool().connect();
+    try {
+      const entradas = [
+        entrada(`k1_${runId}`, { clienteRef: { tipo: "contact", id: ids.contatoAtivo } }),
+        entrada(`k2_${runId}`, { clienteRef: { tipo: "contact", id: ids.contatoNaLixeira } }),
+        entrada(`k3_${runId}`, { clienteRef: { tipo: "company", id: ids.empresaAtiva } }),
+      ];
+      const resultado = await importarLote({ cliente, workspaceId: WORKSPACE, actingMemberId: ATOR, runId, entradas, dryRun: false, origem: ORIGEM_DE_TESTE, catalogoDeClientes });
+      expect(resultado.importadas).toBe(2);
+      expect(resultado.rejeitadas).toBe(1);
+      const rejeitada = resultado.detalhes.find((d) => d.resultado === "rejeitada");
+      expect(rejeitada?.legacyTaskId).toBe(`k2_${runId}`);
+      expect(rejeitada?.motivo).toBe(`Cliente "${ids.contatoNaLixeira}" (contact) não encontrado no CRM.`);
+      const { rows } = await pool().query<{ dados: { toType: string; toId: string; role: string } }>(
+        "select dados from plataforma.registros where workspace_id = $1 and colecao = 'links' order by dados->>'toId'",
+        [WORKSPACE],
+      );
+      expect(rows.map((r) => [r.dados.toType, r.dados.toId, r.dados.role]).sort()).toEqual(
+        [["contact", ids.contatoAtivo, "cliente"], ["company", ids.empresaAtiva, "cliente"]].sort(),
+      );
     } finally {
       cliente.release();
     }

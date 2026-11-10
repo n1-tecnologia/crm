@@ -33,12 +33,15 @@ export interface FiltroDaListaDeNegocios {
   readonly situacao?: SituacaoNegocio | undefined;
   readonly empresaId?: string | undefined;
   readonly contatoId?: string | undefined;
+  readonly proprietarioId?: string | undefined;
   readonly q?: string | undefined;
   readonly limite: number;
   readonly deslocamento: number;
 }
 
 export interface LinhaDeNegocio {
+  /** Quem precisa do id antes de inserir (a Tarefa conversacional, 14-14) o escolhe; ausente, o default do banco gera. */
+  readonly id?: string | undefined;
   readonly titulo: string;
   readonly objeto?: string | undefined;
   readonly descricao?: string | undefined;
@@ -182,6 +185,7 @@ export function criarRepositorioDeNegociosPg(cliente: Pool | PoolClient): Reposi
       if (filtro.situacao !== undefined) adicionar("situacao", filtro.situacao);
       if (filtro.empresaId !== undefined) adicionar("empresa_id", filtro.empresaId);
       if (filtro.contatoId !== undefined) adicionar("contato_id", filtro.contatoId);
+      if (filtro.proprietarioId !== undefined) adicionar("proprietario_id", filtro.proprietarioId);
       const texto = filtro.q?.trim() ?? "";
       if (texto !== "") {
         parametros.push(contemTexto(texto));
@@ -247,11 +251,13 @@ export function criarRepositorioDeNegociosPg(cliente: Pool | PoolClient): Reposi
     },
 
     async inserir(workspaceId, linha) {
+      // O `id` só entra quando vem: sem ele a coluna fica fora do `insert` e o default da 007 decide.
+      const comId = linha.id !== undefined;
       const resultado = await cliente.query<LinhaDoBanco>(
         `insert into plataforma.negocios
            (workspace_id, titulo, objeto, descricao, empresa_id, contato_id, funil_id, etapa_id, valor, moeda,
-            probabilidade, origem, data_prevista_fechamento, proprietario_id, criado_por)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9::numeric, coalesce($10, 'BRL'), $11, $12, $13::date, $14, $15)
+            probabilidade, origem, data_prevista_fechamento, proprietario_id, criado_por${comId ? ", id" : ""})
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9::numeric, coalesce($10, 'BRL'), $11, $12, $13::date, $14, $15${comId ? ", $16" : ""})
          returning ${COLUNAS("")}`,
         [
           workspaceId,
@@ -269,6 +275,7 @@ export function criarRepositorioDeNegociosPg(cliente: Pool | PoolClient): Reposi
           linha.dataPrevistaFechamento ?? null,
           linha.proprietarioId,
           linha.criadoPor,
+          ...(comId ? [linha.id] : []),
         ],
       );
       const inserida = resultado.rows[0];

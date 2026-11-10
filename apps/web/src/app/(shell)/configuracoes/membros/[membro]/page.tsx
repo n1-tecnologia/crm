@@ -13,6 +13,7 @@
 
 import Link from "next/link";
 import { use, useState } from "react";
+import { useSucessaoNoCrm } from "@/dados/crm/sucessao";
 import { useData, useRun, useSession } from "@/dados/store";
 import { alterarEmailDoConvite, alterarPapelDoMembro, previewSuccession } from "@n1/dominio/operations";
 import { useFormat } from "@/features/shell/use-format";
@@ -39,12 +40,20 @@ const OWNED_LABEL: Record<string, string> = {
   contact: "Contatos",
   company: "Empresas",
   deal: "Negócios",
+  conversation: "Conversas",
   agent: "Agentes",
   automation: "Automações",
   panel: "Painéis",
   collection: "Coleções",
   form: "Formulários",
 };
+
+/**
+ * Contatos, Empresas, Negócios e Conversas do CRM NÃO vêm de `previewSuccession`: a prévia
+ * deles é lida das tabelas (`useSucessaoNoCrm`, D-15-08). Do estado em memória sobra o que
+ * mora em `registros` (Agentes, Automações, Painéis, Coleções, Formulários).
+ */
+const TIPOS_DO_CRM_NAS_TABELAS = new Set(["contact", "company", "deal", "conversation"]);
 
 export default function MembroPage({ params }: { params: Promise<{ membro: string }> }) {
   const { membro } = use(params);
@@ -58,6 +67,12 @@ export default function MembroPage({ params }: { params: Promise<{ membro: strin
   const [novoEmail, setNovoEmail] = useState<string | null>(null);
 
   const member = state.members.find((m) => m.id === membro);
+  const acting = state.members.find((m) => m.id === memberId);
+  const actingRole = state.roles.find((r) => r.id === acting?.roleId);
+  const mayGovern = actingRole?.base === "administrador" || actingRole?.base === "proprietario";
+  // Só Administrador ou Proprietário ativo lê a sucessão (403 aos demais), e um Membro removido já não tem o que passar.
+  const consultaOCrm = mayGovern && member !== undefined && member.state !== "removido";
+  const sucessaoNoCrm = useSucessaoNoCrm(consultaOCrm ? member.id : undefined);
 
   if (!member) {
     return (
@@ -72,10 +87,6 @@ export default function MembroPage({ params }: { params: Promise<{ membro: strin
       </div>
     );
   }
-
-  const acting = state.members.find((m) => m.id === memberId);
-  const actingRole = state.roles.find((r) => r.id === acting?.roleId);
-  const mayGovern = actingRole?.base === "administrador" || actingRole?.base === "proprietario";
 
   const role = state.roles.find((r) => r.id === member.roleId);
   const isOwner = state.workspace.ownerMemberId === member.id;
@@ -95,18 +106,34 @@ export default function MembroPage({ params }: { params: Promise<{ membro: strin
   );
   const successor = state.members.find((m) => m.id === member.successorId);
 
-  const owned = preview.transfers.reduce<Record<string, number>>((counts, item) => {
+  const noCrm = sucessaoNoCrm.data;
+  // O que mora em `registros` vem do estado; o do CRM, das tabelas (nada é contado em dobro).
+  const transferenciasDoEstado = preview.transfers.filter((item) => !TIPOS_DO_CRM_NAS_TABELAS.has(item.type));
+  const soltasDoEstado = preview.releases.filter((item) => !TIPOS_DO_CRM_NAS_TABELAS.has(item.type));
+  const owned = transferenciasDoEstado.reduce<Record<string, number>>((counts, item) => {
     counts[item.type] = (counts[item.type] ?? 0) + 1;
     return counts;
   }, {});
+  if (noCrm) {
+    const doCrm: ReadonlyArray<readonly [string, number]> = [
+      ["contact", noCrm.contatos],
+      ["company", noCrm.empresas],
+      ["deal", noCrm.negocios],
+      ["conversation", noCrm.conversasPassadas],
+    ];
+    for (const [tipo, quantos] of doCrm) if (quantos > 0) owned[tipo] = quantos;
+  }
+  const totalPossuido = Object.values(owned).reduce((soma, quantos) => soma + quantos, 0);
+  // Atender uma Conversa passa ao Sucessor na remoção, mas não é propriedade: não impede o rebaixamento a Convidado.
+  const registrosDePropriedade = totalPossuido - (owned.conversation ?? 0);
 
   const changeRole = (roleId: string) => {
     const nextRole = state.roles.find((r) => r.id === roleId);
     if (!nextRole) return;
-    if (nextRole.base === "convidado" && preview.transfers.length > 0) {
+    if (nextRole.base === "convidado" && registrosDePropriedade > 0) {
       setNotice(null);
       setError(
-        `Rebaixar para um Papel de base Convidado exige transferir ${preview.transfers.length} registro(s) de propriedade no mesmo ato. Encerre a participação com Sucessor ou transfira a propriedade antes.`,
+        `Rebaixar para um Papel de base Convidado exige transferir ${registrosDePropriedade} registro(s) de propriedade no mesmo ato. Encerre a participação com Sucessor ou transfira a propriedade antes.`,
       );
       return;
     }
@@ -233,9 +260,9 @@ export default function MembroPage({ params }: { params: Promise<{ membro: strin
             ) : null}
 
             <Painel>
-              <CabecalhoDePainel titulo="O que este Membro possui" contagem={preview.transfers.length} />
+              <CabecalhoDePainel titulo="O que este Membro possui" contagem={totalPossuido} />
               <div className="p-3">
-                {preview.transfers.length === 0 ? (
+                {totalPossuido === 0 && !sucessaoNoCrm.error && !(consultaOCrm && !noCrm) ? (
                   <EmptyState
                     compact
                     title="Este Membro não é Proprietário de nada."
@@ -255,9 +282,17 @@ export default function MembroPage({ params }: { params: Promise<{ membro: strin
                     ))}
                   </ul>
                 )}
+                {sucessaoNoCrm.error ? (
+                  <p role="alert" className="app-base mt-2 px-1" style={{ color: "var(--erro)" }}>
+                    Não foi possível contar o CRM: {sucessaoNoCrm.error.message}
+                  </p>
+                ) : consultaOCrm && !noCrm ? (
+                  <p className="app-base mt-2 px-1" style={{ color: "var(--texto-3)" }}>Contando o que está no CRM…</p>
+                ) : null}
                 <p className="app-meta mt-2 px-1">
                   Encerrar a participação transfere tudo isto ao Sucessor, e libera{" "}
-                  {preview.releases.length} atribuição(ões) sem Responsável.{" "}
+                  {soltasDoEstado.length} atribuição(ões) sem Responsável (Tarefas e itens de Checklist); as
+                  Conversas que ele atende passam ao Sucessor como Atribuído.{" "}
                   <Link href="/configuracoes/membros" className="underline">
                     Encerrar a partir da lista de Membros
                   </Link>

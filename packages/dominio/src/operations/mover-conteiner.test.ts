@@ -12,7 +12,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { effectiveContainerConfig, effectiveListConfig, irmaosOrdenados, memberReachesContainer } from "../derive";
 import { recortarDiferenca, recortarValor, visibilidadePara } from "../derive-visibilidade";
-import { MEUS_NEGOCIOS_ID } from "../seed-comercial";
 import { buildSeed } from "../seed";
 import { LISTA_ID as LISTA_SOLICITACOES_ID } from "../solicitacao-de-pagamento-evolver";
 import type { DataState } from "../state";
@@ -22,6 +21,9 @@ import { CP, CR } from "./financeiro";
 import { archiveContainer, consequenciasDeMover, createFolder, createList, createSpace, moveContainer, recusaDeMover, recusaDeReordenar, reorderContainers } from "./structure";
 import { createTask, setTaskFieldValue, updateTask } from "./tasks";
 
+/** A Pasta que ainda se chama «Meus negócios» nos Espaços de teste: uma Pasta comum (15-41, D-15-14); a constante do domínio saiu no 15-43. */
+const MEUS_NEGOCIOS_ID = "fld_meus_negocios";
+
 const THIAGO = "mem_thiago"; // Proprietário
 const RAFAEL = "mem_rafael"; // Administrador
 const JULIA = "mem_julia"; // Papel de vendas: não administra
@@ -30,6 +32,29 @@ let state: DataState;
 beforeEach(() => {
   state = buildSeed();
 });
+
+/**
+ * A Pasta "Meus negócios", agora uma Pasta comum (15-41, D-15-14). O seed não a cria mais (15-31, D-15-13): os casos
+ * que a usam a montam no próprio arranjo, no lugar em que ela ficava (Comercial, ordem 3) — é o que ainda existe nos
+ * Espaços de teste com Tarefas espelho.
+ */
+const montarMeusNegocios = (): void => {
+  state.folders.push({
+    id: MEUS_NEGOCIOS_ID,
+    workspaceId: state.workspace.id,
+    createdBy: { kind: "member", id: JULIA },
+    createdAt: "2026-01-01T00:00:00.000Z",
+    lifecycle: "ativo",
+    name: "Meus negócios",
+    description: "Uma Lista por Funil de Negócios, com as Etapas como Status e cada Negócio como Tarefa.",
+    order: 3,
+    isPrivate: false,
+    modes: {},
+    blocks: {},
+    parentType: "space",
+    parentId: "spc_com",
+  });
+};
 
 const pasta = (nome: string, parentId = "spc_com", parentType: "space" | "folder" = "space", por = THIAGO, extra: { isPrivate?: boolean } = {}): string => {
   const r = createFolder(state, por, { name: nome, parentType, parentId, ...extra });
@@ -580,6 +605,7 @@ describe("reorderContainers — paridade entre o recorte do Membro e o Espaço i
 
 describe("reorderContainers — o resultado não traz id que o ator não alcança (10-REVIEW MEDIUM-03)", () => {
   it("devolve só os irmãos que o Administrador alcança, e o diff recortado também não traz o privado", () => {
+    montarMeusNegocios();
     const P1 = pasta("Visível 1");
     const PRIVADA = pasta("Privada da diretoria", "spc_com", "space", THIAGO, { isPrivate: true });
     const P2 = pasta("Visível 2");
@@ -933,25 +959,42 @@ describe("moveContainer — bloqueio, colisão de nome, Formulário e estrutura 
       expect(r.error).toBe("Lista Solicitações de pagamento é uma estrutura fixa e não muda de lugar.");
     });
 
-    it("recusa mover a Pasta Meus negócios", () => {
+    it("a Pasta Meus negócios já não é fixa: muda de Espaço como qualquer Pasta", () => {
+      montarMeusNegocios();
       const r = moveContainer(state, THIAGO, "folder", MEUS_NEGOCIOS_ID, { parentType: "space", parentId: "spc_ops" });
-      expect(r.ok).toBe(false);
-      if (r.ok) return;
-      expect(r.error).toBe("Pasta Meus negócios é uma estrutura fixa e não muda de lugar.");
-      expect(state.folders.find((f) => f.id === MEUS_NEGOCIOS_ID)?.parentId).toBe("spc_com");
+      expect(r.ok).toBe(true);
+      expect(state.folders.find((f) => f.id === MEUS_NEGOCIOS_ID)?.parentId).toBe("spc_ops");
     });
 
-    it("recusa qualquer destino dentro de Meus negócios, para Lista e para Pasta", () => {
+    it("a Pasta Meus negócios recebe Listas e Pastas como qualquer Pasta", () => {
+      montarMeusNegocios();
       const lista1 = moveContainer(state, THIAGO, "list", ALFA, { parentType: "folder", parentId: MEUS_NEGOCIOS_ID });
-      expect(lista1.ok).toBe(false);
-      if (lista1.ok) return;
-      expect(lista1.error).toBe("A Pasta Meus negócios não recebe Pastas nem Listas.");
+      expect(lista1.ok).toBe(true);
+      expect(listaPorId(ALFA).parentId).toBe(MEUS_NEGOCIOS_ID);
 
       const pasta1 = moveContainer(state, THIAGO, "folder", DEST, { parentType: "folder", parentId: MEUS_NEGOCIOS_ID });
-      expect(pasta1.ok).toBe(false);
-      if (pasta1.ok) return;
-      expect(pasta1.error).toBe("A Pasta Meus negócios não recebe Pastas nem Listas.");
-      expect(listaPorId(ALFA).parentId).toBe(ORIGEM);
+      expect(pasta1.ok).toBe(true);
+      expect(state.folders.find((f) => f.id === DEST)?.parentId).toBe(MEUS_NEGOCIOS_ID);
+    });
+
+    it("UCR-12: mover a ex-Pasta fixa para dentro de outra Pasta e voltar deixa a árvore como estava", () => {
+      montarMeusNegocios();
+      const dentro = lista("Dentro", MEUS_NEGOCIOS_ID);
+      const arvore = () =>
+        JSON.stringify({
+          pastas: state.folders.map((f) => [f.id, f.parentType, f.parentId]).sort(),
+          listas: state.lists.map((l) => [l.id, l.parentType, l.parentId]).sort(),
+        });
+      const antes = arvore();
+
+      const ida = moveContainer(state, THIAGO, "folder", MEUS_NEGOCIOS_ID, { parentType: "folder", parentId: DEST });
+      expect(ida.ok).toBe(true);
+      expect(state.folders.find((f) => f.id === MEUS_NEGOCIOS_ID)?.parentId).toBe(DEST);
+      expect(listaPorId(dentro).parentId).toBe(MEUS_NEGOCIOS_ID);
+
+      const volta = moveContainer(state, THIAGO, "folder", MEUS_NEGOCIOS_ID, { parentType: "space", parentId: "spc_com" });
+      expect(volta.ok).toBe(true);
+      expect(arvore()).toBe(antes);
     });
   });
 });
@@ -1122,8 +1165,15 @@ describe("recusaDeMover × moveContainer — paridade (L1, Pitfall 6)", () => {
 
   it("para as estruturas fixas e para um Membro que não administra, todo destino é recusado nos dois lados", () => {
     expect(divergencias(THIAGO, "list", CP.listId)).toMatchObject({ achados: [], aceitos: 0 });
-    expect(divergencias(THIAGO, "folder", MEUS_NEGOCIOS_ID)).toMatchObject({ achados: [], aceitos: 0 });
+    expect(divergencias(THIAGO, "list", CR.listId)).toMatchObject({ achados: [], aceitos: 0 });
     expect(divergencias(JULIA, "list", "lst_propostas")).toMatchObject({ achados: [], aceitos: 0 });
+  });
+
+  it("a ex-Pasta fixa Meus negócios é uma Pasta comum: os dois lados aceitam os mesmos destinos (15-41)", () => {
+    montarMeusNegocios();
+    const r = divergencias(THIAGO, "folder", MEUS_NEGOCIOS_ID);
+    expect(r.achados).toEqual([]);
+    expect(r.aceitos).toBeGreaterThan(0);
   });
 
   it("sobre o recorte do Membro (`visibilidadePara`), a recusa é a mesma do estado inteiro para um destino que ele vê (Pitfall 6)", () => {
