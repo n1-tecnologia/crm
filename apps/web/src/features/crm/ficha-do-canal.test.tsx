@@ -24,7 +24,7 @@ import { Suspense } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { SWRConfig } from "swr";
-import type { Canal } from "@n1/dominio/crm/canais";
+import { FRASE_DO_CANAL_REAL, type CanalNaFicha } from "@n1/dominio/crm/canais";
 import { buildSeed } from "@n1/dominio/seed";
 import { StoreProvider } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
@@ -52,8 +52,8 @@ function resposta(status: number, corpo: unknown): Response {
   return { ok: status >= 200 && status < 300, status, json: async () => corpo } as Response;
 }
 
-/** O Canal da 008 como a api o devolve em `GET /canais/:id`. */
-function canalRelacional(sobre: Partial<Canal> = {}): Canal {
+/** O Canal da 008 como a api o devolve em `GET /canais/:id` (com o fato da ligação ao provedor, CR-01). */
+function canalRelacional(sobre: Partial<CanalNaFicha> = {}): CanalNaFicha {
   return {
     id: "uuid-1",
     nome: "Suporte do Zap",
@@ -70,6 +70,7 @@ function canalRelacional(sobre: Partial<Canal> = {}): Canal {
     proprietarioPadraoId: null,
     origemPadraoId: null,
     gruposHabilitados: false,
+    ligadoAoProvedor: false,
     criadoPor: "mem_rafael",
     criadoEm: "2026-11-01T00:00:00.000Z",
     atualizadoEm: "2026-11-01T00:00:00.000Z",
@@ -101,7 +102,7 @@ afterEach(() => {
 });
 
 /** Seed + `GET /canais/<id>` devolvendo o Canal; `memberId` decide o Papel (Rafael administra, Júlia é Membro). */
-async function montar(id: string, canal: Canal | null, memberId = "mem_rafael", totalDeConversas = 3) {
+async function montar(id: string, canal: CanalNaFicha | null, memberId = "mem_rafael", totalDeConversas = 3) {
   if (canal) rotas[`GET /canais/${id}`] = () => resposta(200, { ok: true, dados: canal });
   else rotas[`GET /canais/${id}`] = () => resposta(404, { ok: false, error: "Canal não encontrado.", codigo: "NAO_ENCONTRADO" });
   rotas[`GET /conversas?estado=ativo&canalId=${id}&limite=20&deslocamento=0`] = () =>
@@ -178,6 +179,23 @@ describe("08-09 — a ficha do Canal relacional", () => {
     await waitFor(() => expect(chamadasRest().some(([url]) => url === "http://api/canais/uuid-1/desconectar")).toBe(true));
     await waitFor(() => expect(hidratar).toHaveBeenCalled());
     expect(await screen.findByText("Canal desconectado.")).toBeTruthy();
+  });
+
+  it("CR-01 (16-17): Canal ligado a um provedor e desconectado: sem Simular conexão, com a frase de como reconectar", async () => {
+    await montar("uuid-1", canalRelacional({ ligadoAoProvedor: true, conexao: "desconectada" }));
+
+    expect(await screen.findByRole("heading", { name: /Suporte do Zap/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Simular conexão" })).toBeNull();
+    expect(screen.getByText(FRASE_DO_CANAL_REAL)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Arquivar" })).toBeTruthy();
+  });
+
+  it("CR-01 (16-17): Canal ligado a um provedor e conectado: Desconectar aparece e Simular conexão não", async () => {
+    await montar("uuid-1", canalRelacional({ ligadoAoProvedor: true, conexao: "conectada" }));
+
+    expect(await screen.findByRole("heading", { name: /Suporte do Zap/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Desconectar" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Simular conexão" })).toBeNull();
   });
 
   it("(4) Arquivar pede confirmação e só então faz POST …/arquivar", async () => {

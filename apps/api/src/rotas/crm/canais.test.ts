@@ -13,7 +13,7 @@ import { randomBytes } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { usuarioDoSeed } from "@n1/dominio";
 import { buildSeed } from "@n1/dominio/seed";
-import { FRASE_DO_CANAL_REAL, type Canal } from "@n1/dominio/crm/canais";
+import { FRASE_DO_CANAL_REAL, type Canal, type CanalNaFicha } from "@n1/dominio/crm/canais";
 import { buildApp } from "../../app";
 import { encerrar, pool } from "../../persistencia/conexao";
 import { TIPO_DO_SEGREDO_DO_WEBHOOK } from "../../mensageria/provedor";
@@ -49,7 +49,7 @@ describe("rotas de Canais — serviço falso, sem banco", () => {
       },
       obter: (...a) => {
         chamadas.push(["obter", ...a]);
-        return Promise.resolve(sucesso({} as Canal));
+        return Promise.resolve(sucesso({} as CanalNaFicha));
       },
       editar: (...a) => {
         chamadas.push(["editar", ...a]);
@@ -128,7 +128,10 @@ describe("rotas de Canais (08-03) — serviço falso, sem banco", () => {
         return Promise.resolve(sucesso({ itens: [], total: 0 }));
       },
       criar: registrar("criar"),
-      obter: registrar("obter"),
+      obter: (...a) => {
+        chamadas.push(["obter", ...a]);
+        return Promise.resolve(sucesso({ id: "c1" } as CanalNaFicha));
+      },
       editar: registrar("editar"),
       simularConexao: registrar("simularConexao"),
       desconectar: registrar("desconectar"),
@@ -441,6 +444,14 @@ describeComBanco("rotas de Canais — serviço real, Postgres local", () => {
       expect(await linha(id)).toEqual({ conexao: "desconectada", conexao_simulada: false });
       expect(await revisao()).toBe(antes);
       expect(await outbox(id)).toBe(outboxAntes);
+    });
+
+    it("CR-01: GET /canais/:id devolve ligadoAoProvedor true com a credencial ativa do provedor e false sem ela", async () => {
+      const real = await canalReal("provedor");
+      const demonstracao = await canalReal("so-webhook");
+      const ler = async (id: string) => ((await appA().inject({ method: "GET", url: `/canais/${id}`, headers: ADMIN })).json() as { dados: CanalNaFicha }).dados;
+      expect((await ler(real)).ligadoAoProvedor).toBe(true);
+      expect((await ler(demonstracao)).ligadoAoProvedor).toBe(false);
     });
 
     it.each(["so-webhook", "nada", "provedor-revogada"] as const)(
