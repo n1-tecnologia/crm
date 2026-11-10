@@ -3,7 +3,7 @@ phase: "16"
 slug: "base-da-mensageria-entrada-sa-da-tempo-real-e-m-dia"
 status: open
 # threats_open = count of OPEN threats at or above workflow.security_block_on severity (the blocking gate)
-threats_open: 2
+threats_open: 1
 asvs_level: 1
 block_on: high
 register_authored_at_plan_time: true
@@ -16,9 +16,10 @@ created: "2026-11-10"
 > Verificação retroativa (`/gsd-secure-phase 16`) sobre o código em HEAD, com a prova ao vivo de `16-PROVAS.md`
 > (API em `74554ab`). Só leitura de código e documentos: nenhum teste foi executado e nada foi tocado em produção.
 
-**Veredito: OPEN_THREATS.** 62 ameaças (T-16-01 a T-16-61 mais T-16-SC, que se repete em todos os planos): 59 fechadas,
-3 abertas. **Duas são bloqueantes** (severidade `high`, `threats_open: 2`): T-16-55 e T-16-58, ambas de processo e de
-produção, nenhuma de código. A terceira, T-16-28 (`medium`), é um defeito de código abaixo do limiar e não bloqueia.
+**Veredito: OPEN_THREATS.** 62 ameaças (T-16-01 a T-16-61 mais T-16-SC, que se repete em todos os planos): 60 fechadas,
+2 abertas. **Uma é bloqueante** (severidade `high`, `threats_open: 1`): T-16-55 (rotação da chave global da Evolution),
+de processo, nenhuma de código. A outra, T-16-28 (`medium`), é um defeito de código abaixo do limiar e não bloqueia.
+T-16-58 estava aberta na auditoria de 2026-11-10 e foi fechada por aceite do dono no mesmo dia (R-16-04).
 
 ---
 
@@ -106,7 +107,7 @@ Caminhos relativos a `apps/api/src/` salvo indicação (`dominio/` = `packages/d
 | T-16-55 | Information Disclosure | chave, token, senha ou telefone colados na conversa ou no roteiro | high | mitigate | os controles de código existem (comandos não imprimem segredo, T-16-50; roteiro só pede versões, contagens e ms; varredura limpa). **Mas o controle humano falhou**: a chave global da Evolution foi colada na conversa (`16-PROVAS.md:96`, `deferred-items.md`), e a rotação segue pendente. Falta: rotacionar `AUTHENTICATION_API_KEY` da Evolution, reiniciá-la e registrar a data aqui | open |
 | T-16-56 | Elevation of Privilege | painel da Evolution aberto para fora (SEG-11) | high | transfer | conferência do dono no pré-voo, provada em 2026-11-09: HTTPS 200, http 301 para https, porta 8080 por fora recusada (`16-PROVAS.md:34`; `16-PROVA-AO-VIVO.md:57`). Infra do dono; resta trocar o `SERVER_URL` para https | closed (transferred) |
 | T-16-57 | Denial of Service | evento preso no buffer do nginx | medium | mitigate | `x-accel-buffering: no` na resposta do SSE (`rotas/eventos.ts:56`); caminho provado no nginx de Docker (`apps/api/deploy/provar-nginx.sh`). A repetição na VM (passo 15) não foi conferida diretamente (`16-PROVAS.md:50`), e a releitura de 5 s da tela é a reserva | closed |
-| T-16-58 | Tampering / Denial of Service | mudança em produção sem volta | high | mitigate | feitos: `migrar --seco` antes (`16-PROVAS.md:45`), seção "Se algo falhar" no roteiro, voltar a API a `20b4d01` possível. **Não feito: o backup manual do schema `plataforma` antes da `013`**, recusado pelo dono ("sem backup", `16-PROVAS.md:25`, `16-16-SUMMARY.md:100`); a `013` não tem desfazer. Dado pessoal real já entra em `webhooks_recebidos` e `mensagens`. Falta: backup agora do schema `plataforma` **ou** o dono registrar o risco no Accepted Risks Log | open |
+| T-16-58 | Tampering / Denial of Service | mudança em produção sem volta | high | mitigate | feitos: `migrar --seco` antes (`16-PROVAS.md:45`), seção "Se algo falhar" no roteiro, voltar a API a `20b4d01` possível. **Não feito: o backup manual do schema `plataforma` antes da `013`**, recusado pelo dono ("sem backup", `16-PROVAS.md:25`, `16-16-SUMMARY.md:100`); a `013` não tem desfazer. Dado pessoal real já entra em `webhooks_recebidos` e `mensagens`. Falta: backup agora do schema `plataforma` **ou** o dono registrar o risco no Accepted Risks Log. **O dono aceitou o risco em 2026-11-10 (R-16-04).** | closed (accepted) |
 | T-16-59 | Tampering | executor agindo em produção | high | mitigate | desvio documentado: o assistente publicou, configurou e ligou o Canal em produção por pedido escrito do dono, que fez sozinho o que exigia root e o Canal na tela (`16-PROVAS.md:10-23`; `16-15-SUMMARY.md:130`; `16-16-SUMMARY.md:98`). Risco aceito pelo dono, ver R-16-01 | closed (accepted) |
 | T-16-60 | Information Disclosure | `corpo` com dado pessoal guardado sem prazo | medium | accept | retenção é da Sessão 19 (`16-CONTEXT.md:21,145,166`); ver R-16-02 | closed (accepted) |
 | T-16-61 | Denial of Service | número bloqueado pelo WhatsApp (API não oficial) | medium | accept | aviso do roteiro (`16-PROVA-AO-VIVO.md:34`): o dono escolhe o número que aceita perder, nunca o da instância do Financeiro; ver R-16-03 | closed (accepted) |
@@ -125,12 +126,12 @@ Caminhos relativos a `apps/api/src/` salvo indicação (`dominio/` = `packages/d
 | R-16-01 | T-16-59 | O dono pediu por escrito que a API fosse publicada e testada em produção pelo assistente, com o acesso de deploy da VM; as ações que exigiam root e o Canal na tela ficaram com ele (`16-PROVAS.md`, "Como a prova foi feita") | dono (pedido escrito, registrado em `16-15-SUMMARY.md` e `16-PROVAS.md`) | 2026-11-09 |
 | R-16-02 | T-16-60 | `webhooks_recebidos.corpo` guarda dado pessoal de terceiro até a política de retenção da Sessão 19; o backup diário não está ligado (`16-CONTEXT.md`) | dono (decisão de escopo, `16-CONTEXT.md`) | 2026-11-09 |
 | R-16-03 | T-16-61 | A API não oficial (Baileys) contraria os termos do WhatsApp e o número pode ser bloqueado; o roteiro avisa e o dono escolheu o número de teste | dono (roteiro, passo 4.1.1) | 2026-11-09 |
+| R-16-04 | T-16-58 | O dono recusou o backup manual do schema `plataforma` antes da `013` ("sem backup") e, perguntado em 2026-11-10 se queria registrar o risco como aceito ou fazer o backup, escolheu **aceitar**. Sabendo que: a `013` é aditiva e não tem desfazer (só uma `014`), voltar a API ao `20b4d01` é possível mas a `013` não volta, e dado pessoal real de WhatsApp já entra em `webhooks_recebidos` e `mensagens` sem backup anterior ao corte | dono (resposta direta na sessão de 2026-11-10; recusa original em `16-PROVAS.md`) | 2026-11-10 |
 
 *Accepted risks do not resurface in future audit runs.*
 
-**Não aceitos, e por isso abertos:** T-16-58 (sem backup antes da `013`) e T-16-55 (chave global colada na conversa, sem
-rotação). A recusa do backup consta como decisão do dono, mas nenhum documento diz que o risco foi aceito; basta ele
-acrescentar a linha acima, ou fazer o backup, para fechar T-16-58.
+**Não aceito, e por isso aberto:** T-16-55 (chave global colada na conversa, sem rotação). T-16-58 (sem backup antes da
+`013`) foi aceita pelo dono em 2026-11-10 (R-16-04) e fechou.
 
 ---
 
@@ -155,6 +156,7 @@ Achados dos auditores que não são ameaças do registro e não mudam nenhum sta
 | Audit Date | Threats Total | Closed | Open | Run By |
 |------------|---------------|--------|------|--------|
 | 2026-11-10 | 62 | 59 | 3 (2 bloqueantes, 1 abaixo do limiar) | `/gsd-secure-phase 16`: 4 `gsd-security-auditor` em paralelo (T-16-01 a 15, 16 a 30, 31 a 42, 43 a 52) e o orquestrador (T-16-53 a 61 e T-16-SC) |
+| 2026-11-10 (depois do aceite R-16-04) | 62 | 60 | 2 (1 bloqueante: T-16-55; 1 abaixo do limiar: T-16-28) | orquestrador, a pedido do dono (aceite de T-16-58 registrado; sem nova varredura do código) |
 
 ---
 
@@ -162,7 +164,7 @@ Achados dos auditores que não são ameaças do registro e não mudam nenhum sta
 
 - [x] All threats have a disposition (mitigate / accept / transfer)
 - [x] Accepted risks documented in Accepted Risks Log
-- [ ] `threats_open: 0` confirmed (hoje `threats_open: 2`: T-16-55 e T-16-58)
+- [ ] `threats_open: 0` confirmed (hoje `threats_open: 1`: T-16-55, a rotação da chave global da Evolution)
 - [ ] `status: verified` set in frontmatter
 
-**Approval:** pending (2026-11-10, aberta por T-16-55 e T-16-58; T-16-28 pode ser corrigida em `/gsd-plan-phase 16 --gaps`)
+**Approval:** pending (2026-11-10, aberta por T-16-55; T-16-28 entra no plano de lacunas `/gsd-plan-phase 16 --gaps`)

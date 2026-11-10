@@ -22,7 +22,12 @@ covered_files:
   - packages/dominio/src/crm/canais.ts
 covered_digest: "v3:sha256:ba81e70d597f7314d7c060c420889ed48b2a5d48985d41c323d30530445a3b72"
 behavior_unverified: 3
-overrides_applied: 0
+overrides_applied: 1
+overrides:
+  - must_have: "A 013 entra em produção só com backup manual do schema plataforma antes"
+    reason: "backup recusado pelo dono; 013 aditiva; volta da API ao 20b4d01 possível, volta da 013 só por uma 014"
+    accepted_by: "dono (resposta direta na sessão de 2026-11-10; R-16-04 em 16-SECURITY.md)"
+    accepted_at: "2026-11-10"
 gaps:
   - truth: "MSG-05 / D-16-03: o provedor de teste só serve a Canal simulado, e uma Mensagem nunca aparece como \"Enviada\" sem ter saído para o provedor real (CR-01)"
     status: failed
@@ -192,10 +197,10 @@ Recomendação: CR-01 e T-16-28 entram no plano de lacuna. WR-01, WR-02, WR-04 e
 ## Segurança e processo (de `16-SECURITY.md`, fora das verdades de código)
 
 - **T-16-55** (aberta, alta): a chave global da Evolution foi colada na conversa; a rotação segue pendente. Não é defeito de código.
-- **T-16-58** (aberta, alta): a `013` entrou em produção **sem backup** do schema `plataforma`, por recusa do dono (`16-PROVAS.md`), e sem aceite de risco registrado. O `must_have` do plano 16-16 dizia "A `013` entra em produção só com backup manual". Esse `must_have` não foi cumprido e a divergência está documentada.
+- **T-16-58** (fechada por aceite do dono em 2026-11-10, R-16-04 em `16-SECURITY.md`; override aplicado): a `013` entrou em produção **sem backup** do schema `plataforma`, por recusa do dono (`16-PROVAS.md`). O `must_have` do plano 16-16 dizia "A `013` entra em produção só com backup manual". Esse `must_have` não foi cumprido e a divergência está documentada.
 - **Desvio de processo do 16-16:** o plano dizia que o executor não rodaria nada contra produção; a publicação, o `canal:ligar-evolution` e as variáveis do `api.env` foram feitos pelo assistente por pedido escrito do dono. Está declarado em `16-PROVAS.md`. Não afeta o objetivo.
 
-Sugestão de override, se o dono quiser aceitar o desvio do backup, depois de registrar o risco em `16-SECURITY.md`. Não foi aplicado: não cabe a esta verificação aceitar risco por ele.
+Override do backup: o dono aceitou o risco em 2026-11-10 e o override foi aplicado no frontmatter (acima). Texto da sugestão original, mantido como registro:
 
 ```yaml
 overrides:
@@ -212,7 +217,7 @@ overrides:
 3. **Áudio Opus no Safari (G-03).** Esperado: toca; se não, reabre `convertToMp4`.
 4. **Storage real (G-04).** Baixar um documento recebido (`Content-Disposition: attachment`) e ler a linha da primeira coleta de órfãos. Os testes usam o armazenamento falso.
 5. **Rotacionar a chave global da Evolution (T-16-55).**
-6. **Backup do schema `plataforma` ou aceite de risco registrado (T-16-58).**
+6. ~~Backup do schema `plataforma` ou aceite de risco registrado (T-16-58).~~ Resolvido: aceite registrado em 2026-11-10 (R-16-04).
 
 Lacunas de teste que não bloqueiam e ficam registradas em `16-VALIDATION.md`: G-05 (o encerramento não tem teste do caminho real; é a lacuna 2), G-06 (os testes de banco não rodam no CI; o SHA em produção não teve nova rodada completa com banco depois do gate do 16-14), G-07 (fixtures da Evolution sintéticas, da `2.3.7`, contra a `2.4.0` em produção). `nyquist_compliant` segue `false`.
 
