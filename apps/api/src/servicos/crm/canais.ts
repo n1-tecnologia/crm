@@ -40,6 +40,7 @@ import {
   validarNovoCanal,
   type AcaoDeConexao,
   type Canal,
+  type CanalNaFicha,
   type EdicaoDeCanal,
   type FiltroDeCanais,
   type NovoCanal,
@@ -54,7 +55,8 @@ import { comTransacao, type FrasesDeRestricao } from "./transacao";
 
 export interface ServicoDeCanais {
   listar(membro: MembroDaSessao, filtro: FiltroDeCanais): Promise<ResultadoCrm<Pagina<Canal>>>;
-  obter(membro: MembroDaSessao, id: string): Promise<ResultadoCrm<Canal>>;
+  /** O Canal da ficha: o `Canal` mais `ligadoAoProvedor` (CR-01, 16-17). */
+  obter(membro: MembroDaSessao, id: string): Promise<ResultadoCrm<CanalNaFicha>>;
   criar(membro: MembroDaSessao, entrada: NovoCanal): Promise<ResultadoCrm<Canal>>;
   editar(membro: MembroDaSessao, id: string, edicao: EdicaoDeCanal): Promise<ResultadoCrm<Canal>>;
   simularConexao(membro: MembroDaSessao, id: string): Promise<ResultadoCrm<Canal>>;
@@ -207,8 +209,10 @@ export function criarServicoDeCanais(deps: { readonly pool: () => Pool; readonly
     async obter(membro, id) {
       const negado = await exigir(deps.acesso, membro, "ler", "canal");
       if (negado) return { ok: false, ...negado };
-      const canal = await criarRepositorioDeCanaisPg(deps.pool()).obter(membro.workspaceId, id);
-      return canal ? sucesso(canal) : naoEncontrado();
+      const repositorio = criarRepositorioDeCanaisPg(deps.pool());
+      const canal = await repositorio.obter(membro.workspaceId, id);
+      if (!canal) return naoEncontrado();
+      return sucesso({ ...canal, ligadoAoProvedor: await repositorio.ligadoAoProvedor(membro.workspaceId, canal) });
     },
 
     async criar(membro, entrada) {

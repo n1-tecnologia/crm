@@ -19,7 +19,7 @@
 
 import useSWR from "swr";
 import { LIMITES_CRM } from "@n1/dominio/crm/comum";
-import type { Canal, EdicaoDeCanal, EstadoDoCanal, NovoCanal } from "@n1/dominio/crm/canais";
+import type { Canal, CanalNaFicha, EdicaoDeCanal, EstadoDoCanal, NovoCanal } from "@n1/dominio/crm/canais";
 import { chamarCrm, ErroDeApi, invalidarCrm } from "./cliente-crm";
 
 export interface FiltroDeCanais {
@@ -77,11 +77,14 @@ function valeRepetir(erro: Error): boolean {
   return !(erro instanceof ErroDeApi) || erro.status === 0 || erro.status >= 500;
 }
 
-/** O Canal da ficha. O 404 da api fica em `error` (`ErroDeApi`): a página decide o que mostrar. */
+/**
+ * O Canal da ficha, com `ligadoAoProvedor` (CR-01, 16-17). O 404 da api fica em `error` (`ErroDeApi`): a página decide o
+ * que mostrar. As escritas devolvem `Canal` e invalidam `/canais`: a ficha relê esta rota e recebe o fato de novo.
+ */
 export function useCanal(id: string | undefined) {
-  return useSWR<Canal, Error>(
+  return useSWR<CanalNaFicha, Error>(
     id === undefined ? null : chaveDoCanal(id),
-    async (chave: string) => (await chamarCrm<{ ok: true; dados: Canal }>(chave)).dados,
+    async (chave: string) => (await chamarCrm<{ ok: true; dados: CanalNaFicha }>(chave)).dados,
     { shouldRetryOnError: valeRepetir },
   );
 }
@@ -96,7 +99,7 @@ export function editarCanal(id: string, edicao: EdicaoDeCanal): Promise<Canal> {
   return gravar(chaveDoCanal(id), "PATCH", edicao);
 }
 
-/** D-08: conecta marcando a conexão como simulada. A api recusa Canal arquivado ou já conectado (409 `TRANSICAO_INVALIDA`). */
+/** D-08: conecta marcando a conexão como simulada. A api recusa Canal arquivado, já conectado ou já ligado a um provedor real (409 `TRANSICAO_INVALIDA`, CR-01). */
 export function simularConexaoDoCanal(id: string): Promise<Canal> {
   return gravar(`${chaveDoCanal(id)}/simular-conexao`, "POST");
 }

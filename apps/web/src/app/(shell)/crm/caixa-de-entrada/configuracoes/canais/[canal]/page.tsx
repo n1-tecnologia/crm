@@ -29,6 +29,8 @@
  * D-08 — "Simular conexão" liga o Canal sem provedor real e o MARCA como
  * simulado: a marca "conexão simulada" no cabeçalho e a faixa de aviso dizem que
  * nenhuma Mensagem sai da plataforma (T-08-36). Desconectar apaga a marca.
+ * CR-01 (16-17): o Canal ligado a um provedor real não volta a simulado; reconectar é pelo provedor
+ * (`podeSimularConexao`, com `ligadoAoProvedor` vindo de `GET /canais/:id`).
  */
 
 import Link from "next/link";
@@ -38,7 +40,7 @@ import { arquivarCanal, desconectarCanal, editarCanal, simularConexaoDoCanal, us
 import { useConversas } from "@/dados/crm/conversas";
 import { usePodeNoCrm } from "@/dados/crm/sessao";
 import { useData, useRehidratar } from "@/dados/store";
-import type { Canal } from "@n1/dominio/crm/canais";
+import { FRASE_DO_CANAL_REAL, podeSimularConexao, type CanalNaFicha } from "@n1/dominio/crm/canais";
 import { capacidadesDoCanal } from "@n1/dominio/crm/capacidades";
 import { PROVEDORES } from "@n1/dominio/provedores-de-canal";
 import { MarcaDeConexaoSimulada, SeloDeOrigem, SeloDoProvedor } from "@/features/crm/selo-do-provedor";
@@ -96,7 +98,7 @@ export default function CanalPage({ params }: { params: Promise<{ canal: string 
   return <FichaDoCanal channel={canal.data} />;
 }
 
-function FichaDoCanal({ channel }: { readonly channel: Canal }) {
+function FichaDoCanal({ channel }: { readonly channel: CanalNaFicha }) {
   const state = useData((data) => data);
   const rehidratar = useRehidratar();
   const [aviso, setAviso] = useState<{ readonly texto: string; readonly erro: boolean } | null>(null);
@@ -274,7 +276,7 @@ function FichaDoCanal({ channel }: { readonly channel: Canal }) {
                   Conexão
                 </p>
                 <span className="flex flex-wrap gap-2">
-                  {channel.estado === "ativo" && channel.conexao !== "conectada" && recusaDeSimular === undefined ? (
+                  {podeSimularConexao(channel) && recusaDeSimular === undefined ? (
                     <Button
                       variant="primary"
                       onClick={() => void executar(() => simularConexaoDoCanal(channel.id), "Conexão simulada.")}
@@ -300,7 +302,9 @@ function FichaDoCanal({ channel }: { readonly channel: Canal }) {
                   ) : null}
                 </span>
                 <p className="app-meta">
-                  Sem um provedor real, a conexão é simulada e marcada como tal: serve para testar o chat.
+                  {channel.ligadoAoProvedor
+                    ? FRASE_DO_CANAL_REAL
+                    : "Sem um provedor real, a conexão é simulada e marcada como tal: serve para testar o chat."}
                 </p>
               </div>
               <p className="app-meta mt-2">
