@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { TIPOS_DE_EVENTO_DO_CRM, lerEventoDoCrm, lerEventoParaATela } from "./eventos";
+import {
+  BATIDA_DO_FLUXO_MS,
+  SILENCIO_MAXIMO_DO_FLUXO_MS,
+  TIPOS_DE_EVENTO_DO_CRM,
+  lerEventoDoCrm,
+  lerEventoParaATela,
+} from "./eventos";
 
 const valido = { workspaceId: "ws_a", tipo: "mensagem.nova", conversaId: "c1", mensagemId: "m1" };
 
@@ -55,5 +61,12 @@ describe("lerEventoParaATela: o evento sem o Espaço", () => {
   it("recusa o que traz o Espaço (ele não sai do servidor) e o que traz campo a mais", () => {
     expect(lerEventoParaATela(valido)).toBeUndefined();
     expect(lerEventoParaATela({ tipo: "mensagem.nova", conversaId: "c1", nome: "Ana" })).toBeUndefined();
+  });
+});
+
+describe("a batida do fluxo e o silêncio máximo da aba (WR-08, 16-19)", () => {
+  it("o servidor bate a cada 25 s e a aba só dá a conexão por morta depois de mais de duas batidas", () => {
+    expect(BATIDA_DO_FLUXO_MS).toBe(25_000);
+    expect(SILENCIO_MAXIMO_DO_FLUXO_MS).toBeGreaterThan(2 * BATIDA_DO_FLUXO_MS);
   });
 });

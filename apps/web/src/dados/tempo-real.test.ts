@@ -7,6 +7,7 @@
 import { createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, waitFor } from "@testing-library/react";
+import { BATIDA_DO_FLUXO_MS, SILENCIO_MAXIMO_DO_FLUXO_MS } from "@n1/dominio/crm/eventos";
 
 const { obterSessao, invalidarCrmComArrays } = vi.hoisted(() => ({
   obterSessao: vi.fn(),
@@ -225,7 +226,12 @@ describe("criarConexaoDoTempoReal — reconexão, releitura de 5 s e rajada (3.8
     expect(aoAbrir).toHaveBeenCalledTimes(1);
     expect(aoReler).toHaveBeenCalledTimes(1);
 
-    await vi.advanceTimersByTimeAsync(60_000); // aberta: nenhuma releitura de 5 s
+    // aberta por 60 s, com a batida do servidor a cada 20 s (sem ela o relógio de silêncio, corretamente, derrubaria): nenhuma releitura de 5 s
+    for (let i = 0; i < 3; i += 1) {
+      await vi.advanceTimersByTimeAsync(20_000);
+      fluxo.enviar(": batida\n\n");
+      await vi.advanceTimersByTimeAsync(0);
+    }
     expect(aoReler).toHaveBeenCalledTimes(1);
 
     fluxo.fechar(); // o servidor fecha: cai e volta a tentar em 1 s (a espera foi zerada)
@@ -302,6 +308,62 @@ describe("criarConexaoDoTempoReal — reconexão, releitura de 5 s e rajada (3.8
       "/conversas",
       "/tarefas-conversacionais/resumo",
     ]);
+  });
+
+  it("WR-08: o fluxo aberto que fica 60 s sem nenhum byte cai, religa a releitura de 5 s e reconecta", async () => {
+    const fluxo = fluxoControlado();
+    fetchImpl.mockResolvedValueOnce(respostaAberta(fluxo.corpo)).mockRejectedValue(new TypeError("Failed to fetch"));
+    ligar();
+    await vi.advanceTimersByTimeAsync(0);
+    fluxo.enviar(": aberto\n\n");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(aoAbrir).toHaveBeenCalledTimes(1);
+    expect(aoReler).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(SILENCIO_MAXIMO_DO_FLUXO_MS - 1);
+    expect(aoCair).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(aoCair).toHaveBeenCalledTimes(1);
+    const sinal = (fetchImpl.mock.calls[0]![1] as RequestInit).signal as AbortSignal;
+    expect(sinal.aborted).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(INTERVALO_SEM_TEMPO_REAL_MS);
+    expect(aoReler).toHaveBeenCalledTimes(2); // a releitura de 5 s voltou
+    expect(fetchImpl).toHaveBeenCalledTimes(2); // e a aba reconectou depois da espera
+  });
+
+  it("WR-08: com a batida do servidor a cada 25 s por 3 min a conexão nunca cai e só há um fetch", async () => {
+    const fluxo = fluxoControlado();
+    fetchImpl.mockResolvedValue(respostaAberta(fluxo.corpo));
+    ligar();
+    await vi.advanceTimersByTimeAsync(0);
+    fluxo.enviar(": aberto\n\n");
+    await vi.advanceTimersByTimeAsync(0);
+    for (let decorrido = 0; decorrido < 180_000; decorrido += BATIDA_DO_FLUXO_MS) {
+      await vi.advanceTimersByTimeAsync(BATIDA_DO_FLUXO_MS);
+      fluxo.enviar(": batida\n\n");
+      await vi.advanceTimersByTimeAsync(0);
+    }
+    expect(aoCair).not.toHaveBeenCalled();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("WR-08: o fetch que nunca responde é abortado em 60 s e conta como queda", async () => {
+    fetchImpl.mockImplementation(
+      (_url: string, init: RequestInit) =>
+        new Promise((_resolver, rejeitar) => {
+          init.signal!.addEventListener("abort", () => rejeitar(new DOMException("aborted", "AbortError")));
+        }),
+    );
+    ligar();
+    await vi.advanceTimersByTimeAsync(SILENCIO_MAXIMO_DO_FLUXO_MS - 1);
+    expect(aoCair).not.toHaveBeenCalled();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(aoCair).toHaveBeenCalledTimes(1);
+    expect(((fetchImpl.mock.calls[0]![1] as RequestInit).signal as AbortSignal).aborted).toBe(true);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it("parar() aborta o fetch, limpa os temporizadores e não agenda mais nada", async () => {
