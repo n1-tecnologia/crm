@@ -9,15 +9,18 @@
  * dão 409 e o outro Espaço não vê nada (T-08-01).
  */
 
+import { randomBytes } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { usuarioDoSeed } from "@n1/dominio";
 import { buildSeed } from "@n1/dominio/seed";
-import type { Canal } from "@n1/dominio/crm/canais";
+import { FRASE_DO_CANAL_REAL, type Canal } from "@n1/dominio/crm/canais";
 import { buildApp } from "../../app";
 import { encerrar, pool } from "../../persistencia/conexao";
+import { TIPO_DO_SEGREDO_DO_WEBHOOK } from "../../mensageria/provedor";
+import { guardarCredencial, type ChavesDoCofre } from "../../servicos/cofre";
 import { sucesso } from "../../servicos/crm/resultado";
 import type { ServicoDeCanais } from "../../servicos/crm/canais";
-import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearMembro } from "../../testes/banco-crm";
+import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearCanal, semearMembro } from "../../testes/banco-crm";
 
 const MARYANE = usuarioDoSeed("mem_maryane");
 const membros = buildSeed().members;
@@ -272,6 +275,8 @@ describeComBanco("rotas de Canais — serviço real, Postgres local", () => {
   });
 
   afterAll(async () => {
+    // O cofre não tem FK para o Espaço e `limparEspaco` não o conhece: as credenciais do CR-01 saem aqui.
+    await pool().query("delete from plataforma.credenciais where workspace_id in ($1, $2)", [espacoA, espacoB]);
     await limparEspaco(espacoA);
     await limparEspaco(espacoB);
     await encerrar();
@@ -380,5 +385,74 @@ describeComBanco("rotas de Canais — serviço real, Postgres local", () => {
     const arquivado = await acao("arquivar");
     expect(arquivado.statusCode).toBe(200);
     expect((arquivado.json() as { dados: Canal }).dados).toMatchObject({ estado: "arquivado", conexao: "desconectada" });
+  });
+
+  describe("CR-01 (16-17): Simular conexão num Canal já ligado a um provedor real", () => {
+    const chaves: ChavesDoCofre = { atual: { versao: 1, chave: randomBytes(32) } };
+    let sequencia = 0;
+
+    /** Um Canal `whatsapp-nao-oficial` conectado de verdade (como `canal:ligar-evolution` o deixa), com o que o cofre guardar. */
+    async function canalReal(cofre: "provedor" | "so-webhook" | "provedor-revogada" | "nada") {
+      sequencia += 1;
+      const id = await semearCanal(espacoA, {
+        nome: `Real ${sequencia}`,
+        tipo: "whatsapp",
+        provedor: "whatsapp-nao-oficial",
+        identificadorExterno: `+55119888${String(sequencia).padStart(5, "0")}`,
+        conexao: "conectada",
+        conexaoSimulada: false,
+        configuradoPor: "mem_admin",
+      });
+      const dono = { workspaceId: espacoA, donoTipo: "canal", donoId: id } as const;
+      if (cofre === "provedor" || cofre === "provedor-revogada") {
+        await guardarCredencial(pool(), chaves, { ...dono, tipo: "whatsapp-nao-oficial", segredo: "chave-de-teste" });
+      }
+      if (cofre === "provedor-revogada") {
+        await pool().query(
+          "update plataforma.credenciais set revogado_em = now() where workspace_id = $1 and dono_id = $2 and tipo = 'whatsapp-nao-oficial'",
+          [espacoA, id],
+        );
+      }
+      if (cofre === "so-webhook") await guardarCredencial(pool(), chaves, { ...dono, tipo: TIPO_DO_SEGREDO_DO_WEBHOOK, segredo: "segredo-de-teste" });
+      return id;
+    }
+
+    const acao = (id: string, caminho: string) => appA().inject({ method: "POST", url: `/canais/${id}/${caminho}`, headers: ADMIN });
+    const linha = async (id: string) =>
+      (await pool().query<{ conexao: string; conexao_simulada: boolean }>("select conexao, conexao_simulada from plataforma.canais where id = $1", [id])).rows[0];
+    const revisao = async () =>
+      (await pool().query<{ revisao: string }>("select revisao from plataforma.workspaces where workspace_id = $1", [espacoA])).rows[0]?.revisao;
+    const outbox = async (id: string) =>
+      Number((await pool().query<{ n: string }>("select count(*) as n from plataforma.integration_outbox where aggregate_id = $1", [id])).rows[0]!.n);
+
+    beforeAll(async () => {
+      await pool().query("insert into plataforma.workspaces (workspace_id) values ($1) on conflict do nothing", [espacoA]);
+    });
+
+    it("CR-01: desconectar e simular o Canal com credencial do provedor → 409 TRANSICAO_INVALIDA, e ele continua real", async () => {
+      const id = await canalReal("provedor");
+      expect((await acao(id, "desconectar")).statusCode).toBe(200);
+      const antes = await revisao();
+      const outboxAntes = await outbox(id);
+
+      const resposta = await acao(id, "simular-conexao");
+      expect(resposta.statusCode).toBe(409);
+      expect(resposta.json()).toMatchObject({ ok: false, codigo: "TRANSICAO_INVALIDA", error: FRASE_DO_CANAL_REAL });
+      expect(await linha(id)).toEqual({ conexao: "desconectada", conexao_simulada: false });
+      expect(await revisao()).toBe(antes);
+      expect(await outbox(id)).toBe(outboxAntes);
+    });
+
+    it.each(["so-webhook", "nada", "provedor-revogada"] as const)(
+      "CR-01: o Canal sem credencial ATIVA do provedor (%s) continua simulando",
+      async (cofre) => {
+        const id = await canalReal(cofre);
+        expect((await acao(id, "desconectar")).statusCode).toBe(200);
+        const resposta = await acao(id, "simular-conexao");
+        expect(resposta.statusCode).toBe(200);
+        expect((resposta.json() as { dados: Canal }).dados).toMatchObject({ conexao: "conectada", conexaoSimulada: true });
+        expect(await linha(id)).toEqual({ conexao: "conectada", conexao_simulada: true });
+      },
+    );
   });
 });
