@@ -37,6 +37,10 @@
  * do `buildApp` (a rota `GET /eventos` o recebe) e o ouvinte `LISTEN crm_eventos` o alimenta. Na desmontagem os
  * fluxos SSE abertos fecham ANTES do `app.close()`, que senão pendura esperando as abas (e o systemd mata aos 20 s).
  *
+ * O SIGTERM e o SIGINT de produção (Fase 16, 16-18, T-16-28) rodam a MESMA desmontagem da recarga e então saem do
+ * processo (`encerramento.ts`), com teto de 15 s, abaixo dos 20 s de `TimeoutStopSec`. Antes, cada worker pendurava um
+ * ouvinte que só o parava: o Node deixava de sair sozinho e o `restart` terminava em SIGKILL.
+ *
  * A ponte do Agente (Plan 03-11, `automacoes/invocar-agente.ts`) segue a
  * MESMA separação e é a terceira peça do mesmo molde: não conhece
  * `buildApp()`/Fastify, só é ativada aqui por env
@@ -72,6 +76,7 @@
 import { buildApp } from "./app";
 import { opcoesDoLogger } from "./observabilidade/log";
 import { fecharSentry, iniciarSentry } from "./observabilidade/sentry";
+import { criarEncerramento } from "./encerramento";
 import { carregarEnv, encerrar, pool } from "./persistencia/conexao";
 import { criarOutboxWorker } from "./persistencia/outbox-worker";
 import { criarColetaDeOrfaos } from "./mensageria/coleta-de-orfaos";
@@ -136,19 +141,19 @@ const app = buildApp({
   eventos: { hub },
 });
 
-/** O que esta instância precisa parar ao ser desmontada, e os ouvintes de SIGTERM que ela pendurou no processo. */
-const paradas: Array<() => Promise<void>> = [];
-const ouvintesDeSigterm: Array<() => void> = [];
+// O tratador único do encerramento (16-18, T-16-28): um SIGTERM ou SIGINT roda a mesma desmontagem da recarga e sai do
+// processo, com teto de 15 s. Os workers só registram como parar (`aoEncerrar`); nenhum pendura ouvinte de sinal.
+const encerramento = criarEncerramento({
+  fecharFluxos: () => hub.definirDisponivel(false),
+  fecharServidor: () => app.close(),
+  encerrarPool: encerrar,
+  registrar: (nivel, mensagem, dados) => {
+    app.log[nivel](dados ?? {}, mensagem);
+  },
+});
 
 /** Registra como parar um worker — na desmontagem da recarga e no SIGTERM. */
-function aoEncerrar(parar: () => Promise<void>): void {
-  paradas.push(parar);
-  const noSigterm = () => {
-    void parar();
-  };
-  process.on("SIGTERM", noSigterm);
-  ouvintesDeSigterm.push(noSigterm);
-}
+const aoEncerrar = encerramento.aoEncerrar;
 
 // Corre junto com os outros no SIGTERM e na desmontagem da recarga: espera até
 // 2 s o envio pendente, para um erro capturado logo antes do desligamento ainda
@@ -173,10 +178,8 @@ if (process.env.TEMPO_REAL_ATIVO !== "false") {
     },
   });
   ouvinte.iniciar();
-  aoEncerrar(async () => {
-    hub.encerrarTodos();
-    await ouvinte.parar();
-  });
+  // O hub já é fechado pela primeira etapa do encerramento (`fecharFluxos`): aqui só o ouvinte do Postgres.
+  aoEncerrar(() => ouvinte.parar());
   app.log.info("ouvinte do tempo real ativo");
 }
 
@@ -336,14 +339,15 @@ if (process.env.COLETA_DE_ORFAOS_ATIVA === "true") {
 // Registrada ANTES do `listen`: se ele falhar (porta ocupada), a próxima
 // recarga ainda consegue parar os workers que esta instância já ligou.
 registroGlobal[CHAVE_DA_DESMONTAGEM] = async () => {
-  for (const ouvinte of ouvintesDeSigterm) process.off("SIGTERM", ouvinte);
-  // Primeiro os workers (nada novo sai para a rede), esperando a volta em
-  // voo; depois o servidor (espera as requisições em curso); por último o
-  // pool DESTA instância — a próxima abre o seu, num módulo novo.
-  await Promise.all(paradas.map((parar) => parar()));
-  await app.close();
-  await encerrar();
+  // A recarga roda a mesma sequência do SIGTERM (fluxos, workers esperando a volta em voo, servidor, pool DESTA
+  // instância — a próxima abre o seu, num módulo novo), mas sem sair do processo, e tira os ouvintes de sinal desta
+  // instância para a próxima não ficar com dois.
+  encerramento.desinstalar();
+  await encerramento.desmontar();
 };
+
+// Antes do `listen`, como a desmontagem acima: o SIGTERM de produção encerra a api sozinho (T-16-28).
+encerramento.instalar(process);
 
 await app.listen({ port: porta, host });
 app.log.info(`apps/api ouvindo em http://${host}:${porta}`);
