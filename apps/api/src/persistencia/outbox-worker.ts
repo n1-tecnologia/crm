@@ -118,6 +118,15 @@ export function sanitizarErro(erro: unknown, code = "ERRO_DESCONHECIDO"): { read
   return { code, summary };
 }
 
+/**
+ * O que o worker grava em `last_error_code` quando devolve uma trava vencida a `pending` (ou a esgota): o processo
+ * que a reivindicou caiu sem dizer o que aconteceu. Quem entrega decide o que fazer com a linha marcada (16-20, WR-01).
+ */
+export const CODIGO_DA_TRAVA_VENCIDA = "TRAVA_VENCIDA";
+
+/** O que o worker grava quando uma exceção escapa do entregador: não se sabe até onde ele chegou (16-20, WR-01). */
+export const CODIGO_DO_ERRO_DO_ENTREGADOR = "ERRO_DO_ENTREGADOR";
+
 /** O que o entregador de um worker decide sobre UMA linha (16-05): o worker só aplica o desfecho à linha do outbox. */
 export type DesfechoDaEntrega =
   | { readonly desfecho: "entregue" }
@@ -152,7 +161,9 @@ interface OpcoesComunsDoOutboxWorker {
   readonly tiposDeEvento?: readonly NomeDeEvento[];
   /**
    * Uma linha `delivering` cujo `locked_at` passou deste prazo (ms) é de um worker que caiu: volta a `pending`
-   * antes de cada reivindicação (ou vira `failed/TRAVA_VENCIDA` se já gastou as tentativas). Ausente, não há
+   * antes de cada reivindicação (ou vira `failed/TRAVA_VENCIDA` se já gastou as tentativas). A linha devolvida volta
+   * MARCADA (`last_error_code = 'TRAVA_VENCIDA'`): o worker não sabe se a entrega chegou a sair, e quem entrega decide
+   * o que fazer com ela (a saída da mensageria a fecha como ambígua em vez de reenviar, 16-20). Ausente, não há
    * recuperação (o worker do `automation/` nunca teve). Só olha os `tiposDeEvento` deste worker.
    */
   readonly recuperarTravasVencidasMs?: number;
@@ -334,7 +345,7 @@ export function criarOutboxWorker(opcoes: OpcoesOutboxWorker): OutboxWorker {
     try {
       resultado = await entregador(linha, { ultimaTentativa });
     } catch (erro) {
-      resultado = { desfecho: "tentar_de_novo", erro: sanitizarErro(erro, "ERRO_DO_ENTREGADOR") };
+      resultado = { desfecho: "tentar_de_novo", erro: sanitizarErro(erro, CODIGO_DO_ERRO_DO_ENTREGADOR) };
     }
     if (resultado.desfecho === "entregue") {
       await marcarEntregue(linha.id);
@@ -347,8 +358,8 @@ export function criarOutboxWorker(opcoes: OpcoesOutboxWorker): OutboxWorker {
 
   /**
    * Trava vencida: o worker que reivindicou a linha caiu antes de marcá-la. Antes de cada reivindicação, volta a
-   * `pending` (ou, se já gastou as tentativas, `failed/TRAVA_VENCIDA`: uma linha que derruba o processo não volta
-   * para sempre). Só toca os `tiposDeEvento` deste worker e, com `workspaceId`, só o Espaço dele.
+   * `pending` com `last_error_code = 'TRAVA_VENCIDA'` (ou, se já gastou as tentativas, `failed/TRAVA_VENCIDA`: uma
+   * linha que derruba o processo não volta para sempre). Só toca os `tiposDeEvento` deste worker e, com `workspaceId`, só o Espaço dele.
    */
   async function recuperarTravasVencidas(): Promise<void> {
     if (opcoes.recuperarTravasVencidasMs === undefined) return;
@@ -365,15 +376,20 @@ export function criarOutboxWorker(opcoes: OpcoesOutboxWorker): OutboxWorker {
       filtros += " and event_type not like 'mensagem.%'";
     }
     const vencida = `status = 'delivering' and locked_at < now() - make_interval(secs => $1)${filtros}`;
+    parametros.push(CODIGO_DA_TRAVA_VENCIDA);
+    const codigo = `$${parametros.length}`;
     await pool().query(
       `update plataforma.integration_outbox
-          set status = 'failed', locked_at = null, locked_by = null, last_error_code = 'TRAVA_VENCIDA',
+          set status = 'failed', locked_at = null, locked_by = null, last_error_code = ${codigo},
               last_error_summary = 'O worker caiu no meio da entrega e a linha já tinha gastado as tentativas.'
         where ${vencida} and attempts >= $2::int`,
       parametros,
     );
     await pool().query(
-      `update plataforma.integration_outbox set status = 'pending', locked_at = null, locked_by = null where ${vencida} and attempts < $2::int`,
+      `update plataforma.integration_outbox
+          set status = 'pending', locked_at = null, locked_by = null, last_error_code = ${codigo},
+              last_error_summary = 'O worker caiu no meio da entrega; a linha voltou à fila.'
+        where ${vencida} and attempts < $2::int`,
       parametros,
     );
   }

@@ -15,7 +15,12 @@
  *     última, `falhou` com "O provedor não respondeu depois de várias tentativas.";
  *   - Canal fora de `conectada` na hora de entregar (B69): não tenta; a Mensagem continua `pendente` e a linha do
  *     outbox vira `failed/CANAL_DESCONECTADO` até o Canal voltar (o 16-06 reenfileira);
- *   - Mensagem que já não está `pendente` (uma corrida com "Tentar de novo"): não reenvia, a linha é `entregue`.
+ *   - Mensagem que já não está `pendente` (uma corrida com "Tentar de novo"): não reenvia, a linha é `entregue`;
+ *   - linha que voltou à fila SEM desfecho (trava vencida: o worker caiu; ou exceção do entregador depois do envio) →
+ *     `falhou` sem confirmação, e NUNCA reenvia: o processo pode ter morrido depois do aceite do provedor e antes de
+ *     gravá-lo (WR-01, 16-20). O sinal é o `last_error_code` da linha (`TRAVA_VENCIDA` / `ERRO_DO_ENTREGADOR`);
+ *   - falha ANTES do envio (leituras do banco, recusas que gravam): certamente não saiu, volta à fila na escada de
+ *     `backoff()` com `ERRO_ANTES_DO_ENVIO`; por isso `ERRO_DO_ENTREGADOR` só sobra para a exceção depois do `enviar`.
  *
  * O anexo (16-10, 3.9.5): cada anexo `baixado` da Mensagem vai ao provedor por uma URL assinada NOVA do arquivo guardado
  * (`EnvioAoProvedor.anexos`; documento com `download`, para nunca abrir no navegador). Um anexo `baixado: false` numa Mensagem
@@ -32,6 +37,8 @@ import { ehDocumento } from "@n1/dominio/crm/midia";
 import { pool as poolPadrao } from "../persistencia/conexao";
 import { EVENTOS } from "../persistencia/outbox";
 import {
+  CODIGO_DA_TRAVA_VENCIDA,
+  CODIGO_DO_ERRO_DO_ENTREGADOR,
   criarOutboxWorker,
   sanitizarErro,
   type DesfechoDaEntrega,
@@ -48,7 +55,7 @@ import type { ChavesDoCofre } from "../servicos/cofre";
 import { identificadorDoCanal } from "../servicos/crm/conversas";
 import { relogioDoSistema, type Relogio } from "../testes/relogio";
 import { avisarCrm } from "./avisar";
-import { ErroDeProvedor, type AnexoDoEnvio, type EnvioAoProvedor } from "./provedor";
+import { ErroDeProvedor, type AnexoDoEnvio, type CanalParaProvedor, type EnvioAoProvedor, type ProvedorDeMensageria } from "./provedor";
 import { canalParaProvedor, provedorDoCanal, registroPadrao, type RegistroDeProvedores } from "./registro";
 
 export type { DesfechoDaEntrega };
@@ -136,35 +143,51 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
     return permanente(code, motivo);
   }
 
-  return async (linha: LinhaOutbox, { ultimaTentativa }): Promise<DesfechoDaEntrega> => {
+  /** O que o preparo devolve: ou um desfecho já decidido (nada vai ao provedor), ou tudo que o `enviar` precisa. */
+  type Preparo =
+    | { readonly pronto: false; readonly desfecho: DesfechoDaEntrega }
+    | {
+        readonly pronto: true;
+        readonly mensagemId: string;
+        readonly provedor: ProvedorDeMensageria;
+        readonly paraOProvedor: CanalParaProvedor;
+        readonly envio: EnvioAoProvedor;
+      };
+  const encerra = (desfecho: DesfechoDaEntrega): Preparo => ({ pronto: false, desfecho });
+
+  /**
+   * Tudo que roda ANTES de `provedor.enviar`: as leituras, as conferências e as recusas que gravam. Uma exceção daqui
+   * (o banco que caiu) é de QUEM CERTAMENTE NÃO ENVIOU: quem chama a trata como transitória (`ERRO_ANTES_DO_ENVIO`).
+   */
+  async function preparar(linha: LinhaOutbox, ultimaTentativa: boolean): Promise<Preparo> {
     const evento = EVENTOS[TIPO_DO_EVENTO].safeParse(linha.payload);
-    if (!evento.success) return permanente("PAYLOAD_INVALIDO", "O evento da fila de saída não tem o formato esperado.");
+    if (!evento.success) return encerra(permanente("PAYLOAD_INVALIDO", "O evento da fila de saída não tem o formato esperado."));
     const workspaceId = linha.workspace_id;
     const mensagens = criarRepositorioDeMensagensPg(pool());
 
     const mensagem = await mensagens.obter(workspaceId, evento.data.mensagemId);
-    if (!mensagem) return permanente("MENSAGEM_NAO_ENCONTRADA", "A Mensagem do evento não existe mais.");
+    if (!mensagem) return encerra(permanente("MENSAGEM_NAO_ENCONTRADA", "A Mensagem do evento não existe mais."));
     // Uma corrida com "Tentar de novo" (ou com o retorno do provedor): quem a tirou de `pendente` já a resolveu.
-    if (mensagem.statusEntrega !== "pendente") return { desfecho: "entregue" };
+    if (mensagem.statusEntrega !== "pendente") return encerra({ desfecho: "entregue" });
 
     const canal = await criarRepositorioDeCanaisPg(pool()).obter(workspaceId, mensagem.canalId);
-    if (!canal) return permanente("CANAL_NAO_ENCONTRADO", "O Canal da Mensagem não existe mais.");
+    if (!canal) return encerra(permanente("CANAL_NAO_ENCONTRADO", "O Canal da Mensagem não existe mais."));
     // B69: Canal que caiu entre enfileirar e entregar. A Mensagem segue `pendente` (nada é descartado).
     if (canal.conexao !== "conectada") {
-      return permanente("CANAL_DESCONECTADO", "O Canal não estava conectado na hora de entregar; a Mensagem aguarda a reconexão.");
+      return encerra(permanente("CANAL_DESCONECTADO", "O Canal não estava conectado na hora de entregar; a Mensagem aguarda a reconexão."));
     }
 
     const conversa = await criarRepositorioDeConversasPg(pool()).obter(workspaceId, mensagem.conversaId);
-    if (!conversa) return permanente("CONVERSA_NAO_ENCONTRADA", "A Conversa da Mensagem não existe mais.");
+    if (!conversa) return encerra(permanente("CONVERSA_NAO_ENCONTRADA", "A Conversa da Mensagem não existe mais."));
 
     // T-16-19: o destino é sempre um Identificador do Contato DA Conversa, de uma leitura com `workspace_id`.
     const contatos = criarRepositorioDeContatosPg(pool());
     const destino = identificadorDoCanal(await contatos.listarIdentificadores(workspaceId, conversa.contatoId), canal);
-    if (!destino.ok) return recusarEnvio(workspaceId, mensagem.id, semIdentificador(canal), "CONTATO_SEM_IDENTIFICADOR_DO_CANAL");
+    if (!destino.ok) return encerra(await recusarEnvio(workspaceId, mensagem.id, semIdentificador(canal), "CONTATO_SEM_IDENTIFICADOR_DO_CANAL"));
 
     // 16-10: o envio exige anexo confirmado e guardado; um `baixado: false` aqui é dado inconsistente, e nada sai.
     if (mensagem.anexos.some((anexo) => !anexo.baixado || !anexo.objectKey)) {
-      return recusarEnvio(workspaceId, mensagem.id, FRASES_DA_SAIDA.arquivoIndisponivel, "ANEXO_INDISPONIVEL");
+      return encerra(await recusarEnvio(workspaceId, mensagem.id, FRASES_DA_SAIDA.arquivoIndisponivel, "ANEXO_INDISPONIVEL"));
     }
 
     const respondida = mensagem.emRespostaAId ? await mensagens.obter(workspaceId, mensagem.emRespostaAId) : undefined;
@@ -183,11 +206,13 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
       provedor = provedorDoCanal(canal, registro);
     } catch (erro) {
       if (erro instanceof ErroDeProvedor && erro.codigo === "PROVEDOR_INDISPONIVEL") {
-        return recusarEnvio(workspaceId, mensagem.id, FRASES_DA_SAIDA.provedorNaoLigado, "PROVEDOR_INDISPONIVEL");
+        return encerra(await recusarEnvio(workspaceId, mensagem.id, FRASES_DA_SAIDA.provedorNaoLigado, "PROVEDOR_INDISPONIVEL"));
       }
-      return ultimaTentativa
-        ? recusarEnvio(workspaceId, mensagem.id, FRASES_DA_SAIDA.semResposta, "ERRO_DA_ENTREGA")
-        : { desfecho: "tentar_de_novo", erro: sanitizarErro(erro, "ERRO_DA_ENTREGA") };
+      return encerra(
+        ultimaTentativa
+          ? await recusarEnvio(workspaceId, mensagem.id, FRASES_DA_SAIDA.semResposta, "ERRO_DA_ENTREGA")
+          : { desfecho: "tentar_de_novo", erro: sanitizarErro(erro, "ERRO_DA_ENTREGA") },
+      );
     }
 
     // 16-10 / 3.9.5: a URL assinada de cada anexo, NOVA a cada tentativa (vale poucos minutos). Antes do `enviar`: uma falha do
@@ -201,30 +226,60 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
         }),
       );
     } catch {
-      return ultimaTentativa
-        ? recusarEnvio(workspaceId, mensagem.id, FRASES_DA_SAIDA.semResposta, "ARMAZENAMENTO_INDISPONIVEL")
-        : { desfecho: "tentar_de_novo", erro: { code: "ARMAZENAMENTO_INDISPONIVEL", summary: "O arquivo não pôde ser preparado para o envio." } };
+      return encerra(
+        ultimaTentativa
+          ? await recusarEnvio(workspaceId, mensagem.id, FRASES_DA_SAIDA.semResposta, "ARMAZENAMENTO_INDISPONIVEL")
+          : { desfecho: "tentar_de_novo", erro: { code: "ARMAZENAMENTO_INDISPONIVEL", summary: "O arquivo não pôde ser preparado para o envio." } },
+      );
     }
     const envioComAnexos: EnvioAoProvedor = anexosDoEnvio.length > 0 ? { ...envio, anexos: anexosDoEnvio } : envio;
+
+    return { pronto: true, mensagemId: mensagem.id, provedor, paraOProvedor, envio: envioComAnexos };
+  }
+
+  return async (linha: LinhaOutbox, { ultimaTentativa }): Promise<DesfechoDaEntrega> => {
+    const workspaceId = linha.workspace_id;
+
+    let preparo: Preparo;
+    try {
+      preparo = await preparar(linha, ultimaTentativa);
+    } catch (erro) {
+      // O que falhou foi ANTES do `enviar` (leitura, recusa que grava): certamente não saiu, então volta à fila como qualquer
+      // transitória. `sanitizarErro`: a mensagem do driver pode citar host e usuário do banco.
+      const evento = EVENTOS[TIPO_DO_EVENTO].safeParse(linha.payload);
+      if (ultimaTentativa && evento.success) {
+        return recusarEnvio(workspaceId, evento.data.mensagemId, FRASES_DA_SAIDA.semResposta, "ERRO_ANTES_DO_ENVIO");
+      }
+      return { desfecho: "tentar_de_novo", erro: sanitizarErro(erro, "ERRO_ANTES_DO_ENVIO") };
+    }
+    if (!preparo.pronto) return preparo.desfecho;
+    const { mensagemId, provedor, paraOProvedor, envio } = preparo;
+
+    // WR-01 (16-20): a linha que voltou à fila SEM desfecho (o worker caiu com ela, ou uma exceção escapou do entregador
+    // depois do `enviar`) pode já ter chegado ao cliente. Nunca reenvia sozinha: a pessoa confere e usa "Tentar de novo".
+    // Fica depois das conferências, para uma linha que voltou por uma recusa que não gravou receber a frase certa agora.
+    if (linha.last_error_code === CODIGO_DA_TRAVA_VENCIDA || linha.last_error_code === CODIGO_DO_ERRO_DO_ENTREGADOR) {
+      return recusarEnvio(workspaceId, mensagemId, FRASES_DA_SAIDA.semConfirmacao, "ENVIO_SEM_DESFECHO");
+    }
 
     // Dentro do `enviar`: os provedores devolvem `ambiguo` quando podem ter enviado. Uma exceção que escapou de lá
     // não diz se saiu, então vale como ambígua: nunca reenvia sozinha (T-16-16).
     let resultado;
     try {
-      resultado = await provedor.enviar(paraOProvedor, envioComAnexos);
+      resultado = await provedor.enviar(paraOProvedor, envio);
     } catch {
-      return recusarEnvio(workspaceId, mensagem.id, FRASES_DA_SAIDA.semConfirmacao, "ERRO_NO_ENVIO");
+      return recusarEnvio(workspaceId, mensagemId, FRASES_DA_SAIDA.semConfirmacao, "ERRO_NO_ENVIO");
     }
 
-    if (resultado.ok) return gravarOAceite(workspaceId, mensagem.id, resultado.idExterno);
+    if (resultado.ok) return gravarOAceite(workspaceId, mensagemId, resultado.idExterno);
 
     const erro = sanitizarErro(resultado.motivo, resultado.codigo);
     // Primeiro o ambíguo: o provedor pode ter enviado, então nunca volta à fila (T-16-16).
-    if (resultado.ambiguo) return recusarEnvio(workspaceId, mensagem.id, FRASES_DA_SAIDA.semConfirmacao, resultado.codigo);
+    if (resultado.ambiguo) return recusarEnvio(workspaceId, mensagemId, FRASES_DA_SAIDA.semConfirmacao, resultado.codigo);
     if (!resultado.transitorio) {
-      return recusarEnvio(workspaceId, mensagem.id, erro.summary.trim() === "" ? FRASES_DA_SAIDA.recusou : erro.summary, resultado.codigo);
+      return recusarEnvio(workspaceId, mensagemId, erro.summary.trim() === "" ? FRASES_DA_SAIDA.recusou : erro.summary, resultado.codigo);
     }
-    if (ultimaTentativa) return recusarEnvio(workspaceId, mensagem.id, FRASES_DA_SAIDA.semResposta, resultado.codigo);
+    if (ultimaTentativa) return recusarEnvio(workspaceId, mensagemId, FRASES_DA_SAIDA.semResposta, resultado.codigo);
     return { desfecho: "tentar_de_novo", erro };
   };
 }
