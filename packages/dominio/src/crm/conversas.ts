@@ -143,6 +143,24 @@ export const TIPO_DE_IDENTIFICADOR_DO_CANAL: Readonly<Record<TipoComProvedor, Ti
 };
 
 /**
+ * O Identificador para onde a resposta de uma Conversa sai (WR-04, MSG-02): o `idDeQuemEscreveu` (o Identificador
+ * da última Mensagem recebida na Conversa) quando ele está entre os do tipo do Canal; senão o principal do tipo;
+ * senão o primeiro do tipo; senão `undefined`. Quem chama passa a lista que leu do Contato DA Conversa: o id de
+ * quem escreveu só ESCOLHE dentro dela, então um Identificador que passou a ser de outro Contato (ou foi removido)
+ * não está na lista e a resposta volta ao principal (T-16-19). Sem `idDeQuemEscreveu` é a regra de abrir Conversa.
+ */
+export function identificadorDeResposta<I extends { readonly id: string; readonly tipo: string; readonly principal: boolean }>(
+  identificadores: readonly I[],
+  canal: Pick<Canal, "tipo">,
+  idDeQuemEscreveu?: string | null,
+): I | undefined {
+  const tipoDoIdentificador = TIPO_DE_IDENTIFICADOR_DO_CANAL[canal.tipo];
+  const doTipo = identificadores.filter((identificador) => identificador.tipo === tipoDoIdentificador);
+  const quemEscreveu = idDeQuemEscreveu == null ? undefined : doTipo.find((candidato) => candidato.id === idDeQuemEscreveu);
+  return quemEscreveu ?? doTipo.find((candidato) => candidato.principal) ?? doTipo[0];
+}
+
+/**
  * INV-CXE-05: não existe Conversa sem Mensagem. O conteúdo da primeira
  * Mensagem respeita o mesmo teto do texto longo do CRM.
  */

@@ -78,6 +78,12 @@ export interface RepositorioDeMensagens {
   listar(workspaceId: string, filtro: FiltroDeMensagens): Promise<Pagina<Mensagem>>;
   /** O `criadoEm` (do provedor) da `recebida` mais recente da Conversa, ou `null` (RN-CXE-19). */
   ultimaRecebidaEm(workspaceId: string, conversaId: string): Promise<string | null>;
+  /**
+   * O `identificador_id` da `recebida` mais recente da Conversa que tem Identificador (por `criado_em` e `seq`): por onde o
+   * Contato escreveu por último (WR-04), ou `null` sem nenhuma. Só escolhe o destino da resposta; quem o usa o confere na lista
+   * de Identificadores do Contato da Conversa.
+   */
+  identificadorDaUltimaRecebida(workspaceId: string, conversaId: string): Promise<string | null>;
   /** Grava a `recebida`; `undefined` quando o id externo já existe no Canal (INV-CXE-08). */
   inserirRecebida(workspaceId: string, linha: LinhaDeMensagemRecebida): Promise<Mensagem | undefined>;
   obterPorIdExterno(workspaceId: string, canalId: string, idExterno: string): Promise<Mensagem | undefined>;
@@ -252,6 +258,18 @@ export function criarRepositorioDeMensagensPg(cliente: Pool | PoolClient): Repos
       );
       const ultima = rows[0]?.ultima;
       return ultima ? ultima.toISOString() : null;
+    },
+
+    async identificadorDaUltimaRecebida(workspaceId, conversaId) {
+      const { rows } = await cliente.query<{ identificador_id: string }>(
+        `select identificador_id
+           from plataforma.mensagens
+          where workspace_id = $1 and conversa_id = $2 and direcao = 'recebida' and identificador_id is not null
+          order by criado_em desc, plataforma.mensagens.seq desc
+          limit 1`,
+        [workspaceId, conversaId],
+      );
+      return rows[0]?.identificador_id ?? null;
     },
 
     async inserirRecebida(workspaceId, linha) {

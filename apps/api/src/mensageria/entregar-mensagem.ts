@@ -35,6 +35,7 @@
 
 import type { Pool, PoolClient } from "pg";
 import type { Canal } from "@n1/dominio/crm/canais";
+import { identificadorDeResposta } from "@n1/dominio/crm/conversas";
 import { ehDocumento } from "@n1/dominio/crm/midia";
 import { pool as poolPadrao } from "../persistencia/conexao";
 import { EVENTOS } from "../persistencia/outbox";
@@ -54,7 +55,6 @@ import { criarRepositorioDeConversasPg } from "../repositorios/crm/conversas";
 import { criarRepositorioDeMensagensPg } from "../repositorios/crm/mensagens";
 import { armazenamentoDeAnexosPadrao, type ArmazenamentoDeAnexos } from "../servicos/armazenamento-de-anexos";
 import type { ChavesDoCofre } from "../servicos/cofre";
-import { identificadorDoCanal } from "../servicos/crm/conversas";
 import { relogioDoSistema, type Relogio } from "../testes/relogio";
 import { avisarCrm } from "./avisar";
 import { CODIGO_DO_CANAL_DESCONECTADO } from "./fila-de-saida";
@@ -196,10 +196,14 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
     const conversa = await criarRepositorioDeConversasPg(pool()).obter(workspaceId, mensagem.conversaId);
     if (!conversa) return encerra(permanente("CONVERSA_NAO_ENCONTRADA", "A Conversa da Mensagem não existe mais."));
 
-    // T-16-19: o destino é sempre um Identificador do Contato DA Conversa, de uma leitura com `workspace_id`.
+    // T-16-19: o destino é sempre um Identificador do Contato DA Conversa, de uma leitura com `workspace_id`. WR-04: a
+    // resposta vai por onde o Contato escreveu por último nesta Conversa; o id de quem escreveu só escolhe DENTRO dessa
+    // lista (um número que passou a ser de outro Contato some dela e a resposta volta ao principal).
     const contatos = criarRepositorioDeContatosPg(pool());
-    const destino = identificadorDoCanal(await contatos.listarIdentificadores(workspaceId, conversa.contatoId), canal);
-    if (!destino.ok) return encerra(await recusarEnvio(workspaceId, mensagem.id, semIdentificador(canal), "CONTATO_SEM_IDENTIFICADOR_DO_CANAL"));
+    const identificadoresDoContato = await contatos.listarIdentificadores(workspaceId, conversa.contatoId);
+    const idDeQuemEscreveu = await mensagens.identificadorDaUltimaRecebida(workspaceId, conversa.id);
+    const destino = identificadorDeResposta(identificadoresDoContato, canal, idDeQuemEscreveu);
+    if (!destino) return encerra(await recusarEnvio(workspaceId, mensagem.id, semIdentificador(canal), "CONTATO_SEM_IDENTIFICADOR_DO_CANAL"));
 
     // 16-10: o envio exige anexo confirmado e guardado; um `baixado: false` aqui é dado inconsistente, e nada sai.
     if (mensagem.anexos.some((anexo) => !anexo.baixado || !anexo.objectKey)) {
@@ -209,7 +213,7 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
     const respondida = mensagem.emRespostaAId ? await mensagens.obter(workspaceId, mensagem.emRespostaAId) : undefined;
     const envio: EnvioAoProvedor = {
       mensagemId: mensagem.id,
-      destino: { tipo: destino.valor.tipo, valor: destino.valor.valor },
+      destino: { tipo: destino.tipo, valor: destino.valor },
       ...(mensagem.conteudo === null ? {} : { conteudo: mensagem.conteudo }),
       ...(respondida?.idExterno ? { emRespostaAIdExterno: respondida.idExterno } : {}),
     };
