@@ -43,15 +43,15 @@ export const ORIENTACAO_DO_PROVEDOR: Readonly<Record<ProvedorDeCanal, Orientacao
     },
   },
   "instagram-graph": {
-    quandoUsar: "Para responder o Direct de uma conta profissional do Instagram.",
+    quandoUsar: "Para responder o Direct de uma conta profissional do Instagram, no mesmo lugar das outras conversas.",
     passos: [
-      "A conta precisa ser profissional (Empresa ou Criador de conteúdo).",
-      "Vincule a conta a uma Página do Facebook no Meta Business.",
-      "Autorize o acesso às mensagens do Direct quando a integração pedir.",
+      "A conta precisa ser profissional (Empresa ou Criador de conteúdo). Não precisa de Página do Facebook.",
+      "No aplicativo do Instagram, nas configurações de mensagens, permita o acesso de ferramentas conectadas às mensagens.",
+      "Crie o Canal aqui com o @ da conta. Depois, na ficha do Canal, use “Conectar com o Instagram” e entre com essa mesma conta.",
     ],
     espacoReservado: {
-      titulo: "Autorização da conta",
-      texto: "O login da Meta para autorizar a conta aparece aqui quando a integração chegar.",
+      titulo: "Login do Instagram",
+      texto: "Depois de criar o Canal, a ficha dele tem o botão “Conectar com o Instagram”: ele abre o login do Instagram e volta conectado.",
     },
   },
   "email-imap-smtp": {

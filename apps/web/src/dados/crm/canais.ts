@@ -112,3 +112,33 @@ export function desconectarCanal(id: string): Promise<Canal> {
 export function arquivarCanal(id: string): Promise<Canal> {
   return gravar(`${chaveDoCanal(id)}/arquivar`, "POST");
 }
+
+/**
+ * Sessão 8: a URL da janela de login do Instagram para este Canal. Quem chama leva
+ * o navegador para lá; a Meta devolve para a página de retorno
+ * (`canais/instagram/retorno`), que chama `concluirConexaoDoInstagram`.
+ */
+export async function autorizarInstagram(id: string): Promise<string> {
+  const resposta = await chamarCrm<{ ok: true; dados: { url: string } }>(`${chaveDoCanal(id)}/instagram/autorizar`, { method: "POST" });
+  return resposta.dados.url;
+}
+
+/** Sessão 8: o código e o `state` que voltaram do Instagram. A api troca, confere a conta e conecta o Canal. */
+export function concluirConexaoDoInstagram(entrada: { readonly codigo: string; readonly state: string }): Promise<Canal> {
+  return gravar("/canais/instagram/concluir", "POST", entrada);
+}
+
+export interface ContaDoInstagram {
+  readonly usuario: string;
+  readonly nome: string | null;
+  readonly fotoUrl: string | null;
+}
+
+/** Sessão 8: o @, o nome e a foto da conta ligada, lidos da Meta pela api. `pausado` não lê nada. */
+export function useContaDoInstagram(id: string, opcoes: { readonly pausado?: boolean } = {}) {
+  return useSWR<ContaDoInstagram, Error>(
+    opcoes.pausado ? null : `${chaveDoCanal(id)}/instagram/conta`,
+    async (chave: string) => (await chamarCrm<{ ok: true; dados: ContaDoInstagram }>(chave)).dados,
+    { shouldRetryOnError: valeRepetir, revalidateOnFocus: false },
+  );
+}

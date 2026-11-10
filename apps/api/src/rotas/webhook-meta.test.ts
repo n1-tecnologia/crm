@@ -2,6 +2,8 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../app";
+import { signedRequest } from "../testes/assinatura-da-meta";
+import type { ChamadaDoWebhook } from "../mensageria/provedor";
 import type { OpcoesDeWebhookMeta } from "./webhook-meta";
 
 const TOKEN = "token-de-verificacao";
@@ -176,5 +178,134 @@ describe("o parser do corpo cru", () => {
     // Rota autenticada continua exigindo Bearer — e não passa pelo parser do webhook.
     const resposta = await app.inject({ method: "POST", url: "/operacoes/qualquer", headers: { "content-type": "application/json" }, payload: "{}" });
     expect(resposta.statusCode).toBe(401);
+  });
+});
+
+describe("Sessão 8 — o Instagram guarda na fila de entrada o que a Meta assinou", () => {
+  const CAMINHO = "/webhooks/meta/instagram";
+  const RESULTADO = { guardadas: 1, repetidas: 0, semCanal: 0, recusadas: 0 };
+  const enviar = (opcoes: OpcoesDeWebhookMeta, assinatura?: string) =>
+    appCom(opcoes).inject({
+      method: "POST",
+      url: CAMINHO,
+      headers: { "content-type": "application/json", ...(assinatura ? { "x-hub-signature-256": assinatura } : {}) },
+      payload: EVENTO_INSTAGRAM,
+    });
+
+  it("com a assinatura conferida, entrega a chamada inteira (cabeçalhos, corpo cru e JSON) à fila, responde 200 e acorda o processador", async () => {
+    const recebidas: ChamadaDoWebhook[] = [];
+    let acordou = 0;
+    const assinatura = assinar(EVENTO_INSTAGRAM, SEGREDO_DO_INSTAGRAM);
+    const resposta = await enviar(
+      {
+        segredoDoApp: "",
+        segredoDoInstagram: SEGREDO_DO_INSTAGRAM,
+        enfileirarInstagram: async (chamada) => (recebidas.push(chamada), RESULTADO),
+        acordarProcessador: () => {
+          acordou += 1;
+        },
+      },
+      assinatura,
+    );
+    expect(resposta.statusCode).toBe(200);
+    expect(recebidas).toHaveLength(1);
+    expect(recebidas[0]!.corpo).toEqual(JSON.parse(EVENTO_INSTAGRAM));
+    expect(recebidas[0]!.corpoCru.toString("utf8")).toBe(EVENTO_INSTAGRAM);
+    expect(recebidas[0]!.cabecalhos["x-hub-signature-256"]).toBe(assinatura);
+    expect(acordou).toBe(1);
+  });
+
+  it("nada novo na fila (a Meta repetiu o evento): 200 sem acordar o processador", async () => {
+    let acordou = 0;
+    const resposta = await enviar(
+      {
+        segredoDoApp: "",
+        segredoDoInstagram: SEGREDO_DO_INSTAGRAM,
+        enfileirarInstagram: async () => ({ ...RESULTADO, guardadas: 0, repetidas: 1 }),
+        acordarProcessador: () => {
+          acordou += 1;
+        },
+      },
+      assinar(EVENTO_INSTAGRAM, SEGREDO_DO_INSTAGRAM),
+    );
+    expect(resposta.statusCode).toBe(200);
+    expect(acordou).toBe(0);
+  });
+
+  it("sem segredo configurado, aceita mas NÃO guarda: evento sem assinatura nunca vira dado", async () => {
+    let chamadas = 0;
+    const resposta = await enviar({ segredoDoApp: "", segredoDoInstagram: "", enfileirarInstagram: async () => ((chamadas += 1), RESULTADO) });
+    expect(resposta.statusCode).toBe(200);
+    expect(chamadas).toBe(0);
+  });
+
+  it("falha ao guardar é 500, para a Meta reenviar", async () => {
+    const resposta = await enviar(
+      { segredoDoApp: "", segredoDoInstagram: SEGREDO_DO_INSTAGRAM, enfileirarInstagram: async () => Promise.reject(new Error("banco fora")) },
+      assinar(EVENTO_INSTAGRAM, SEGREDO_DO_INSTAGRAM),
+    );
+    expect(resposta.statusCode).toBe(500);
+    expect(resposta.json()).toEqual({ ok: false, error: "Falha ao guardar o evento." });
+  });
+});
+
+describe("Sessão 8 — desautorização e exclusão de dados do Instagram", () => {
+  const formulario = (signed: string) => new URLSearchParams({ signed_request: signed }).toString();
+  const pedir = (opcoes: OpcoesDeWebhookMeta, url: string, signed: string) =>
+    appCom(opcoes).inject({ method: "POST", url, headers: { "content-type": "application/x-www-form-urlencoded" }, payload: formulario(signed) });
+  const comSpy = () => {
+    const esquecidos: string[] = [];
+    const opcoes: OpcoesDeWebhookMeta = {
+      segredoDoApp: "",
+      segredoDoInstagram: SEGREDO_DO_INSTAGRAM,
+      esquecerContaDoInstagram: async (userId) => (esquecidos.push(userId), 1),
+    };
+    return { esquecidos, opcoes };
+  };
+  const valido = signedRequest({ algorithm: "HMAC-SHA256", user_id: "17841400000000000", issued_at: 1_792_680_000 }, SEGREDO_DO_INSTAGRAM);
+
+  it("a desautorização assinada desliga a conta do user_id e responde 200, sem Authorization", async () => {
+    const { esquecidos, opcoes } = comSpy();
+    const resposta = await pedir(opcoes, "/webhooks/meta/instagram/desautorizar", valido);
+    expect(resposta.statusCode).toBe(200);
+    expect(esquecidos).toEqual(["17841400000000000"]);
+  });
+
+  it("a exclusão devolve a URL de situação e o código, e a URL confirma o pedido", async () => {
+    const { esquecidos, opcoes } = comSpy();
+    const app = appCom(opcoes);
+    const resposta = await app.inject({
+      method: "POST",
+      url: "/webhooks/meta/instagram/exclusao-de-dados",
+      headers: { "content-type": "application/x-www-form-urlencoded", host: "api.exemplo.test" },
+      payload: formulario(valido),
+    });
+    expect(resposta.statusCode).toBe(200);
+    expect(esquecidos).toEqual(["17841400000000000"]);
+    const { url, confirmation_code: codigo } = resposta.json<{ url: string; confirmation_code: string }>();
+    expect(url).toBe(`http://api.exemplo.test/webhooks/meta/instagram/exclusao-de-dados/${codigo}`);
+
+    const situacao = await app.inject({ method: "GET", url: `/webhooks/meta/instagram/exclusao-de-dados/${codigo}` });
+    expect(situacao.statusCode).toBe(200);
+    expect(situacao.body).toContain(codigo);
+    expect(situacao.body).toContain("concluído");
+
+    const forjado = await app.inject({ method: "GET", url: `/webhooks/meta/instagram/exclusao-de-dados/${codigo.slice(0, -1)}A` });
+    expect(forjado.statusCode).toBe(404);
+  });
+
+  it("assinatura de outro segredo ou sem signed_request é 400, sem desligar nada", async () => {
+    const { esquecidos, opcoes } = comSpy();
+    const deOutro = signedRequest({ algorithm: "HMAC-SHA256", user_id: "1" }, "de-outro-app");
+    expect((await pedir(opcoes, "/webhooks/meta/instagram/desautorizar", deOutro)).statusCode).toBe(400);
+    expect((await pedir(opcoes, "/webhooks/meta/instagram/exclusao-de-dados", "")).statusCode).toBe(400);
+    expect(esquecidos).toEqual([]);
+  });
+
+  it("sem segredo no servidor, 503: nunca aceita um pedido que não dá para conferir", async () => {
+    const { esquecidos } = comSpy();
+    const opcoes: OpcoesDeWebhookMeta = { segredoDoApp: "", segredoDoInstagram: "", esquecerContaDoInstagram: async (u) => (esquecidos.push(u), 1) };
+    expect((await pedir(opcoes, "/webhooks/meta/instagram/desautorizar", valido)).statusCode).toBe(503);
+    expect(esquecidos).toEqual([]);
   });
 });

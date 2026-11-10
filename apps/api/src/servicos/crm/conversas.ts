@@ -58,7 +58,8 @@ import {
   type NovaConversa,
   type ParticipanteDaConversa,
 } from "@n1/dominio/crm/conversas";
-import { statusInicialDeEnvio, type Mensagem } from "@n1/dominio/crm/mensagens";
+import { capacidadesDoCanal } from "@n1/dominio/crm/capacidades";
+import { FRASE_SO_RESPONDE, statusInicialDeEnvio, type Mensagem } from "@n1/dominio/crm/mensagens";
 import type { Canal } from "@n1/dominio/crm/canais";
 import { avisarCrm } from "../../mensageria/avisar";
 import { enfileirarEnvio } from "../../mensageria/fila-de-saida";
@@ -502,6 +503,10 @@ export async function abrirConversaNoCliente(
   const canal = await criarRepositorioDeCanaisPg(cliente).obter(membro.workspaceId, entrada.canalId);
   if (!canal) return canalNaoEncontrado();
   if (canal.estado === "arquivado") return canalArquivado();
+  // Sessão 8 (8.3.4): no Instagram não se puxa conversa. Ela nasce quando o Contato escreve (o webhook).
+  if (capacidadesDoCanal({ channelType: canal.tipo, provider: canal.provedor }).foraDaJanela === "bloqueado") {
+    return recusa<never>(409, FRASE_SO_RESPONDE, { codigo: "CANAL_SO_RESPONDE", campo: "canalId" });
+  }
 
   const contatos = criarRepositorioDeContatosPg(cliente);
   // `for update`: uma mesclagem confirmada no meio faz esta transação esperar e então enxergar

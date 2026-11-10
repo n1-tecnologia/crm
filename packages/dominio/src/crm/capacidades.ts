@@ -24,11 +24,20 @@ export type ChannelType =
   | "email"
   | "chatDoSite";
 
+/**
+ * Depois da janela de resposta: `livre` (sem janela, ou o provedor não a impõe),
+ * `soModelo` (WhatsApp oficial: só Mensagem de modelo aprovada) ou `bloqueado`
+ * (Instagram: não existe modelo, e só o Contato reabre a conversa escrevendo de
+ * novo; antes da primeira mensagem dele também não se fala).
+ */
+export type ForaDaJanela = "livre" | "soModelo" | "bloqueado";
+
 /** Documento 14, 7.1 — fixed per channel type; neither Channel nor Conversation redefine it. */
 export interface ChannelCapabilities {
   readonly resolvesIdentifierTypes: readonly ContactIdentifierType[];
   readonly responseWindowHours?: number;
-  readonly requiresTemplateOutsideWindow: boolean;
+  /** O que sobra depois da janela de resposta (RN-CXE-19, Sessão 8 8.3.4). Ver `ForaDaJanela`. */
+  readonly foraDaJanela: ForaDaJanela;
   readonly hasSubjectAndCopies: boolean;
   readonly reportedDeliveryStatuses: readonly MessageDeliveryStatus[];
   readonly externalSenderMayEdit: boolean;
@@ -69,7 +78,7 @@ export const CHANNEL_CAPABILITIES: Record<ChannelType, ChannelCapabilities> = {
   whatsapp: {
     resolvesIdentifierTypes: ["identidadeDeWhatsApp"],
     responseWindowHours: 24,
-    requiresTemplateOutsideWindow: true,
+    foraDaJanela: "soModelo",
     hasSubjectAndCopies: false,
     reportedDeliveryStatuses: ["enviada", "entregue", "lida"],
     externalSenderMayEdit: true,
@@ -85,7 +94,7 @@ export const CHANNEL_CAPABILITIES: Record<ChannelType, ChannelCapabilities> = {
   instagram: {
     resolvesIdentifierTypes: ["usuarioDeInstagram"],
     responseWindowHours: 24,
-    requiresTemplateOutsideWindow: true,
+    foraDaJanela: "bloqueado",
     hasSubjectAndCopies: false,
     reportedDeliveryStatuses: ["enviada", "lida"],
     externalSenderMayEdit: true,
@@ -107,7 +116,7 @@ export const CHANNEL_CAPABILITIES: Record<ChannelType, ChannelCapabilities> = {
    */
   linkedin: {
     resolvesIdentifierTypes: ["perfilDeLinkedIn"],
-    requiresTemplateOutsideWindow: false,
+    foraDaJanela: "livre",
     hasSubjectAndCopies: false,
     reportedDeliveryStatuses: ["enviada", "lida"],
     externalSenderMayEdit: true,
@@ -122,7 +131,7 @@ export const CHANNEL_CAPABILITIES: Record<ChannelType, ChannelCapabilities> = {
   },
   email: {
     resolvesIdentifierTypes: ["email"],
-    requiresTemplateOutsideWindow: false,
+    foraDaJanela: "livre",
     hasSubjectAndCopies: true,
     reportedDeliveryStatuses: ["enviada"],
     externalSenderMayEdit: false,
@@ -138,7 +147,7 @@ export const CHANNEL_CAPABILITIES: Record<ChannelType, ChannelCapabilities> = {
   },
   chatDoSite: {
     resolvesIdentifierTypes: ["identificadorDeChatDoSite"],
-    requiresTemplateOutsideWindow: false,
+    foraDaJanela: "livre",
     hasSubjectAndCopies: false,
     reportedDeliveryStatuses: ["entregue", "lida"],
     externalSenderMayEdit: false,
@@ -167,7 +176,7 @@ export function capacidadesDoCanal(canal: {
   const base = CHANNEL_CAPABILITIES[canal.channelType];
   if (provedorDoCanal(canal) === "whatsapp-nao-oficial") {
     const { responseWindowHours: _semJanela, ...semJanela } = base;
-    return { ...semJanela, requiresTemplateOutsideWindow: false };
+    return { ...semJanela, foraDaJanela: "livre" };
   }
   return base;
 }

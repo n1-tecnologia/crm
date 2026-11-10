@@ -208,6 +208,16 @@ cronômetro dos 2 s nas duas abas pelo SSE, o `/eventos` atrás do nginx, o áud
 Safari e o Supabase Storage real; e a rotação da chave global da Evolution (T-16-55)
 é do dono.
 
+Na Sessão 8, o Instagram é o segundo provedor real da mensageria: o Canal
+conecta pelo login do Instagram (OAuth), e o Direct entra pela fila de entrada
+(`webhooks_recebidos`, por `receberMensagem`) e sai pelo outbox, como a
+Evolution. Está em `apps/api/src/mensageria/provedores/instagram/` (ver o
+`CONTEXT.md` de lá), com a migração `014-instagram.sql`. A interface ganhou um
+passo opcional, `resolverRemetente`, porque o webhook do Instagram só traz o
+IGSID, nunca o @. A regra da janela virou `foraDaJanela` (`livre`, `soModelo`,
+`bloqueado`) em `@n1/dominio/crm/capacidades`. Sem `MENSAGERIA_WORKER_ATIVO=true`
+nada entra nem sai, como para a Evolution.
+
 ## Comandos
 
 Todos rodam da raiz:

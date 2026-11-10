@@ -96,6 +96,13 @@ export interface ProvedorDeMensageria {
   interpretarChamada(corpo: unknown, canal: CanalParaProvedor): readonly EventoDoProvedor[];
   /** A chave de deduplicação da fila de entrada (o id do evento no provedor). */
   chaveDaChamada?(corpo: unknown): string | undefined;
+  /**
+   * Sessão 8: para o provedor cujo webhook só traz um id opaco de quem escreveu (o Instagram manda o IGSID, nunca o @).
+   * O processador de entrada o chama ANTES de `receberMensagem` e fora da transação, como a mídia: devolve a mesma
+   * recebida com o `remetente` que o Contato tem (o @ e o nome do perfil). Uma exceção é transitória (a linha volta à
+   * fila na escada de `backoff()`). Sem este método, o `remetente` de `interpretarChamada` já é o do Contato.
+   */
+  resolverRemetente?(canal: CanalParaProvedor, recebida: RecebidaDoProvedor): Promise<RecebidaDoProvedor>;
   enviar(canal: CanalParaProvedor, envio: EnvioAoProvedor): Promise<ResultadoDoEnvio>;
   baixarMidia(canal: CanalParaProvedor, referenciaNoProvedor: string, opcoes: { tetoBytes: number }): Promise<MidiaBaixada>;
   estadoDaConexao(canal: CanalParaProvedor): Promise<ConexaoDoCanal>;

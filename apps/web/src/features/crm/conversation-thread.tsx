@@ -56,6 +56,7 @@ import { adicionarNotaAoContato } from "@/dados/crm/notas";
 import { criarTarefaConversacional } from "@/dados/crm/tarefas-conversacionais";
 import { createTask } from "@n1/dominio/operations";
 import { capacidadesDoCanal } from "@n1/dominio/crm/capacidades";
+import { FRASE_SO_RESPONDE, fraseDaJanelaBloqueada } from "@n1/dominio/crm/mensagens";
 import { statusCategory } from "@n1/dominio/derive";
 import {
   canaisDaListaNasTabelas,
@@ -421,8 +422,18 @@ export function ConversationThread({
     escolher: em vez de deixar o envio falhar no clique, o compositor se
     desliga dizendo por quê. Quem decide de verdade é a api.
   */
-  const exigeModelo =
-    janelaFechada && capacidades?.requiresTemplateOutsideWindow === true;
+  const exigeModelo = janelaFechada && capacidades?.foraDaJanela === "soModelo";
+  /*
+    Sessão 8 — no Instagram não existe modelo: antes da primeira mensagem do
+    Contato, ou depois das 24 h, só ele reabre a conversa. A api recusa com as
+    mesmas frases do domínio; o compositor se desliga antes, dizendo por quê.
+  */
+  const soOContatoReabre =
+    capacidades?.foraDaJanela === "bloqueado" && (janelaFechada || !conversa?.ultimaRecebidaEm)
+      ? janelaFechada
+        ? fraseDaJanelaBloqueada(horasDaJanela ?? 24)
+        : FRASE_SO_RESPONDE
+      : undefined;
 
   const bloqueio = enviando
     ? "Enviando a Mensagem…"
@@ -434,7 +445,9 @@ export function ConversationThread({
         ? conversa
           ? "Escreva a mensagem antes de enviar."
           : "Escreva a primeira Mensagem antes de enviar."
-        : exigeModelo
+        : soOContatoReabre
+          ? soOContatoReabre
+          : exigeModelo
           ? "A janela de resposta expirou e este Canal não tem Mensagem de modelo aprovada: não dá para enviar agora."
           : janelaFechada
             ? "A janela de resposta expirou."

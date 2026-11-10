@@ -210,7 +210,8 @@ describeComBanco("013 — a fila de entrada da mensageria — Postgres local", (
       // Sem o gatilho, a mesma 013 aplica e registra.
       await banco.pool.query("drop event trigger m013_recusa");
       const aplicadas = await migrar(banco.pool);
-      expect(aplicadas.map((a) => a.nome)).toEqual([ARQUIVO_013]);
+      // A 013 volta a ser a primeira a aplicar; as migrações que vieram depois dela (014 em diante) aplicam em seguida.
+      expect(aplicadas.map((a) => a.nome)[0]).toBe(ARQUIVO_013);
       const agora = await banco.pool.query("select 1 from plataforma.migracoes where nome = $1", [ARQUIVO_013]);
       expect(agora.rowCount).toBe(1);
       expect((await banco.pool.query("select to_regclass('plataforma.webhooks_recebidos') as tabela")).rows[0]?.tabela).toBe("plataforma.webhooks_recebidos");

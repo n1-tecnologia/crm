@@ -31,18 +31,33 @@
  * nenhuma Mensagem sai da plataforma (T-08-36). Desconectar apaga a marca.
  * CR-01 (16-17): o Canal ligado a um provedor real não volta a simulado; reconectar é pelo provedor
  * (`podeSimularConexao`, com `ligadoAoProvedor` vindo de `GET /canais/:id`).
+ *
+ * Sessão 8 — o Canal do Instagram conecta DE VERDADE: "Conectar com o Instagram"
+ * pede à api a URL do login do Instagram e leva o navegador para lá; a volta cai
+ * em `canais/instagram/retorno`, que conclui e reabre esta ficha. Para ele não há
+ * "Simular conexão". Conectado, a ficha mostra a conta (@, nome e foto, lidos da
+ * Meta pela api). Desconectar apaga o token.
  */
 
 import Link from "next/link";
 import { use, useState } from "react";
 import { ErroDeApi } from "@/dados/crm/cliente-crm";
-import { arquivarCanal, desconectarCanal, editarCanal, simularConexaoDoCanal, useCanal } from "@/dados/crm/canais";
+import {
+  arquivarCanal,
+  autorizarInstagram,
+  desconectarCanal,
+  editarCanal,
+  simularConexaoDoCanal,
+  useCanal,
+  useContaDoInstagram,
+} from "@/dados/crm/canais";
 import { useConversas } from "@/dados/crm/conversas";
 import { usePodeNoCrm } from "@/dados/crm/sessao";
 import { useData, useRehidratar } from "@/dados/store";
 import { FRASE_DO_CANAL_REAL, podeSimularConexao, type CanalNaFicha } from "@n1/dominio/crm/canais";
-import { capacidadesDoCanal } from "@n1/dominio/crm/capacidades";
+import { capacidadesDoCanal, type ForaDaJanela } from "@n1/dominio/crm/capacidades";
 import { PROVEDORES } from "@n1/dominio/provedores-de-canal";
+import { irParaForaDoApp } from "@/features/crm/ir-para-fora";
 import { MarcaDeConexaoSimulada, SeloDeOrigem, SeloDoProvedor } from "@/features/crm/selo-do-provedor";
 import { CHANNEL_TYPE_LABEL, IDENTIFIER_TYPE_LABEL } from "@/features/shell/format";
 import {
@@ -59,6 +74,19 @@ import {
   StateSeal,
   Toast,
 } from "@/features/shell/ui";
+
+/** O que acontece depois da janela de resposta, como a ficha diz. */
+const FORA_DA_JANELA: Readonly<Record<ForaDaJanela, { readonly linha: string; readonly modelos: string }>> = {
+  livre: { linha: "envio livre", modelos: "Este tipo de Canal não exige modelo para enviar." },
+  soModelo: {
+    linha: "só Mensagem de modelo aprovada",
+    modelos: "Sem um modelo aprovado, não é possível escrever fora da janela de resposta.",
+  },
+  bloqueado: {
+    linha: "só o Contato reabre a conversa",
+    modelos: "O Instagram não tem Mensagem de modelo: depois da janela, só o Contato reabre a conversa escrevendo de novo.",
+  },
+};
 
 const AVISO_DA_SIMULACAO =
   "Conexão simulada: o Canal aparece conectado para testar o chat, mas nenhuma Mensagem sai da plataforma.";
@@ -106,6 +134,10 @@ function FichaDoCanal({ channel }: { readonly channel: CanalNaFicha }) {
   const [arquivando, setArquivando] = useState(false);
   const recusaDeEditar = usePodeNoCrm("editar", "canal");
   const recusaDeSimular = usePodeNoCrm("simular_conexao", "canal");
+  const recusaDeConectar = usePodeNoCrm("conectar", "canal");
+  // Sessão 8: o Instagram conecta pelo login de verdade, não pela simulação.
+  const ehInstagram = channel.provedor === "instagram-graph";
+  const conectadoDeVerdade = channel.conexao === "conectada" && !channel.conexaoSimulada;
   const recusaDeDesconectar = usePodeNoCrm("desconectar", "canal");
   const recusaDeArquivar = usePodeNoCrm("arquivar", "canal");
   // O número é o `total` da api; a página (limite 20) só existe para a conta ser barata.
@@ -137,6 +169,17 @@ function FichaDoCanal({ channel }: { readonly channel: CanalNaFicha }) {
     } catch (falha) {
       setAviso({ texto: falha instanceof ErroDeApi ? falha.message : "Não foi possível concluir. Tente de novo.", erro: true });
     } finally {
+      setOcupado(false);
+    }
+  };
+
+  /** Leva o navegador ao login do Instagram; só volta para cá pela página de retorno. */
+  const conectarInstagram = async () => {
+    setOcupado(true);
+    try {
+      irParaForaDoApp(await autorizarInstagram(channel.id));
+    } catch (falha) {
+      setAviso({ texto: falha instanceof ErroDeApi ? falha.message : "Não foi possível abrir o login do Instagram. Tente de novo.", erro: true });
       setOcupado(false);
     }
   };
@@ -206,11 +249,7 @@ function FichaDoCanal({ channel }: { readonly channel: CanalNaFicha }) {
             <Section title="Mensagens de modelo" count={0}>
               <EmptyState
                 title="Nenhuma Mensagem de modelo sincronizada."
-                hint={
-                  capabilities.requiresTemplateOutsideWindow
-                    ? "Sem um modelo aprovado, não é possível escrever fora da janela de resposta."
-                    : "Este tipo de Canal não exige modelo para enviar."
-                }
+                hint={FORA_DA_JANELA[capabilities.foraDaJanela].modelos}
               />
             </Section>
           </div>
@@ -230,6 +269,11 @@ function FichaDoCanal({ channel }: { readonly channel: CanalNaFicha }) {
                 <RecordRow label="Identificador externo">
                   <span className="identificador">{channel.identificadorExterno}</span>
                 </RecordRow>
+                {ehInstagram && conectadoDeVerdade ? (
+                  <RecordRow label="Conectado como">
+                    <ContaConectadaDoInstagram canalId={channel.id} usuarioDoCanal={channel.identificadorExterno} />
+                  </RecordRow>
+                ) : null}
                 <RecordRow label="Configurado por">{configuredBy?.displayName ?? "não encontrado"}</RecordRow>
                 <RecordRow label="Setor (Fila padrão)">
                   <span className="flex min-w-0 items-center gap-2">
@@ -276,7 +320,12 @@ function FichaDoCanal({ channel }: { readonly channel: CanalNaFicha }) {
                   Conexão
                 </p>
                 <span className="flex flex-wrap gap-2">
-                  {podeSimularConexao(channel) && recusaDeSimular === undefined ? (
+                  {ehInstagram && channel.estado === "ativo" && !conectadoDeVerdade && recusaDeConectar === undefined ? (
+                    <Button variant="primary" onClick={() => void conectarInstagram()} carregando={ocupado} disabledReason="Abrindo o Instagram…">
+                      Conectar com o Instagram
+                    </Button>
+                  ) : null}
+                  {!ehInstagram && podeSimularConexao(channel) && recusaDeSimular === undefined ? (
                     <Button
                       variant="primary"
                       onClick={() => void executar(() => simularConexaoDoCanal(channel.id), "Conexão simulada.")}
@@ -302,9 +351,11 @@ function FichaDoCanal({ channel }: { readonly channel: CanalNaFicha }) {
                   ) : null}
                 </span>
                 <p className="app-meta">
-                  {channel.ligadoAoProvedor
-                    ? FRASE_DO_CANAL_REAL
-                    : "Sem um provedor real, a conexão é simulada e marcada como tal: serve para testar o chat."}
+                  {ehInstagram
+                    ? `O botão abre o login do Instagram: entre com a conta @${channel.identificadorExterno} e autorize o acesso às mensagens do Direct. Desconectar apaga a autorização guardada.`
+                    : channel.ligadoAoProvedor
+                      ? FRASE_DO_CANAL_REAL
+                      : "Sem um provedor real, a conexão é simulada e marcada como tal: serve para testar o chat."}
                 </p>
               </div>
               <p className="app-meta mt-2">
@@ -324,11 +375,7 @@ function FichaDoCanal({ channel }: { readonly channel: CanalNaFicha }) {
                     ? "sem janela"
                     : `${capabilities.responseWindowHours}h`}
                 </RecordRow>
-                <RecordRow label="Fora da janela">
-                  {capabilities.requiresTemplateOutsideWindow
-                    ? "só Mensagem de modelo aprovada"
-                    : "envio livre"}
-                </RecordRow>
+                <RecordRow label="Fora da janela">{FORA_DA_JANELA[capabilities.foraDaJanela].linha}</RecordRow>
                 <RecordRow label="Resolve identificadores">
                   <span title={resolvedIdentifiers}>{resolvedIdentifiers}</span>
                 </RecordRow>
@@ -362,5 +409,27 @@ function FichaDoCanal({ channel }: { readonly channel: CanalNaFicha }) {
         onCancel={() => setArquivando(false)}
       />
     </div>
+  );
+}
+
+/**
+ * Sessão 8: a conta do Instagram ligada ao Canal, lida da Meta pela api (a foto não
+ * é guardada: o endereço dela vence). Sem resposta da Meta, fica o @ do Canal.
+ */
+function ContaConectadaDoInstagram({ canalId, usuarioDoCanal }: { readonly canalId: string; readonly usuarioDoCanal: string }) {
+  const conta = useContaDoInstagram(canalId);
+  const usuario = conta.data?.usuario ?? usuarioDoCanal;
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      {conta.data?.fotoUrl ? (
+        // A foto vem do CDN do Instagram e o endereço vence: sem otimização do Next, que guardaria o endereço.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={conta.data.fotoUrl} alt="" width={20} height={20} className="size-5 shrink-0 rounded-full" />
+      ) : null}
+      <span className="identificador truncate" title={conta.data?.nome ?? undefined}>
+        @{usuario}
+      </span>
+      {conta.data?.nome ? <span className="app-meta truncate">{conta.data.nome}</span> : null}
+    </span>
   );
 }

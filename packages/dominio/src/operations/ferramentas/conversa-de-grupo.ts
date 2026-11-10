@@ -162,7 +162,7 @@ export function sendMessageSemConferencia(
   if (!input.internal) {
     const capabilities = capacidadesDoCanal(channel);
     const until = windowOpenUntil(channel, conversation);
-    if (capabilities.requiresTemplateOutsideWindow && until && Date.now() > until.getTime()) {
+    if (capabilities.foraDaJanela === "soModelo" && until && Date.now() > until.getTime()) {
       if (!input.templateProviderId) {
         return fail(
           "A janela de resposta deste Canal expirou. Só é possível enviar uma Mensagem de modelo aprovada.",
