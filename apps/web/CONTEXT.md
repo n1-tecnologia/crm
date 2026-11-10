@@ -526,6 +526,14 @@ da api e revalida as chaves SWR certas a cada evento, para a Mensagem que chega 
   entrega o que passou no intervalo e não existe evento "ressincronizar", então a tela relê as chaves de base
   (`CHAVES_DE_BASE`) ao (re)conectar. A reconexão espera `min(1 s × 2^n, 30 s)`; um 503 `TEMPO_REAL_INDISPONIVEL` cai
   na releitura. A api fecha o fluxo em 45 min e a aba reconecta sozinha.
+- **O fluxo mudo e a espera que só zera com conexão estável (WR-08, 16-19).** Cada tentativa tem o seu
+  `AbortController` e o seu relógio de silêncio: sem **nenhum** byte (o `: batida` de 25 s conta) por
+  `SILENCIO_MAXIMO_DO_FLUXO_MS` (60 s, de `@n1/dominio/crm/eventos`, o mesmo contrato da batida do servidor), a aba
+  aborta a tentativa e cancela o leitor, e o laço de leitura cai pelo caminho de sempre (`aoCair`, releitura de 5 s,
+  nova tentativa): é o notebook que dormiu, a troca de rede ou o NAT que derrubou sem avisar. O mesmo relógio cobre o
+  `fetch` que nunca responde. A espera de reconexão só volta a 1 s depois de uma conexão que ficou aberta
+  `CONEXAO_ESTAVEL_MS` (30 s); um servidor que abre e fecha na hora gera esperas de 1 s, 2 s, 4 s…, não uma
+  reconexão por segundo. Nada disso mexe na tela: sem toast, som nem título (D-16-02), e o token segue só no cabeçalho.
 - **`invalidarCrmComArrays(prefixo)`** (`dados/crm/cliente-crm.ts`) alcança também a chave em array do resumo das
   Tarefas; `invalidarCrm` ficou como era e continua sem casar array.
 - **`AcompanhanteDoTempoReal`**, montado no `StoreProvider` ao lado do `AcompanhanteDaRevisao`: **soma** à releitura

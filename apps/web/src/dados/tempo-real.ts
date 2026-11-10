@@ -23,6 +23,8 @@ import { invalidarCrmComArrays } from "./crm/cliente-crm";
 export const INTERVALO_SEM_TEMPO_REAL_MS = 5_000;
 /** A espera entre tentativas de reconexão dobra (1 s, 2 s, 4 s…) até aqui. */
 export const ESPERA_MAXIMA_DE_RECONEXAO_MS = 30_000;
+/** A espera de reconexão só volta a 1 s depois de uma conexão que ficou aberta tanto tempo (mais que uma batida de 25 s). */
+export const CONEXAO_ESTAVEL_MS = 30_000;
 /** Eventos em rajada esperam esta janela e viram uma rodada só de revalidação. */
 export const JANELA_DE_AGRUPAMENTO_MS = 300;
 
@@ -99,8 +101,9 @@ type Temporizador = ReturnType<typeof setTimeout>;
  * - Cai (rede, 401, 403, 503, token indefinido, o servidor que fecha aos 45 min): `aoCair`, liga a releitura de
  *   `INTERVALO_SEM_TEMPO_REAL_MS` e tenta de novo com espera de 1 s, 2 s, 4 s… até `ESPERA_MAXIMA_DE_RECONEXAO_MS`.
  *   Cada tentativa pede o token de novo: um 401 de token vencido pega o renovado.
- * - Abre (primeiro pedaço do corpo, o `: aberto` do servidor): `aoAbrir`, desliga a releitura, zera a espera e relê
- *   tudo uma vez (`aoReler`) — o servidor não reenvia o que se perdeu no intervalo (não há "ressincronizar").
+ * - Abre (primeiro pedaço do corpo, o `: aberto` do servidor): `aoAbrir`, desliga a releitura e relê
+ *   tudo uma vez (`aoReler`) — o servidor não reenvia o que se perdeu no intervalo (não há "ressincronizar"). A espera
+ *   de reconexão só volta a 1 s depois de `CONEXAO_ESTAVEL_MS` (30 s) com a conexão aberta.
  * - Eventos em rajada esperam `JANELA_DE_AGRUPAMENTO_MS` e saem em UMA chamada de `aoEventos` (T-16-30).
  * - Fluxo mudo: sem nenhum byte (a batida `: batida` do servidor conta) por `SILENCIO_MAXIMO_DO_FLUXO_MS`, a tentativa é
  *   abortada e cai como qualquer outra (notebook que dormiu, NAT que derrubou, `fetch` que nunca responde): `aoCair`,
@@ -115,6 +118,7 @@ export function criarConexaoDoTempoReal(opcoes: OpcoesDaConexao): { parar(): voi
     : (retorno, ms) => setTimeout(retorno, ms);
   let tentativaEmCurso: AbortController | undefined;
   let silencio: Temporizador | undefined;
+  let estabilidade: Temporizador | undefined;
   let parado = false;
   let tentativas = 0;
   let emQueda = false;
@@ -126,6 +130,11 @@ export function criarConexaoDoTempoReal(opcoes: OpcoesDaConexao): { parar(): voi
   function desarmarSilencio(): void {
     if (silencio !== undefined) clearTimeout(silencio);
     silencio = undefined;
+  }
+
+  function desarmarEstabilidade(): void {
+    if (estabilidade !== undefined) clearTimeout(estabilidade);
+    estabilidade = undefined;
   }
 
   function ligarReleitura(): void {
@@ -145,6 +154,7 @@ export function criarConexaoDoTempoReal(opcoes: OpcoesDaConexao): { parar(): voi
 
   function cair(): void {
     if (parado) return;
+    desarmarEstabilidade();
     // `aoCair` avisa a queda uma vez por episódio: as tentativas que falham em seguida não repetem o aviso.
     if (!emQueda) opcoes.aoCair();
     emQueda = true;
@@ -158,7 +168,12 @@ export function criarConexaoDoTempoReal(opcoes: OpcoesDaConexao): { parar(): voi
   }
 
   function abrir(): void {
-    tentativas = 0;
+    // A espera só zera depois de uma conexão estável: um servidor que abre e fecha na hora não vira uma reconexão por segundo.
+    desarmarEstabilidade();
+    estabilidade = agendar(() => {
+      estabilidade = undefined;
+      tentativas = 0;
+    }, CONEXAO_ESTAVEL_MS);
     emQueda = false;
     desligarReleitura();
     opcoes.aoAbrir();
@@ -246,6 +261,7 @@ export function criarConexaoDoTempoReal(opcoes: OpcoesDaConexao): { parar(): voi
       parado = true;
       tentativaEmCurso?.abort();
       desarmarSilencio();
+      desarmarEstabilidade();
       for (const temporizador of [reconexao, releitura, agrupamento]) {
         if (temporizador !== undefined) clearTimeout(temporizador);
       }

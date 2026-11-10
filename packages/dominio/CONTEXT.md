@@ -1011,6 +1011,8 @@ funções antigas saíram de `derive-conversacional.ts` no 15-42.
   só ids, nunca texto, nome nem telefone) e `EventoParaATela` (sem `workspaceId`), com `lerEventoDoCrm` e
   `lerEventoParaATela`, que recusam campo a mais, id vazio e id com mais de 64 caracteres: a api (que escreve o
   NOTIFY e o fluxo SSE) e a web (que lê o fluxo) usam a mesma forma.
+  `BATIDA_DO_FLUXO_MS` (25 s) e `SILENCIO_MAXIMO_DO_FLUXO_MS` (60 s, mais que duas batidas) são o contrato do fluxo
+  entre a api (quem manda o `: batida`) e a web (quem dá a conexão por morta depois de tanto tempo sem nenhum byte).
 - `crm/midia.ts` (`@n1/dominio/crm/midia`): `TIPOS_ACEITOS_NA_MENSAGEM` (17 tipos; só da Mensagem, o Formulário
   mantém a lista dele), `normalizarTipoDeMidia` (`audio/ogg; codecs=opus` vira `audio/ogg`), `categoriaDaMidia`,
   `tiposAceitosParaOCanal(sendableMediaTypes)` (o seletor de arquivo da tela e a recusa da api), `tetoDaMidia` (16 MiB
