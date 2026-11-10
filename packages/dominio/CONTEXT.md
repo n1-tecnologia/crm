@@ -1023,4 +1023,9 @@ funções antigas saíram de `derive-conversacional.ts` no 15-42.
   os finais). `conectar` (QR) e `conexao_perdida` ficam para a Sessão 4; juntar Contatos com e sem o nono dígito é a
   4.4.3. O status de entrega só avança: `proximoStatusDeEntrega` (em `crm/mensagens.ts`) nunca deixa `lida` voltar a
   `entregue`.
+  `proximaConexao` ganhou o terceiro argumento `FatosDaConexao` (CR-01, 16-17): `simular_conexao` recusa o Canal
+  ligado a um provedor real (`ligadoAoProvedor`, `FRASE_DO_CANAL_REAL`) e recusa quando o fato não vem (falha
+  fechada, `FRASE_SEM_FATOS_DA_CONEXAO`); `desconectar` e `conexao_confirmada` o ignoram. `CanalNaFicha` é o `Canal`
+  mais `ligadoAoProvedor` (só na leitura da ficha, não é coluna) e `podeSimularConexao(canal)` é a mesma regra para a
+  tela.
 

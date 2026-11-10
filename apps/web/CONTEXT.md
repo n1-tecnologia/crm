@@ -345,7 +345,9 @@ provedor e entrega a `features/crm/conectar-provedor.tsx` (orientação passo a
 passo, espaço reservado do QR/token e o formulário real). A ficha do Canal
 grava por REST quando o Canal é relacional (vem de `GET /estado` com
 `relational: true`) e pela operação antiga quando é do seed (demo); o botão
-"Simular conexão" só aparece para quem administra. Três peças visuais novas
+"Simular conexão" só aparece para quem administra e só em Canal que nunca foi ligado a um provedor real
+(`podeSimularConexao`, com `ligadoAoProvedor` vindo de `GET /canais/:id`; CR-01, 16-17); no Canal ligado a ficha
+mostra a frase de como reconectar. Três peças visuais novas
 em `features/crm/`: `selo-do-provedor.tsx` (oficial/não oficial/cadastrado/
 demo/conexão simulada), `seletor-de-canal.tsx` ("Responder por", que troca a
 aba sem mover uma Conversa existente de Canal) e `separador-de-canal.tsx` (o

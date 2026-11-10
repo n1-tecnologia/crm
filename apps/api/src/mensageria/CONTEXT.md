@@ -29,6 +29,16 @@ implementação registrada lança `ErroDeProvedor("PROVEDOR_INDISPONIVEL")`: nun
 atendente jamais ver "enviada" numa Mensagem que não saiu para o WhatsApp (MSG-05). Um Canal que deixa de ser
 simulado perde o provedor de teste na hora.
 
+**O Canal real não volta a simulado pela tela (CR-01, 16-17).** `POST /canais/:id/simular-conexao` num Canal com
+credencial ATIVA do próprio provedor no cofre (`tipo` = o provedor do Canal, `revogado_em is null`, o que
+`canal:ligar-evolution` guarda) responde 409 `TRANSICAO_INVALIDA` e não muda `conexao` nem `conexao_simulada`; a
+ficha do Canal (`GET /canais/:id` devolve `ligadoAoProvedor`) esconde o botão "Simular conexão" e diz como
+reconectar. Sem isso, "Desconectar" e "Simular conexão" levariam o Canal real ao provedor de teste: a saída
+responderia "Enviada" sem sair e a entrada da Evolution seria descartada. O fato é lido por existência, depois do
+`for update` do Canal e na mesma transação (o repositório não decifra nada). Reconectar o Canal real é
+`canal:ligar-evolution` até a Sessão 4 trazer o "Conectar" com QR. O Canal de demonstração, sem essa credencial
+(só com o segredo de teste do webhook, ou sem nada no cofre), simula como antes (D-16-03).
+
 `canalParaProvedor(cliente, chaves, workspaceId, canal)` lê do cofre (`servicos/cofre.ts`) o segredo do
 webhook (`donoTipo: "canal"`, `tipo: "webhook_segredo"`) e, para Canal real, a credencial cujo `tipo` é o nome
 do provedor. `chaves` é opcional: sem ela, a chave mestra é lida do ambiente aqui, e `rotas/` nunca importa
