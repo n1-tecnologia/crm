@@ -1,16 +1,21 @@
 /**
  * `tempo-real:provar` (16-15, D-16-01, A9): uma volta de `LISTEN`/`NOTIFY` pela `DATABASE_URL`, contra o Postgres 16 de
  * Docker. Nunca o banco do `.env`: o teste só lê `DATABASE_URL` do ambiente de quem roda e se recusa a seguir se ela
- * não for local.
+ * não for local. Sem Postgres local (o `check` do CI não tem banco), os testes que precisam dele são pulados, como os
+ * de `describeComBanco`; os que usam uma porta sem banco ou nenhuma URL seguem rodando.
  */
 
 import { describe, expect, it } from "vitest";
+import { hostEhLocal } from "../persistencia/host-local";
 import { principal, provarTempoReal } from "./provar-tempo-real";
+
+/** A mesma regra "só banco local" dos testes de banco (`persistencia/host-local.ts`), sem carregar o `.env`. */
+const temBancoLocal = hostEhLocal(process.env.DATABASE_URL);
 
 function urlLocal(): string {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL não definida: rode contra o Postgres 16 de Docker");
-  if (!/localhost|127\.0\.0\.1/.test(url)) throw new Error("este teste só roda contra um Postgres local");
+  if (!hostEhLocal(url)) throw new Error("este teste só roda contra um Postgres local");
   return url;
 }
 
@@ -21,7 +26,7 @@ function capturar() {
 }
 
 describe("provarTempoReal", () => {
-  it("mede uma volta de LISTEN/NOTIFY pelo Postgres local e diz o papel e a porta", async () => {
+  it.skipIf(!temBancoLocal)("mede uma volta de LISTEN/NOTIFY pelo Postgres local e diz o papel e a porta", async () => {
     const resultado = await provarTempoReal({ url: urlLocal() });
     expect(resultado.papel).toBe("postgres");
     expect(resultado.porta).toBe(5432);
@@ -29,7 +34,7 @@ describe("provarTempoReal", () => {
     expect(resultado.recebidoEmMs).toBeLessThan(1000);
   });
 
-  it("sem a notificação dentro de esperaMs, falha com a frase em segundos", async () => {
+  it.skipIf(!temBancoLocal)("sem a notificação dentro de esperaMs, falha com a frase em segundos", async () => {
     await expect(provarTempoReal({ url: urlLocal(), esperaMs: 300, notificar: false })).rejects.toThrow(
       "A notificação não chegou em 0,3 s.",
     );
@@ -37,7 +42,7 @@ describe("provarTempoReal", () => {
 });
 
 describe("principal", () => {
-  it("imprime só a linha papel/porta/ms e devolve 0", async () => {
+  it.skipIf(!temBancoLocal)("imprime só a linha papel/porta/ms e devolve 0", async () => {
     const { saida, erros, io } = capturar();
     const codigo = await principal([], { url: urlLocal(), saida: io });
     expect(codigo).toBe(0);
@@ -59,7 +64,7 @@ describe("principal", () => {
     expect(tudo.length).toBeGreaterThan(0);
   });
 
-  it("sem a notificação em esperaMs devolve 1 com a frase em segundos", async () => {
+  it.skipIf(!temBancoLocal)("sem a notificação em esperaMs devolve 1 com a frase em segundos", async () => {
     const { erros, io } = capturar();
     const codigo = await principal([], { url: urlLocal(), esperaMs: 300, notificar: false, saida: io });
     expect(codigo).toBe(1);
