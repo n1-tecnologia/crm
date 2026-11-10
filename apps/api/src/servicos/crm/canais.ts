@@ -24,6 +24,8 @@
  *   - a revisão do Espaço somada na mesma transação de toda escrita (A4).
  *   - 16-06: o Canal que volta a `conectada` reenfileira, na mesma transação, as Mensagens `pendente` dele
  *     (`reenfileirarPendentesDoCanal`).
+ *   - CR-01 (16-17): "Simular conexão" recusa (409 `TRANSICAO_INVALIDA`) o Canal com credencial ativa do próprio provedor
+ *     no cofre, antes de qualquer escrita; o fato é lido depois do `for update` do Canal, na mesma transação.
  * Toda escrita trava a linha do Espaço e, só depois, carrega o Canal travado (`for update`) NESTE Espaço: id de
  * outro Espaço é 404, nunca 403 (T-08-13).
  */
@@ -177,7 +179,13 @@ export function criarServicoDeCanais(deps: { readonly pool: () => Pool; readonly
    */
   function mudarConexao(membro: MembroDaSessao, id: string, acao: Exclude<AcaoDeConexao, "conexao_confirmada">): Promise<ResultadoCrm<Canal>> {
     return escrita(membro, acao, id, async ({ cliente, repositorio, canal }) => {
-      const proxima = proximaConexao(canal, acao);
+      // CR-01 (16-17): o fato "o Canal é real" é lido AQUI, depois do `for update` do Canal (o `canal:ligar-evolution` grava a
+      // credencial e a conexão com o mesmo Canal travado: sem corrida). `desconectar` não precisa dele.
+      const fatos =
+        acao === "simular_conexao"
+          ? { ligadoAoProvedor: await repositorio.ligadoAoProvedor(membro.workspaceId, canal) }
+          : undefined;
+      const proxima = proximaConexao(canal, acao, fatos);
       if (!proxima.ok) return transicaoInvalida(proxima.error);
       const atualizado = await repositorio.definirConexao(membro.workspaceId, id, proxima.value);
       if (!atualizado) return naoEncontrado();

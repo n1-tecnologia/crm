@@ -132,12 +132,43 @@ export function validarEdicaoDeCanal(edicao: EdicaoDeCanal): OperationResult<Edi
  * que já está `conectada` (rodar o comando de novo troca o segredo do webhook e
  * tira a marca de simulada). `conectar` (QR) e `conexao_perdida`
  * (`CONNECTION_UPDATE`) ficam para a Sessão 4.
+ *
+ * `simular_conexao` (CR-01, 16-17) só vale para o Canal que NUNCA foi ligado a um
+ * provedor real (D-16-03: a demonstração da Caixa em Canal simulado). O Canal
+ * ligado (`FatosDaConexao.ligadoAoProvedor`) não volta a simulado: a saída dele
+ * cairia no provedor de teste e a entrada da Evolution seria descartada. Reconectar
+ * o Canal real é `canal:ligar-evolution` (a Sessão 4 troca pelo "Conectar" com QR).
  */
 export type AcaoDeConexao = "simular_conexao" | "desconectar" | "conexao_confirmada";
+
+/**
+ * O que o domínio não sabe sozinho e quem decide a transição precisa trazer
+ * (CR-01, 16-17). Obrigatório em `simular_conexao`; ignorado nas outras ações.
+ */
+export interface FatosDaConexao {
+  /** O Canal tem credencial ativa do próprio provedor no cofre (o que `canal:ligar-evolution` guarda). */
+  readonly ligadoAoProvedor: boolean;
+}
+
+/**
+ * O Canal como a ficha o lê (`GET /canais/:id`): o `Canal` mais o fato da ligação ao provedor. Não é coluna de
+ * `plataforma.canais`; a lista e as escritas seguem devolvendo `Canal`.
+ */
+export interface CanalNaFicha extends Canal {
+  /** O Canal tem credencial ativa do próprio provedor no cofre; vem só na leitura da ficha, `GET /canais/:id`, e não é coluna de `plataforma.canais`. */
+  readonly ligadoAoProvedor: boolean;
+}
+
+export const FRASE_DO_CANAL_REAL =
+  "Este Canal já foi ligado a um provedor real e não volta a ser simulado. Para reconectá-lo, ligue-o de novo ao provedor.";
+
+export const FRASE_SEM_FATOS_DA_CONEXAO =
+  "Não foi possível conferir se o Canal está ligado a um provedor. Recarregue e tente de novo.";
 
 export function proximaConexao(
   canal: Pick<Canal, "conexao" | "estado">,
   acao: AcaoDeConexao,
+  fatos?: FatosDaConexao,
 ): OperationResult<{ readonly conexao: ConexaoDoCanal; readonly conexaoSimulada: boolean }> {
   if (acao === "conexao_confirmada") {
     if (canal.estado === "arquivado") return fail("Um Canal arquivado não se conecta.");
@@ -146,10 +177,17 @@ export function proximaConexao(
   if (acao === "simular_conexao") {
     if (canal.estado === "arquivado") return fail("Um Canal arquivado não se conecta.");
     if (canal.conexao === "conectada") return fail("O Canal já está conectado.");
+    if (fatos === undefined) return fail(FRASE_SEM_FATOS_DA_CONEXAO);
+    if (fatos.ligadoAoProvedor) return fail(FRASE_DO_CANAL_REAL);
     return ok({ conexao: "conectada", conexaoSimulada: true });
   }
   if (canal.conexao === "desconectada") return fail("O Canal já está desconectado.");
   return ok({ conexao: "desconectada", conexaoSimulada: false });
+}
+
+/** A mesma regra de `simular_conexao`, para a tela decidir se oferece o botão. */
+export function podeSimularConexao(canal: Pick<CanalNaFicha, "conexao" | "estado" | "ligadoAoProvedor">): boolean {
+  return proximaConexao(canal, "simular_conexao", { ligadoAoProvedor: canal.ligadoAoProvedor }).ok;
 }
 
 /**
