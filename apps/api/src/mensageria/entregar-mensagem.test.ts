@@ -17,12 +17,14 @@ import { encerrar, pool } from "../persistencia/conexao";
 import type { LinhaOutbox } from "../persistencia/outbox-worker";
 import { criarRepositorioDeContatosPg } from "../repositorios/crm/contatos";
 import { criarRepositorioDeConversasPg } from "../repositorios/crm/conversas";
+import { criarRepositorioDeMensagensPg } from "../repositorios/crm/mensagens";
 import type { ChavesDoCofre } from "../servicos/cofre";
 import { criarAcessoAoCrmPg } from "../servicos/crm/acesso";
 import { criarServicoDeMensagens } from "../servicos/crm/mensagens";
 import { criarArmazenamentoFalso } from "../testes/armazenamento-falso";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearCanal, semearMembro } from "../testes/banco-crm";
 import { FRASES_DA_SAIDA, criarEntregadorDeMensagens, criarWorkerDeSaida } from "./entregar-mensagem";
+import { reenfileirarPendentesDoCanal } from "./fila-de-saida";
 import { provedorDeTeste } from "./provedores/teste";
 
 const chaves: ChavesDoCofre = { atual: { versao: 1, chave: randomBytes(32) } };
@@ -65,7 +67,7 @@ describeComBanco("entregador de mensagens: a política de tentativas que não du
     });
     const resposta = await servico.enviar(membro, { conversaId: conversa.id, direcao: "enviada", conteudo: "olá" });
     if (!resposta.ok) throw new Error(`esperava sucesso, veio ${resposta.status}: ${resposta.error}`);
-    return { canalId, mensagemId: resposta.valor.id };
+    return { canalId, conversaId: conversa.id, mensagemId: resposta.valor.id };
   }
 
   const mensagem = async (id: string) =>
@@ -271,6 +273,84 @@ describeComBanco("entregador de mensagens: a política de tentativas que não du
     expect(await worker().processarUm()).toBe(true);
     expect(provedorDeTeste.enviados).toHaveLength(1);
     expect((await mensagem(c.mensagemId)).status_entrega).toBe("enviada");
+  });
+
+  it("WR-02: o aceite que não grava (id externo já usado no Canal) tenta 3 vezes com 250 ms e 1 s, fecha a Mensagem como falhou e a linha desiste sem reenviar", async () => {
+    const c = await cenario();
+    sequencia += 1;
+    const idExterno = `dup-${sequencia}`;
+    const ocupada = await criarRepositorioDeMensagensPg(pool()).inserirRecebida(ws, {
+      conversaId: c.conversaId,
+      canalId: c.canalId,
+      idExterno,
+      criadoEm: new Date().toISOString(),
+      conteudo: "oi",
+      anexos: [],
+      assunto: null,
+      enderecosAdicionais: [],
+      remetenteExterno: null,
+      identificadorId: null,
+      cargaBruta: null,
+    });
+    expect(ocupada).toBeDefined();
+    provedorDeTeste.programarEnvio({ ok: true, idExterno });
+    const esperas: number[] = [];
+    const comEspera = criarWorkerDeSaida({
+      workerId: "teste-politica",
+      workspaceId: ws,
+      chaves,
+      esperar: async (ms: number) => {
+        esperas.push(ms);
+      },
+    });
+
+    expect(await comEspera.processarUm()).toBe(true);
+
+    expect(provedorDeTeste.enviados).toHaveLength(1);
+    expect(esperas).toEqual([250, 1000]);
+    expect(await mensagem(c.mensagemId)).toMatchObject({
+      status_entrega: "falhou",
+      motivo_falha: FRASES_DA_SAIDA.aceitaSemRegistro,
+      id_externo: null,
+    });
+    expect(await linha(c.mensagemId)).toMatchObject({ status: "failed", last_error_code: "ENVIADO_SEM_REGISTRO" });
+    await disponivelAgora(c.mensagemId);
+    expect(await comEspera.processarUm()).toBe(false);
+    expect(provedorDeTeste.enviados).toHaveLength(1);
+  });
+
+  it("WR-02: a volta do Canal só reabre a linha failed/CANAL_DESCONECTADO e cria a que falta; nunca reabre ENVIADO_SEM_REGISTRO", async () => {
+    const a = await cenario();
+    const nova = async () => {
+      const r = await servico.enviar(membro, { conversaId: a.conversaId, direcao: "enviada", conteudo: "outra" });
+      if (!r.ok) throw new Error(`esperava sucesso, veio ${r.status}: ${r.error}`);
+      return r.valor.id;
+    };
+    const b = await nova();
+    const c = await nova();
+    const marcar = (id: string, codigo: string) =>
+      pool().query(
+        `update plataforma.integration_outbox set status = 'failed', attempts = 3, last_error_code = $3 where workspace_id = $1 and aggregate_id = $2`,
+        [ws, id, codigo],
+      );
+    await marcar(a.mensagemId, "CANAL_DESCONECTADO");
+    await marcar(b, "ENVIADO_SEM_REGISTRO");
+    await pool().query("delete from plataforma.integration_outbox where workspace_id = $1 and aggregate_id = $2", [ws, c]);
+
+    const cliente = await pool().connect();
+    let reenfileiradas: number;
+    try {
+      await cliente.query("begin");
+      reenfileiradas = await reenfileirarPendentesDoCanal(cliente, ws, a.canalId);
+      await cliente.query("commit");
+    } finally {
+      cliente.release();
+    }
+
+    expect(reenfileiradas).toBe(2);
+    expect(await linha(a.mensagemId)).toMatchObject({ status: "pending", attempts: 0, last_error_code: null });
+    expect(await linha(c)).toMatchObject({ status: "pending", attempts: 0 });
+    expect(await linha(b)).toMatchObject({ status: "failed", attempts: 3, last_error_code: "ENVIADO_SEM_REGISTRO" });
   });
 
   it("motivo do provedor com apikey: nem a Mensagem nem a linha do outbox a carregam", async () => {
