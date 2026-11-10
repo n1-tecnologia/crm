@@ -188,13 +188,25 @@ Ficam para a Sessão 4 o QR code e o botão "Conectar", a mensagem que a pessoa
 digita no celular, o status de entrega e a conexão vindos da Evolution, e o nono
 dígito. Ver `apps/api/src/mensageria/CONTEXT.md`.
 
-**A `013` só existe em bancos locais.** Entra em produção só pela publicação do
-dono, com backup manual do schema `plataforma` antes e `npm run migrar -w @n1/api
--- --seco` primeiro. **O que não está provado:** nada da fase rodou contra o
-Supabase Storage, o pooler de produção (a suposição A9, de que o pooler em modo
-sessão entrega `LISTEN/NOTIFY`) nem a Evolution real; tudo foi provado com o
-provedor de teste, o servidor falso da Evolution e um Postgres 16 de Docker. Isso
-é a prova ao vivo do dono, nos planos 16-15 e 16-16.
+Depois da verificação da fase (`16-VERIFICATION.md`), um plano de lacunas (16-17
+a 16-22) fechou o que ela achou: "Simular conexão" recusa o Canal já ligado a um
+provedor real e a ficha esconde o botão (CR-01); o `SIGTERM` encerra a api sozinho,
+com teto de 15 s (T-16-28); a saída nunca reenvia sozinha uma Mensagem que pode ter
+saído (trava vencida, aceite não gravado, volta do Canal) e responde pelo número por
+onde o Contato escreveu; e a aba reconecta quando o fluxo de eventos fica 60 s mudo.
+**Essas correções só valem em produção depois da publicação do dono**: o 16-22 as
+prova juntas e roda o gate no Postgres local, e entrega o roteiro de publicação e do
+que conferir depois (`apps/api/deploy/CONTEXT.md`).
+
+**A `013` está em produção desde 2026-11-10**, aplicada pelo `publicar.sh` sem backup
+manual do schema `plataforma`, por decisão do dono (R-16-04 em `16-SECURITY.md`); voltar
+a API é possível, voltar a `013` seria uma `014`. A prova ao vivo (`16-PROVAS.md`)
+mostrou o pooler de produção entregando `LISTEN/NOTIFY` (A9), a Evolution real
+recebendo texto, áudio e imagem do celular e a resposta de texto e de imagem chegando
+ao aparelho. **O que segue sem prova** (`16-VERIFICATION.md`, verificação humana): o
+cronômetro dos 2 s nas duas abas pelo SSE, o `/eventos` atrás do nginx, o áudio no
+Safari e o Supabase Storage real; e a rotação da chave global da Evolution (T-16-55)
+é do dono.
 
 ## Comandos
 
