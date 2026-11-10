@@ -1,5 +1,7 @@
 # Fase 16 — Roteiro da prova ao vivo (D-16-04, D-16-05)
 
+> **Resultado desta prova:** ver `16-PROVAS.md` (2026-11-10). Os resultados passo a passo estão lá; os campos "Hora/Resultado" abaixo não foram preenchidos um a um.
+
 > **Só o dono roda este roteiro.** Nenhum agente roda estes passos por ele: eles mexem no banco de produção, na VM e na Evolution. Este arquivo foi escrito pelo plano 16-15 a partir de `16-CONTEXT.md`, `16-RESEARCH.md` (Open Questions 1 a 3, suposições A1, A6, A9 e A10), de `apps/api/deploy/CONTEXT.md` ("Mensageria (Fase 16)") e do comando `canal:ligar-evolution` do 16-13.
 >
 > **Regra de ouro: nenhum segredo vai para a conversa.** Chave da Evolution, token, senha, `DATABASE_URL`, `COFRE_CHAVE`, número de telefone e o token de login do CRM ficam no seu terminal. Quando o roteiro precisa de um segredo no terminal, ele manda lê-lo com `read -rs` (não aparece na tela nem no histórico). **Só voltam para a conversa** versões, contagens, milissegundos, "ok/falhou" por passo e as linhas de saída que o próprio passo diz que são seguras.
