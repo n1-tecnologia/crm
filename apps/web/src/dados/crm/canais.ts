@@ -19,7 +19,7 @@
 
 import useSWR from "swr";
 import { LIMITES_CRM } from "@n1/dominio/crm/comum";
-import type { Canal, CanalNaFicha, EdicaoDeCanal, EstadoDoCanal, NovoCanal } from "@n1/dominio/crm/canais";
+import type { Canal, CanalNaFicha, ConexaoPorQrCode, EdicaoDeCanal, EstadoDoCanal, NovoCanal } from "@n1/dominio/crm/canais";
 import { chamarCrm, ErroDeApi, invalidarCrm } from "./cliente-crm";
 
 export interface FiltroDeCanais {
@@ -81,11 +81,15 @@ function valeRepetir(erro: Error): boolean {
  * O Canal da ficha, com `ligadoAoProvedor` (CR-01, 16-17). O 404 da api fica em `error` (`ErroDeApi`): a página decide o
  * que mostrar. As escritas devolvem `Canal` e invalidam `/canais`: a ficha relê esta rota e recebe o fato de novo.
  */
-export function useCanal(id: string | undefined) {
+export function useCanal(id: string | undefined, opcoes: { readonly atualizarACadaMs?: number } = {}) {
   return useSWR<CanalNaFicha, Error>(
     id === undefined ? null : chaveDoCanal(id),
     async (chave: string) => (await chamarCrm<{ ok: true; dados: CanalNaFicha }>(chave)).dados,
-    { shouldRetryOnError: valeRepetir },
+    {
+      shouldRetryOnError: valeRepetir,
+      // Sessão 4: com o painel do QR code aberto, a ficha relê o Canal a cada poucos segundos para ver o provedor confirmar.
+      ...(opcoes.atualizarACadaMs ? { refreshInterval: opcoes.atualizarACadaMs } : {}),
+    },
   );
 }
 
@@ -97,6 +101,18 @@ export function criarCanal(entrada: NovoCanal): Promise<Canal> {
 /** D-11: nome, Fila padrão e Origem padrão. `null` limpa o padrão; ausente não mexe. */
 export function editarCanal(id: string, edicao: EdicaoDeCanal): Promise<Canal> {
   return gravar(chaveDoCanal(id), "PATCH", edicao);
+}
+
+/**
+ * Sessão 4 (4.2.3): pede à api o QR code para conectar o Canal (WhatsApp não oficial, pela Evolution). A rota NUNCA diz
+ * `conectada` por QR lido: o provedor avisa a api por webhook e a tela vê o Canal mudar relendo `GET /canais/:id`
+ * (`useCanal`). Só a resposta `conectada` (o aparelho já estava ligado e o número conferiu) muda o Canal aqui, e só ela
+ * invalida a lista. Sem corpo: não manda `content-type`, como as outras ações de conexão.
+ */
+export async function conectarCanal(id: string): Promise<ConexaoPorQrCode> {
+  const resposta = await chamarCrm<{ ok: true; dados: ConexaoPorQrCode }>(`${chaveDoCanal(id)}/conectar`, { method: "POST" });
+  if (resposta.dados.situacao === "conectada") await invalidarCrm("/canais");
+  return resposta.dados;
 }
 
 /** D-08: conecta marcando a conexão como simulada. A api recusa Canal arquivado, já conectado ou já ligado a um provedor real (409 `TRANSICAO_INVALIDA`, CR-01). */

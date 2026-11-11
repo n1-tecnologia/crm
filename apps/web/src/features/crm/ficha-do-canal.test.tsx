@@ -30,7 +30,11 @@ import { StoreProvider } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
 import CanalPage from "@/app/(shell)/crm/caixa-de-entrada/configuracoes/canais/[canal]/page";
 
-const { obterSessao } = vi.hoisted(() => ({ obterSessao: vi.fn() }));
+const { obterSessao, router, parametros } = vi.hoisted(() => ({
+  obterSessao: vi.fn(),
+  router: { push: vi.fn(), replace: vi.fn() },
+  parametros: { atual: new URLSearchParams() },
+}));
 
 vi.mock("@/autenticacao/cliente-navegador", () => ({
   clienteDoNavegador: () => ({ auth: { getSession: obterSessao } }),
@@ -46,7 +50,8 @@ vi.mock("@/features/crm/ir-para-fora", () => ({ irParaForaDoApp }));
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/crm/caixa-de-entrada/configuracoes/canais/uuid-1",
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useRouter: () => router,
+  useSearchParams: () => parametros.atual,
 }));
 
 const AVISO_DA_SIMULACAO = "Conexão simulada: o Canal aparece conectado para testar o chat, mas nenhuma Mensagem sai da plataforma.";
@@ -74,6 +79,8 @@ function canalRelacional(sobre: Partial<CanalNaFicha> = {}): CanalNaFicha {
     origemPadraoId: null,
     gruposHabilitados: false,
     ligadoAoProvedor: false,
+    // Os testes de 08-09 simulam a conexão: o servidor deles permite (PERMITIR_CONEXAO_SIMULADA, 4.3.4).
+    simulacaoPermitida: true,
     criadoPor: "mem_rafael",
     criadoEm: "2026-11-01T00:00:00.000Z",
     atualizadoEm: "2026-11-01T00:00:00.000Z",
@@ -88,6 +95,9 @@ let rotas: Record<string, () => Response>;
 
 beforeEach(() => {
   process.env.NEXT_PUBLIC_API_URL = "http://api";
+  router.push.mockReset();
+  router.replace.mockReset();
+  parametros.atual = new URLSearchParams();
   rotas = {};
   fetchMock = vi.fn(async (url: string, init: RequestInit = {}) => {
     const rota = rotas[`${init.method ?? "GET"} ${String(url).replace("http://api", "")}`];
@@ -185,12 +195,22 @@ describe("08-09 — a ficha do Canal relacional", () => {
   });
 
   it("CR-01 (16-17): Canal ligado a um provedor e desconectado: sem Simular conexão, com a frase de como reconectar", async () => {
-    await montar("uuid-1", canalRelacional({ ligadoAoProvedor: true, conexao: "desconectada" }));
+    // O WhatsApp oficial não conecta por QR code: a frase do CR-01 segue sendo o caminho dele.
+    await montar("uuid-1", canalRelacional({ provedor: "whatsapp-cloud", ligadoAoProvedor: true, conexao: "desconectada" }));
 
     expect(await screen.findByRole("heading", { name: /Suporte do Zap/ })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Simular conexão" })).toBeNull();
     expect(screen.getByText(FRASE_DO_CANAL_REAL)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Arquivar" })).toBeTruthy();
+  });
+
+  it("CR-01 + Sessão 4: o não oficial ligado e desconectado não simula, e reconectar é o botão Conectar (QR code), não a frase antiga", async () => {
+    await montar("uuid-1", canalRelacional({ ligadoAoProvedor: true, conexao: "desconectada" }));
+
+    expect(await screen.findByRole("heading", { name: /Suporte do Zap/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Simular conexão" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Conectar" })).toBeTruthy();
+    expect(screen.queryByText(FRASE_DO_CANAL_REAL)).toBeNull();
   });
 
   it("CR-01 (16-17): Canal ligado a um provedor e conectado: Desconectar aparece e Simular conexão não", async () => {
@@ -326,5 +346,128 @@ describe("Sessão 8 — a ficha do Canal do Instagram conecta de verdade", () =>
     await montar("uuid-1", instagram(), "mem_julia");
     expect(await screen.findByRole("heading", { name: /Instagram da loja/ })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Conectar com o Instagram" })).toBeNull();
+  });
+});
+
+describe("Sessão 4 — a ficha do WhatsApp não oficial conecta lendo um QR code", () => {
+  const QR = {
+    ok: true,
+    dados: { situacao: "qrcode", qrcode: { imagem: "data:image/png;base64,iVBORw0KGgo=", codigoDePareamento: "WXYZ1234" } },
+  };
+  const semSimulacao = (sobre: Partial<CanalNaFicha> = {}) => canalRelacional({ simulacaoPermitida: false, ...sobre });
+
+  it("produção (sem simulação): Conectar é o botão de conexão e Simular conexão não existe", async () => {
+    await montar("uuid-1", semSimulacao());
+
+    expect(await screen.findByRole("heading", { name: /Suporte do Zap/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Conectar" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Simular conexão" })).toBeNull();
+    expect(screen.getByText(/leia\. Desconectar tira o aparelho da lista/)).toBeTruthy();
+  });
+
+  it("onde a simulação é permitida (desenvolvimento): Conectar e Simular conexão convivem", async () => {
+    await montar("uuid-1", canalRelacional());
+
+    expect(await screen.findByRole("button", { name: "Conectar" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Simular conexão" })).toBeTruthy();
+  });
+
+  it("Canal com erro: o botão serve de Reconectar", async () => {
+    await montar("uuid-1", semSimulacao({ conexao: "com_erro", ligadoAoProvedor: true }));
+
+    expect(await screen.findByRole("button", { name: "Reconectar" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Conectar" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Desconectar" })).toBeTruthy();
+  });
+
+  it("Canal conectado de verdade: sem Conectar, com Desconectar", async () => {
+    await montar("uuid-1", semSimulacao({ conexao: "conectada", ligadoAoProvedor: true }));
+
+    expect(await screen.findByRole("button", { name: "Desconectar" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Conectar" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reconectar" })).toBeNull();
+  });
+
+  it("Membro não vê Conectar (a tela só esconde; quem barra é o servidor)", async () => {
+    await montar("uuid-1", semSimulacao(), "mem_julia");
+
+    expect(await screen.findByRole("heading", { name: /Suporte do Zap/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Conectar" })).toBeNull();
+  });
+
+  it("outros provedores não ganham Conectar: o Instagram tem o login dele e o WhatsApp oficial nem simulação em produção", async () => {
+    await montar("uuid-1", semSimulacao({ tipo: "instagram", provedor: "instagram-graph", identificadorExterno: "loja.n1" }));
+    expect(await screen.findByRole("button", { name: "Conectar com o Instagram" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Conectar" })).toBeNull();
+    cleanup();
+
+    await montar("uuid-1", semSimulacao({ provedor: "whatsapp-cloud" }));
+    expect(await screen.findByRole("heading", { name: /Suporte do Zap/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Conectar" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Simular conexão" })).toBeNull();
+  });
+
+  it("o clique em Conectar abre o painel: POST …/conectar sem corpo, o QR code, o código de pareamento e só o final do número", async () => {
+    rotas["POST /canais/uuid-1/conectar"] = () => resposta(200, QR);
+    await montar("uuid-1", semSimulacao());
+
+    fireEvent.click(await screen.findByRole("button", { name: "Conectar" }));
+
+    const dialogo = await screen.findByRole("alertdialog");
+    expect(within(dialogo).getByText("Conectar o WhatsApp")).toBeTruthy();
+    expect(within(dialogo).getByText(/final 0001/)).toBeTruthy();
+    const imagem = await within(dialogo).findByAltText("QR code para conectar o WhatsApp deste Canal");
+    expect(imagem.getAttribute("src")).toBe("data:image/png;base64,iVBORw0KGgo=");
+    expect(within(dialogo).getByText("WXYZ1234")).toBeTruthy();
+    // O número inteiro nunca aparece no painel.
+    expect(dialogo.textContent).not.toContain("5511977770001");
+
+    const posts = chamadasRest().filter(([url, init]) => url === "http://api/canais/uuid-1/conectar" && init?.method === "POST");
+    expect(posts).toHaveLength(1);
+    const [, init] = posts[0]!;
+    expect(init?.body).toBeUndefined();
+    const cabecalhos = init?.headers as Record<string, string>;
+    expect(cabecalhos["authorization"]).toBe("Bearer tok");
+    expect(Object.keys(cabecalhos).map((k) => k.toLowerCase())).not.toContain("content-type");
+
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Cancelar" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  });
+
+  it("?conectar=1 (depois de criar o Canal): abre o painel sozinho, uma vez, e limpa o endereço", async () => {
+    rotas["POST /canais/uuid-1/conectar"] = () => resposta(200, QR);
+    parametros.atual = new URLSearchParams("conectar=1");
+    await montar("uuid-1", semSimulacao());
+
+    expect(await screen.findByRole("alertdialog")).toBeTruthy();
+    expect(await screen.findByAltText("QR code para conectar o WhatsApp deste Canal")).toBeTruthy();
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/crm/caixa-de-entrada/configuracoes/canais/uuid-1"));
+    expect(router.replace).toHaveBeenCalledTimes(1);
+    expect(chamadasRest().filter(([url, init]) => url === "http://api/canais/uuid-1/conectar" && init?.method === "POST")).toHaveLength(1);
+  });
+
+  it("sem ?conectar=1, o painel não abre e o endereço não é tocado", async () => {
+    await montar("uuid-1", semSimulacao());
+
+    expect(await screen.findByRole("button", { name: "Conectar" })).toBeTruthy();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(router.replace).not.toHaveBeenCalled();
+    expect(chamadasRest().some(([url]) => String(url).endsWith("/conectar"))).toBe(false);
+  });
+
+  it("?conectar=1 para quem não pode conectar, ou num Canal que não conecta por QR: não abre, mas limpa o endereço", async () => {
+    parametros.atual = new URLSearchParams("conectar=1");
+    await montar("uuid-1", semSimulacao(), "mem_julia");
+    expect(await screen.findByRole("heading", { name: /Suporte do Zap/ })).toBeTruthy();
+    await waitFor(() => expect(router.replace).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    cleanup();
+    router.replace.mockReset();
+
+    await montar("uuid-1", semSimulacao({ tipo: "instagram", provedor: "instagram-graph", identificadorExterno: "loja.n1" }));
+    expect(await screen.findByRole("button", { name: "Conectar com o Instagram" })).toBeTruthy();
+    await waitFor(() => expect(router.replace).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(chamadasRest().some(([url]) => String(url).endsWith("/conectar"))).toBe(false);
   });
 });

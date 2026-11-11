@@ -39,7 +39,7 @@ export const ORIENTACAO_DO_PROVEDOR: Readonly<Record<ProvedorDeCanal, Orientacao
     ],
     espacoReservado: {
       titulo: "QR code da sessão",
-      texto: "O QR code para parear o celular aparece aqui quando a integração chegar.",
+      texto: "Depois de criar o Canal, o QR code aparece aqui.",
     },
   },
   "instagram-graph": {

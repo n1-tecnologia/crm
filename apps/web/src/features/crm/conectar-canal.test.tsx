@@ -179,7 +179,7 @@ describe("08-08 — a tela dos quatro cartões (D-06)", () => {
 });
 
 describe("08-08 — a página de orientação do provedor (D-07, D-08)", () => {
-  it("mostra os passos e o espaço reservado, e Conectar cria o Canal com a Fila, re-hidrata e abre a ficha", async () => {
+  it("mostra os passos e o espaço reservado, e Conectar cria o Canal com a Fila, re-hidrata e abre a ficha com o QR code", async () => {
     const pagina = await ConectarProvedorPage({ params: Promise.resolve({ provedor: "whatsapp-nao-oficial" }) });
     render(provedores(pagina));
 
@@ -187,7 +187,10 @@ describe("08-08 — a página de orientação do provedor (D-07, D-08)", () => {
     expect(orientacao.passos).toHaveLength(3);
     for (const passo of orientacao.passos) expect(screen.getByText(passo)).toBeTruthy();
     expect(screen.getByText("QR code da sessão")).toBeTruthy();
-    expect(screen.getByText("disponível quando a integração chegar")).toBeTruthy();
+    // Sessão 4: o WhatsApp não oficial já conecta de verdade pela ficha do Canal, como o Instagram.
+    expect(screen.getByText("na ficha do Canal, depois de criar")).toBeTruthy();
+    expect(screen.getByText("Depois de criar o Canal, o QR code aparece aqui.")).toBeTruthy();
+    expect(screen.queryByText("disponível quando a integração chegar")).toBeNull();
 
     await preencherEConectar("Suporte");
     await waitFor(() => expect(router.push).toHaveBeenCalledTimes(1));
@@ -201,6 +204,19 @@ describe("08-08 — a página de orientação do provedor (D-07, D-08)", () => {
       filaPadraoId: "fila_sup",
     });
     expect(hidratar).toHaveBeenCalledTimes(1);
+    // Sessão 4 (4.2.4): o não oficial abre a ficha já com o painel do QR code (`?conectar=1`).
+    expect(router.push).toHaveBeenCalledWith(`${DESTINO}/canais/${ID_DO_CANAL}?conectar=1`);
+  });
+
+  it("os outros provedores seguem como estavam: a pílula antiga e a ficha aberta sem `?conectar=1`", async () => {
+    const pagina = await ConectarProvedorPage({ params: Promise.resolve({ provedor: "whatsapp-cloud" }) });
+    render(provedores(pagina));
+
+    expect(screen.getByText("disponível quando a integração chegar")).toBeTruthy();
+    expect(screen.queryByText("na ficha do Canal, depois de criar")).toBeNull();
+
+    await preencherEConectar();
+    await waitFor(() => expect(router.push).toHaveBeenCalledTimes(1));
     expect(router.push).toHaveBeenCalledWith(`${DESTINO}/canais/${ID_DO_CANAL}`);
   });
 

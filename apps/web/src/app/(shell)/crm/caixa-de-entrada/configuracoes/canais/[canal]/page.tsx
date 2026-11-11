@@ -37,10 +37,16 @@
  * em `canais/instagram/retorno`, que conclui e reabre esta ficha. Para ele não há
  * "Simular conexão". Conectado, a ficha mostra a conta (@, nome e foto, lidos da
  * Meta pela api). Desconectar apaga o token.
+ *
+ * Sessão 4 — o WhatsApp não oficial conecta DE VERDADE: "Conectar" ("Reconectar" num Canal com erro) abre o painel do QR
+ * code (`PainelDoQrCode`), que pede o QR à api e relê o Canal até a Evolution confirmar. "Simular conexão" só aparece
+ * quando o servidor a permite (`simulacaoPermitida`, 4.3.4: desenvolvimento e homologação, nunca produção). A página de
+ * conectar leva para cá com `?conectar=1` depois de criar o Canal: o painel abre sozinho e o endereço é limpo.
  */
 
 import Link from "next/link";
-import { use, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, use, useCallback, useEffect, useRef, useState } from "react";
 import { ErroDeApi } from "@/dados/crm/cliente-crm";
 import {
   arquivarCanal,
@@ -54,10 +60,11 @@ import {
 import { useConversas } from "@/dados/crm/conversas";
 import { usePodeNoCrm } from "@/dados/crm/sessao";
 import { useData, useRehidratar } from "@/dados/store";
-import { FRASE_DO_CANAL_REAL, podeSimularConexao, type CanalNaFicha } from "@n1/dominio/crm/canais";
+import { FRASE_DO_CANAL_REAL, podeConectarPorQrCode, podeSimularConexao, type CanalNaFicha } from "@n1/dominio/crm/canais";
 import { capacidadesDoCanal, type ForaDaJanela } from "@n1/dominio/crm/capacidades";
 import { PROVEDORES } from "@n1/dominio/provedores-de-canal";
 import { irParaForaDoApp } from "@/features/crm/ir-para-fora";
+import { PainelDoQrCode } from "@/features/crm/painel-do-qrcode";
 import { MarcaDeConexaoSimulada, SeloDeOrigem, SeloDoProvedor } from "@/features/crm/selo-do-provedor";
 import { CHANNEL_TYPE_LABEL, IDENTIFIER_TYPE_LABEL } from "@/features/shell/format";
 import {
@@ -132,9 +139,16 @@ function FichaDoCanal({ channel }: { readonly channel: CanalNaFicha }) {
   const [aviso, setAviso] = useState<{ readonly texto: string; readonly erro: boolean } | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const [arquivando, setArquivando] = useState(false);
+  const [qrAberto, setQrAberto] = useState(false);
   const recusaDeEditar = usePodeNoCrm("editar", "canal");
   const recusaDeSimular = usePodeNoCrm("simular_conexao", "canal");
   const recusaDeConectar = usePodeNoCrm("conectar", "canal");
+  // Sessão 4: o WhatsApp não oficial conecta lendo um QR code (pela Evolution), não pela simulação.
+  const conectaPorQr = podeConectarPorQrCode(channel) && recusaDeConectar === undefined;
+  const abrirQrCode = useCallback(() => setQrAberto(true), []);
+  const fecharQrCode = useCallback(() => setQrAberto(false), []);
+  // O Canal confirmou: o espelho do store acompanha, como depois de qualquer escrita de conexão.
+  const aoConectarPorQr = useCallback(() => void rehidratar(), [rehidratar]);
   // Sessão 8: o Instagram conecta pelo login de verdade, não pela simulação.
   const ehInstagram = channel.provedor === "instagram-graph";
   const conectadoDeVerdade = channel.conexao === "conectada" && !channel.conexaoSimulada;
@@ -194,6 +208,10 @@ function FichaDoCanal({ channel }: { readonly channel: CanalNaFicha }) {
 
   return (
     <div className="flex h-full flex-col">
+      {/* `useSearchParams` fora de um `Suspense` tira a página inteira da pré-renderização: só este pedaço espera o endereço. */}
+      <Suspense fallback={null}>
+        <AbrirPeloEndereco pode={conectaPorQr} onAbrir={abrirQrCode} />
+      </Suspense>
       <PageHeader
         path={
           <>
@@ -325,9 +343,15 @@ function FichaDoCanal({ channel }: { readonly channel: CanalNaFicha }) {
                       Conectar com o Instagram
                     </Button>
                   ) : null}
+                  {conectaPorQr ? (
+                    <Button variant="primary" onClick={abrirQrCode}>
+                      {channel.conexao === "com_erro" ? "Reconectar" : "Conectar"}
+                    </Button>
+                  ) : null}
                   {!ehInstagram && podeSimularConexao(channel) && recusaDeSimular === undefined ? (
                     <Button
-                      variant="primary"
+                      // No WhatsApp não oficial a conexão de verdade é o QR code; simular fica como ação secundária (só onde o servidor permite).
+                      {...(conectaPorQr ? {} : { variant: "primary" as const })}
                       onClick={() => void executar(() => simularConexaoDoCanal(channel.id), "Conexão simulada.")}
                       carregando={ocupado}
                       disabledReason="Enviando…"
@@ -353,8 +377,10 @@ function FichaDoCanal({ channel }: { readonly channel: CanalNaFicha }) {
                 <p className="app-meta">
                   {ehInstagram
                     ? `O botão abre o login do Instagram: entre com a conta @${channel.identificadorExterno} e autorize o acesso às mensagens do Direct. Desconectar apaga a autorização guardada.`
-                    : channel.ligadoAoProvedor
-                      ? FRASE_DO_CANAL_REAL
+                    : conectaPorQr
+                      ? "O botão mostra um QR code: no celular do número do Canal, abra o WhatsApp › Aparelhos conectados › Conectar um aparelho e leia. Desconectar tira o aparelho da lista."
+                      : channel.ligadoAoProvedor
+                        ? FRASE_DO_CANAL_REAL
                       : "Sem um provedor real, a conexão é simulada e marcada como tal: serve para testar o chat."}
                 </p>
               </div>
@@ -408,8 +434,31 @@ function FichaDoCanal({ channel }: { readonly channel: CanalNaFicha }) {
         }}
         onCancel={() => setArquivando(false)}
       />
+
+      {/* Montado só enquanto aberto: fechar desmonta e para os temporizadores. Fica de pé mesmo quando o Canal vira conectada,
+          para mostrar "Conectado" antes de fechar sozinho. */}
+      {qrAberto ? <PainelDoQrCode canal={channel} onFechar={fecharQrCode} onConectado={aoConectarPorQr} /> : null}
     </div>
   );
+}
+
+/**
+ * Sessão 4: a página de conectar leva para `…/canais/<id>?conectar=1` depois de criar um Canal que conecta por QR code.
+ * Abre o painel uma vez só e limpa o endereço (um F5 não reabre). Se a pessoa não pode conectar, só limpa.
+ */
+function AbrirPeloEndereco({ pode, onAbrir }: { readonly pode: boolean; readonly onAbrir: () => void }) {
+  const parametros = useSearchParams();
+  const caminho = usePathname();
+  const router = useRouter();
+  const feito = useRef(false);
+  const pedido = parametros.get("conectar") === "1";
+  useEffect(() => {
+    if (!pedido || feito.current) return;
+    feito.current = true;
+    if (pode) onAbrir();
+    router.replace(caminho);
+  }, [pedido, pode, onAbrir, router, caminho]);
+  return null;
 }
 
 /**
