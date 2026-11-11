@@ -82,6 +82,7 @@ import { SeletorDeTipoDeTarefa } from "@/features/estrutura/seletor-de-tipo";
 import { AvatarDoContato } from "@/features/crm/avatar-do-contato";
 import { AnexoDaMensagemNoFio } from "@/features/crm/anexo-da-mensagem";
 import { EstadoDaEntrega } from "@/features/crm/estado-da-entrega";
+import { CitacaoNaBolha, marcaDeEditada, MensagemApagada, ReacoesDaMensagem, resumoDaMensagem } from "@/features/crm/mensagem-alterada-no-fio";
 import { SeletorDeCanalDeResposta } from "@/features/crm/seletor-de-canal";
 import { SeparadorDeCanal } from "@/features/crm/separador-de-canal";
 import { MarcaDeConexaoSimulada, SeloDoProvedor } from "@/features/crm/selo-do-provedor";
@@ -228,6 +229,8 @@ export function ConversationThread({
   const enviandoRef = useRef(false);
   // A Mensagem que acabou de sair, para o fio acender só ela.
   const [recemEnviada, setRecemEnviada] = useState<string | null>(null);
+  // 4.4.4: a Mensagem a que a próxima resposta cita (o "Responder" da bolha); só vale se ela está no fio da Conversa aberta.
+  const [respondendoA, setRespondendoA] = useState<string | null>(null);
   // A Conversa que o próprio fio acabou de abrir: dali em diante é ela que ele segue.
   const [aberta, setAberta] = useState<string | undefined>(undefined);
   const [agora] = useState(() => Date.now());
@@ -379,6 +382,8 @@ export function ConversationThread({
     if (ultimaPagina !== deslocamento) setPosicao({ conversaId: conversa.id, deslocamento: ultimaPagina });
   }
   const mensagens = daConversa;
+  // A citação só vale com a Mensagem ainda no fio (a Conversa pode ter trocado) e que o Canal sabe citar (hoje, o WhatsApp não oficial).
+  const citando = respondendoA === null ? undefined : mensagens.find((m) => m.id === respondendoA && m.marcacaoExclusao === null);
 
   const IconeDaAba = canal ? CHANNEL_ICON[canal.tipo] : undefined;
 
@@ -531,8 +536,10 @@ export function ConversationThread({
           direcao: "enviada",
           conteudo: anexo && draft.trim() === "" ? "" : draft,
           ...(anexos ? { anexos } : {}),
+          ...(citando ? { emRespostaAId: citando.id } : {}),
         });
         setRecemEnviada(enviada.id);
+        setRespondendoA(null);
         setAnexo(null);
         setAviso("Mensagem enviada.");
       } else {
@@ -1152,6 +1159,9 @@ export function ConversationThread({
                   const { mensagem } = marcador.item;
                   const saiu = mensagem.direcao === "enviada";
                   const interna = mensagem.direcao === "interna";
+                  // 4.4.5: a Mensagem apagada no provedor deixa de mostrar o conteúdo e os anexos (ontologia 7.6).
+                  const exclusao = mensagem.marcacaoExclusao;
+                  const podeResponder = !interna && exclusao === null && mensagem.idExterno !== null && canal?.provedor === "whatsapp-nao-oficial";
                   /*
                    * O rosto de quem falou, dos dois lados: quem atendeu à direita,
                    * o Contato à esquerda. Sem isso, uma conversa em que três
@@ -1205,20 +1215,33 @@ export function ConversationThread({
                             Nota interna — não foi enviada
                           </p>
                         ) : null}
-                        {/* T-15-50: o texto vem de terceiros e entra como texto do React, nunca como HTML. */}
-                        {mensagem.conteudo || mensagem.anexos.length === 0 ? (
-                          <p className="whitespace-pre-wrap">
-                            {mensagem.conteudo ?? ""}
-                          </p>
-                        ) : null}
-                        {/* 3.9.5: o anexo vem da URL assinada de `GET /mensagens/:id/anexos/:indice`; a legenda é o `conteudo`. */}
-                        {mensagem.anexos.length > 0 ? (
-                          <div className={cn("flex flex-col gap-2", mensagem.conteudo ? "mt-2" : "")}>
-                            {mensagem.anexos.map((anexo, indice) => (
-                              <AnexoDaMensagemNoFio key={`${mensagem.id}:${indice}`} mensagemId={mensagem.id} indice={indice} anexo={anexo} />
-                            ))}
-                          </div>
-                        ) : null}
+                        {exclusao !== null ? (
+                          <MensagemApagada porQuem={exclusao.porQuem} />
+                        ) : (
+                          <>
+                            {/* 4.4.2: a Mensagem a que esta responde, achada no fio. */}
+                            {mensagem.emRespostaAId ? (
+                              <CitacaoNaBolha
+                                citada={mensagens.find((m) => m.id === mensagem.emRespostaAId)}
+                                nomeDoContato={nomeDoContato}
+                              />
+                            ) : null}
+                            {/* T-15-50: o texto vem de terceiros e entra como texto do React, nunca como HTML. */}
+                            {mensagem.conteudo || mensagem.anexos.length === 0 ? (
+                              <p className="whitespace-pre-wrap">
+                                {mensagem.conteudo ?? ""}
+                              </p>
+                            ) : null}
+                            {/* 3.9.5: o anexo vem da URL assinada de `GET /mensagens/:id/anexos/:indice`; a legenda é o `conteudo`. */}
+                            {mensagem.anexos.length > 0 ? (
+                              <div className={cn("flex flex-col gap-2", mensagem.conteudo ? "mt-2" : "")}>
+                                {mensagem.anexos.map((anexo, indice) => (
+                                  <AnexoDaMensagemNoFio key={`${mensagem.id}:${indice}`} mensagemId={mensagem.id} indice={indice} anexo={anexo} />
+                                ))}
+                              </div>
+                            ) : null}
+                          </>
+                        )}
                         <p
                           className={cn(
                             "app-sm mt-1",
@@ -1228,13 +1251,33 @@ export function ConversationThread({
                           {quemFalou?.displayName ?? agente?.name ?? ""}
                           {quemFalou || agente ? " · " : ""}
                           {fmt.instant(mensagem.criadoEm)}
+                          {exclusao === null && mensagem.edicoesExternas.length > 0 ? (
+                            <>
+                              {" · "}
+                              {marcaDeEditada(mensagem)}
+                            </>
+                          ) : null}
                           {saiu && mensagem.statusEntrega ? (
                             <>
                               {" · "}
                               <EstadoDaEntrega mensagem={mensagem} />
                             </>
                           ) : null}
+                          {podeResponder ? (
+                            <>
+                              {" · "}
+                              <button
+                                type="button"
+                                onClick={() => setRespondendoA(mensagem.id)}
+                                aria-label="Responder a esta Mensagem"
+                                className="hover:underline"
+                              >
+                                Responder
+                              </button>
+                            </>
+                          ) : null}
                         </p>
+                        {exclusao === null ? <ReacoesDaMensagem reacoes={mensagem.reacoes} /> : null}
                       </div>
                       {saiu ? avatar : null}
                     </div>
@@ -1352,6 +1395,27 @@ export function ConversationThread({
                       {rotulo}
                     </button>
                   ))}
+                </div>
+              ) : null}
+
+              {citando ? (
+                <div
+                  className="app-sm mb-2 flex items-start gap-2 rounded-[var(--r-painel)] px-3 py-1.5"
+                  data-respondendo-a={citando.id}
+                  style={{ background: "var(--superficie-3)", color: "var(--texto-3)" }}
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="font-medium">Respondendo a </span>
+                    <span className="line-clamp-2 whitespace-pre-wrap">{resumoDaMensagem(citando)}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setRespondendoA(null)}
+                    aria-label="Cancelar a citação"
+                    className="shrink-0 hover:text-[var(--texto)] hover:underline"
+                  >
+                    Cancelar
+                  </button>
                 </div>
               ) : null}
 

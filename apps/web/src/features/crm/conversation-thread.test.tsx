@@ -453,6 +453,113 @@ describe("ConversationThread — responder numa Conversa aberta grava em platafo
     expect(screen.getByText("oi").closest(".justify-start")).not.toBeNull();
   });
 
+  describe("o que o provedor muda numa Mensagem do fio (4.4.5) e a citação (4.4.2, 4.4.4)", () => {
+    const base = (seq: number, direcao: Mensagem["direcao"], conteudo: string, extras: Partial<Mensagem> = {}): Mensagem => ({
+      ...novaMensagem("cnv_suporte", "chn_suporte", seq, direcao, `2026-10-11T08:0${seq}:00.000Z`, conteudo),
+      idExterno: `wamid.${seq}`,
+      ...extras,
+    });
+
+    it("(5c) a Mensagem apagada no provedor mostra o marcador e NUNCA o conteúdo nem os anexos, e não oferece Responder", async () => {
+      mensagensDaApi.cnv_suporte = [
+        base(1, "recebida", "segredo que o Contato apagou", { marcacaoExclusao: { porQuem: "remetente_externo", em: "2026-10-11T08:05:00.000Z" } }),
+        base(2, "enviada", "apaguei no celular", {
+          marcacaoExclusao: { porQuem: "celular_do_canal", em: "2026-10-11T08:06:00.000Z" },
+          anexos: [{ tipoDeMidia: "image/png", nome: "foto.png", baixado: true, objectKey: "k" }],
+        }),
+      ];
+      montar({ conversaId: "cnv_suporte" });
+      await waitFor(() => expect(screen.getByText("Mensagem apagada pelo Contato")).toBeTruthy());
+      expect(screen.getByText("Mensagem apagada no celular")).toBeTruthy();
+      expect(screen.queryByText("segredo que o Contato apagou")).toBeNull();
+      expect(screen.queryByText("apaguei no celular")).toBeNull();
+      // O anexo da apagada nem é pedido à api: a tela não monta o player.
+      expect(document.querySelector("img[alt='foto.png']")).toBeNull();
+      expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/mensagens/cnv_suporte_m2/anexos/"))).toBe(false);
+      expect(screen.queryByRole("button", { name: "Responder a esta Mensagem" })).toBeNull();
+    });
+
+    it("(5d) a reação vigente aparece embaixo da Mensagem, uma por autor, e a removida some", async () => {
+      mensagensDaApi.cnv_suporte = [
+        base(1, "enviada", "te mando o orçamento", {
+          reacoes: [
+            { autor: "contato", emoji: "👍", em: "2026-10-11T08:02:00.000Z" },
+            { autor: "contato", emoji: "❤️", em: "2026-10-11T08:03:00.000Z" },
+            { autor: "canal", emoji: "🙏", em: "2026-10-11T08:03:00.000Z" },
+            { autor: "canal", emoji: "", em: "2026-10-11T08:04:00.000Z" },
+          ],
+        }),
+      ];
+      montar({ conversaId: "cnv_suporte" });
+      await waitFor(() => expect(screen.getByText("te mando o orçamento")).toBeTruthy());
+      expect(screen.getByRole("img", { name: "O Contato reagiu com ❤️" })).toBeTruthy();
+      expect(screen.queryByText("👍")).toBeNull();
+      expect(screen.queryByText("🙏")).toBeNull();
+    });
+
+    it("(5e) a Mensagem que o Contato editou mostra o texto novo e a marca editada, com o de antes no title", async () => {
+      mensagensDaApi.cnv_suporte = [
+        base(1, "recebida", "chego às 15h", { edicoesExternas: [{ conteudoAnterior: "chego às 14h", em: "2026-10-11T08:02:00.000Z" }] }),
+      ];
+      montar({ conversaId: "cnv_suporte" });
+      await waitFor(() => expect(screen.getByText("chego às 15h")).toBeTruthy());
+      expect(screen.queryByText("chego às 14h")).toBeNull();
+      expect(screen.getByText("editada").getAttribute("title")).toBe("Antes: chego às 14h");
+    });
+
+    it("(5f) a Mensagem que responde a outra mostra o trecho dela; a citada que não está no fio vira “Mensagem anterior”, e a apagada nunca vaza", async () => {
+      mensagensDaApi.cnv_suporte = [
+        base(1, "enviada", "Qual o prazo?"),
+        base(2, "recebida", "Cinco dias", { emRespostaAId: "cnv_suporte_m1" }),
+        base(3, "recebida", "E o frete?", { emRespostaAId: "cnv_suporte_m9" }),
+        base(4, "recebida", "Era sobre aquilo", { emRespostaAId: "cnv_suporte_m5" }),
+        base(5, "recebida", "texto que sumiu", { marcacaoExclusao: { porQuem: "remetente_externo", em: "2026-10-11T08:07:00.000Z" } }),
+      ];
+      montar({ conversaId: "cnv_suporte" });
+      await waitFor(() => expect(screen.getByText("Cinco dias")).toBeTruthy());
+      const citacoes = Array.from(document.querySelectorAll("[data-citacao]")).map((c) => c.textContent);
+      expect(citacoes).toEqual(["AtendimentoQual o prazo?", "Mensagem anterior", "Ana SouzaMensagem apagada"]);
+      expect(screen.queryByText("texto que sumiu")).toBeNull();
+    });
+
+    it("(5g) Responder (WhatsApp não oficial) põe a barra Respondendo a, e o envio leva emRespostaAId; Cancelar tira a citação", async () => {
+      mensagensDaApi.cnv_suporte = [base(1, "recebida", "posso ligar amanhã?")];
+      montar({ conversaId: "cnv_suporte" });
+      await waitFor(() => expect(screen.getByText("posso ligar amanhã?")).toBeTruthy());
+
+      fireEvent.click(screen.getByRole("button", { name: "Responder a esta Mensagem" }));
+      const barra = document.querySelector("[data-respondendo-a]") as HTMLElement;
+      expect(barra.textContent).toContain("Respondendo a posso ligar amanhã?");
+      fireEvent.click(screen.getByRole("button", { name: "Cancelar a citação" }));
+      expect(document.querySelector("[data-respondendo-a]")).toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: "Responder a esta Mensagem" }));
+      fireEvent.change(compositor(), { target: { value: "pode, às 10h" } });
+      fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
+      const dialogo = await screen.findByRole("alertdialog");
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Enviar" }));
+      await waitFor(() => expect(screen.getByText("pode, às 10h")).toBeTruthy());
+      expect(gravacoes()).toEqual([
+        { caminho: "/mensagens", metodo: "POST", corpo: { conversaId: "cnv_suporte", direcao: "enviada", conteudo: "pode, às 10h", emRespostaAId: "cnv_suporte_m1" } },
+      ]);
+      // A citação vale para UMA resposta: depois de enviar a barra some.
+      expect(document.querySelector("[data-respondendo-a]")).toBeNull();
+    });
+
+    it("(5h) a Mensagem sem id do provedor (ainda enviando) e as de Canais que não citam não oferecem Responder", async () => {
+      mensagensDaApi.cnv_suporte = [base(1, "enviada", "ainda sem id", { idExterno: null, statusEntrega: "pendente" })];
+      montar({ conversaId: "cnv_suporte" });
+      await waitFor(() => expect(screen.getByText("ainda sem id")).toBeTruthy());
+      expect(screen.queryByRole("button", { name: "Responder a esta Mensagem" })).toBeNull();
+
+      cleanup();
+      mensagensDaApi.cnv_comercial = [{ ...novaMensagem("cnv_comercial", "chn_comercial", 1, "recebida", "2026-10-10T10:00:00.000Z", "no oficial"), idExterno: "wamid.o" }];
+      montar({ conversaId: "cnv_comercial" });
+      await waitFor(() => expect(screen.getByText("no oficial")).toBeTruthy());
+      expect(screen.queryByRole("button", { name: "Responder a esta Mensagem" })).toBeNull();
+    });
+  });
+
   it("(6) a Conversa que o fio segue vem de GET /conversas/:id: o Canal dela decide a aba mesmo sem a lista", async () => {
     // A Conversa pedida não está na lista do Contato (por exemplo, é de um Canal que o Contato não alcança agora).
     conversasDaApi = conversasDaApi.filter((c) => c.id !== "cnv_comercial").concat(novaConversa("cnv_so_por_id", "chn_comercial", { estado: "ativo" }));

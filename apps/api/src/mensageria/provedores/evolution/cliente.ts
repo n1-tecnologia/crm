@@ -139,6 +139,15 @@ export interface PedidoDeInstancia {
   readonly webhook: { readonly url: string; readonly segredo: string };
 }
 
+/**
+ * A citação de uma resposta (4.4.4), o campo `quoted` do corpo (no topo, não em `options`): `key.id` é a Mensagem citada e `message` é o
+ * que aparece na citação. Sem `message` a Evolution procura no banco dela e, se não acha, manda a resposta SEM citação e sem erro.
+ */
+export interface CitacaoParaEvolution {
+  readonly key: { readonly id: string; readonly remoteJid: string; readonly fromMe: boolean };
+  readonly message: { readonly conversation: string };
+}
+
 export interface ClienteDaEvolution {
   versao(apikeyGlobal: string): Promise<string>;
   buscarInstancia(apikeyGlobal: string, nome: string): Promise<InstanciaDaEvolution | undefined>;
@@ -152,7 +161,7 @@ export interface ClienteDaEvolution {
   sairDaSessao(apikey: string, instancia: string): Promise<void>;
   /** `DELETE /instance/delete/{instancia}` com a chave GLOBAL. Só apaga instância do CRM (`n1-...`); inexistente é sucesso. */
   apagarInstancia(apikeyGlobal: string, instancia: string): Promise<void>;
-  enviarTexto(apikey: string, instancia: string, envio: { readonly numero: string; readonly texto: string }): Promise<RespostaDaEvolution>;
+  enviarTexto(apikey: string, instancia: string, envio: { readonly numero: string; readonly texto: string; readonly citada?: CitacaoParaEvolution }): Promise<RespostaDaEvolution>;
   enviarMidia(
     apikey: string,
     instancia: string,
@@ -163,9 +172,10 @@ export interface ClienteDaEvolution {
       readonly mimetype: string;
       readonly fileName: string;
       readonly caption?: string;
+      readonly citada?: CitacaoParaEvolution;
     },
   ): Promise<RespostaDaEvolution>;
-  enviarAudio(apikey: string, instancia: string, envio: { readonly numero: string; readonly audio: string }): Promise<RespostaDaEvolution>;
+  enviarAudio(apikey: string, instancia: string, envio: { readonly numero: string; readonly audio: string; readonly citada?: CitacaoParaEvolution }): Promise<RespostaDaEvolution>;
   baixarMidia(apikey: string, instancia: string, pedido: { readonly message: unknown; readonly tetoBytes: number }): Promise<MidiaDaEvolution>;
 }
 
@@ -376,11 +386,11 @@ export function criarClienteDaEvolution(opcoes: OpcoesDoClienteDaEvolution): Cli
       throw new ErroDaEvolution("http", resposta.status);
     },
 
-    enviarTexto(apikey, instancia, { numero, texto }) {
-      return enviar(`/message/sendText/${encodeURIComponent(instancia)}`, apikey, { number: numero, text: texto });
+    enviarTexto(apikey, instancia, { numero, texto, citada }) {
+      return enviar(`/message/sendText/${encodeURIComponent(instancia)}`, apikey, { number: numero, text: texto, ...(citada === undefined ? {} : { quoted: citada }) });
     },
 
-    enviarMidia(apikey, instancia, { numero, mediatype, media, mimetype, fileName, caption }) {
+    enviarMidia(apikey, instancia, { numero, mediatype, media, mimetype, fileName, caption, citada }) {
       return enviar(`/message/sendMedia/${encodeURIComponent(instancia)}`, apikey, {
         number: numero,
         mediatype,
@@ -388,11 +398,12 @@ export function criarClienteDaEvolution(opcoes: OpcoesDoClienteDaEvolution): Cli
         mimetype,
         fileName,
         ...(caption === undefined || caption === "" ? {} : { caption }),
+        ...(citada === undefined ? {} : { quoted: citada }),
       });
     },
 
-    enviarAudio(apikey, instancia, { numero, audio }) {
-      return enviar(`/message/sendWhatsAppAudio/${encodeURIComponent(instancia)}`, apikey, { number: numero, audio });
+    enviarAudio(apikey, instancia, { numero, audio, citada }) {
+      return enviar(`/message/sendWhatsAppAudio/${encodeURIComponent(instancia)}`, apikey, { number: numero, audio, ...(citada === undefined ? {} : { quoted: citada }) });
     },
 
     async baixarMidia(apikey, instancia, { message, tetoBytes }) {

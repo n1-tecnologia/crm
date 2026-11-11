@@ -38,6 +38,7 @@
     "migrar:crm-antigo": "vite-node src/migracao-crm/migrar.cli.ts",
     "canal:segredo-de-teste": "vite-node src/bootstrap/canal-segredo-de-teste.cli.ts",
     "canal:ligar-evolution": "vite-node src/bootstrap/canal-ligar-evolution.cli.ts",
+    "canal:atualizar-webhook-evolution": "vite-node src/bootstrap/canal-atualizar-webhook-evolution.cli.ts",
     "evolution:fumaca": "vite-node src/bootstrap/evolution-fumaca.cli.ts",
     "tempo-real:provar": "vite-node src/mensageria/provar-tempo-real.cli.ts"
   },

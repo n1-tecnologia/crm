@@ -56,7 +56,8 @@ existe** e o Instagram (`instagram-graph`, Sessão 8) **só com `INSTAGRAM_APP_I
 `PROVEDOR_INDISPONIVEL`. A credencial do Canal é o JSON
 `{ instancia, apikey }` com o token da INSTÂNCIA (nunca a chave global da Evolution), no cofre com
 `tipo = "whatsapp-nao-oficial"`. A Evolution traduz `MESSAGES_UPSERT` e, desde a Sessão 4, `connection.update` e a mensagem que a pessoa digita no
-celular (`fromMe`, 4.4.2, abaixo); o `status` de entrega (os tiques) continua sem tradução (4.4.5).
+celular (`fromMe`, 4.4.2, abaixo); desde a 4.4.5, o tique, a Mensagem apagada, a editada e a Reação (ver "O que muda uma
+Mensagem que já existe").
 
 ## A Mensagem digitada no celular (Sessão 4, 4.4.2)
 
@@ -77,6 +78,46 @@ como uma `enviada` do CRM). O que difere da `recebida`:
   (só quando a Mensagem do CRM ainda está `pendente`) e a do CRM fica com o id. Se voltar depois, a repetida é descartada.
 - **Ainda não:** os tiques dessas Mensagens (4.4.5) e a mídia que o dono manda do celular, que nunca foi vista na Evolution
   real (o pipeline é o da `recebida`).
+
+## O que muda uma Mensagem que já existe (Sessão 4, 4.4.5)
+
+A Evolution manda quatro tipos de evento que não criam Mensagem, e o tradutor (`provedores/evolution/traduzir.ts`) os traduz pelos
+formatos que conferi no código da 2.4.0-rc2 (**nunca vistos numa Evolution real**: a primeira conferência é a do dono, ver abaixo):
+
+| Evento da Evolution | Vira | Detalhes |
+|---|---|---|
+| `messages.update` `{ keyId, remoteJid, fromMe, status }` | `status` | `SERVER_ACK` → `enviada`, `DELIVERY_ACK` → `entregue`, `READ` e `PLAYED` → `lida`, `ERROR` → `falhou`; `PENDING` é ignorado. `fromMe: false` é o recibo de uma Mensagem do Contato e é ignorado. O corpo não traz instante: vale o da chegada. A edição também chega aqui, com um `status` de enfeite e `message.editedMessage`: é descartada (`edicao_no_status`). Só a Mensagem do CRM (ou a digitada no celular) tem status, e ele só avança (`proximoStatusDeEntrega`) |
+| `messages.delete` `{ remoteJid, fromMe, id, status: "DELETED" }` | `exclusao` | `fromMe` é de QUEM apagou: falso → `remetente_externo` (o Contato), verdadeiro → `celular_do_canal`. Só "apagar para todos"; apagar só para si NÃO é encaminhado pela Evolution |
+| `messages.edited` (o `ProtocolMessage` cru `{ key: { id }, type, editedMessage, timestampMs }`) | `edicao` | `key.id` é a Mensagem ORIGINAL; o texto novo é `editedMessage.conversation` ou `extendedTextMessage.text`. A revogação (`type` `REVOKE`/0) também chega por aqui e é descartada (`revogacao`): quem a trata é `messages.delete`. Edição sem texto (legenda de mídia) é ignorada |
+| `messages.upsert` com `message.reactionMessage { key: { id }, text }` | `reacao` | `key.id` é a Mensagem REAGIDA (não o id do evento); `text` vazio é a reação removida; o autor é o Contato, ou o `canal` quando o `key.fromMe` de fora é verdadeiro (a reação dada no celular conectado) |
+
+O processador (`aplicarAlteracao`) aplica cada um numa transação própria, com `for update` na Mensagem de (Canal, id externo), e só
+avisa as abas (`mensagem.status`: a tela relê o fio) quando algo mudou. Nunca cria Mensagem, Contato nem Conversa. O `resultado` da
+linha ganha `ignorado:<reacao|exclusao|edicao>_sem_mensagem` (o CRM não tem essa Mensagem: o evento chegou antes dela, ou é de
+antes da plataforma) e `ignorado:<...>_sem_efeito` (repetida, ou que não muda nada).
+
+- **Reação** (ontologia 7.6): o registro é de ACRÉSCIMO (`proximasReacoes`); trocar o símbolo acrescenta, remover é um registro com
+  símbolo vazio, e vale a última de cada autor (`reacoesVigentes`). A que chega mais velha que a vigente do mesmo autor é ignorada.
+- **Exclusão** (RN-CXE-16): terminal; a primeira vale. O conteúdo e os anexos **continuam guardados** e a tela nunca os mostra
+  (`MensagemApagada`; nem a citação de outra Mensagem a mostra). Se o produto passar a exigir apagar de verdade, é decisão do dono.
+- **Edição** (RN-CXE-16): só a `recebida` ainda não apagada; o conteúdo passa a ser o novo e o anterior vai para
+  `edicoes_externas`. A `enviada` (do CRM ou do celular) nunca é editada: "corrige-se enviando outra".
+- **A chave de deduplicação do webhook** (`chaveDaChamada`) agora só existe para `messages.upsert`: o tique da mesma Mensagem
+  (entregue, depois lida) repete o id e seria descartado como repetido pelo índice único de `webhooks_recebidos`.
+- **A citação** (`contextInfo.stanzaId`, achado em `extendedTextMessage`, na mídia ou no topo do corpo) vira `emRespostaAIdExterno`
+  e o recebimento a liga à Mensagem do mesmo Canal e da MESMA Conversa (INV-CXE-10); a citada que não existe aqui ou é de outra
+  Conversa deixa a Mensagem sem ligação, sem erro. **Risco conhecido:** na 2.4.0-rc, a Evolution achata o `extendedTextMessage` em
+  `conversation` e descarta o `contextInfo` do TEXTO que cita (a mídia mantém); se for assim na VM, a resposta de texto do Contato
+  chega sem a citação. Só uma resposta real capturada confirma.
+- **A resposta escrita na Caixa cita** (4.4.4): o entregador manda `emRespostaAIdExterno` e `emRespostaADetalhes` (se a citada foi
+  do Canal e o texto, ou "📎 Anexo") e a Evolution recebe `quoted: { key: { id, remoteJid, fromMe }, message: { conversation } }` no
+  topo do corpo, em texto, mídia e áudio. Sem `message`, a Evolution procuraria no banco dela e mandaria a resposta SEM citação e sem
+  erro. A tela só oferece "Responder" no WhatsApp não oficial e em Mensagem com id do provedor.
+- **Os eventos assinados** (`EVENTOS_DO_WEBHOOK`) são `MESSAGES_UPSERT`, `CONNECTION_UPDATE`, `MESSAGES_UPDATE`, `MESSAGES_DELETE` e
+  `MESSAGES_EDITED`. Uma instância que já estava conectada guarda a lista de quando foi ligada: depois de publicar, rode
+  `npm run canal:atualizar-webhook-evolution` (em "Ligar um Canal real") para reaplicá-la, sem novo QR code e sem trocar o segredo.
+- **Não cobre:** reação, edição e apagada em grupo (Sessão 6); a Reação que um Membro dá pela tela (a tela só mostra); apagar "só para
+  mim"; o Instagram (o tradutor dele ainda ignora `is_echo` e reações).
 
 ## O nono dígito do celular brasileiro (Sessão 4, 4.4.3)
 
@@ -129,7 +170,8 @@ Reivindica por `for update skip locked` (duas instâncias nunca pegam a mesma li
 tenta de novo a exceção, na escada de `backoff()`, até a 8ª. `acordar()` faz um ciclo só (a rota o chama depois do
 200; os 10 s do laço são a reserva).
 
-Cada evento do provedor tem um destino: `mensagem` vai a `receberMensagem`; `status` muda a Mensagem por
+Cada evento do provedor tem um destino: `mensagem` vai a `receberMensagem`; `reacao`, `exclusao` e `edicao` mudam a Mensagem
+existente (4.4.5, abaixo); `status` muda a Mensagem por
 `atualizarStatusDeEntrega` (sem regredir: `lida` seguida de `entregue` atrasado continua `lida`) e só avisa a tela se
 mudou; `conexao` só muda Canal real (o simulado é `ignorado:conexao_simulada`), sobe a revisão do Espaço e, quando o
 Canal fica `conectada`, reenfileira as Mensagens `pendente` dele. O `resultado` da linha diz o que aconteceu:
@@ -243,15 +285,16 @@ Adaptador mínimo da Evolution v2 para o Canal `whatsapp-nao-oficial` (D-16-04 a
   `sairDaSessao` e `apagarInstancia` (idempotentes). `criarInstancia` e `apagarInstancia` RECUSAM qualquer nome que não
   seja `n1-...` (`ambiente.ts`): a chave global apaga a `numeropvmarcos` do Financeiro, e esta é a trava.
 - `traduzir.ts`: texto, imagem, áudio, vídeo, documento (inclusive com legenda) e figurinha (`image/webp`) viram
-  mensagem; grupo, `status@broadcast`, `@lid` sem número, reação, edição e localização, contato e enquete viram
-  `ignorado` com motivo. `fromMe` (a pessoa digitou no celular) entra como `digitadaNoAparelho`, com o `remoteJid` como
+  mensagem (com `emRespostaAIdExterno` quando citam); grupo, `status@broadcast`, `@lid` sem número, edição dentro do upsert e
+  localização, contato e enquete viram `ignorado` com motivo. A reação, o tique, a apagada e a editada viram `reacao`, `status`,
+  `exclusao` e `edicao` (ver "O que muda uma Mensagem que já existe"). `fromMe` (a pessoa digitou no celular) entra como `digitadaNoAparelho`, com o `remoteJid` como
   `remetente` e SEM `nomeExibido` (o `pushName` dela é o do dono do número); o que o dono manda em grupo ou no status
   continua ignorado. O instante vem só de `messageTimestamp`; a chave da instância é retirada da carga bruta
   em qualquer nível. `exemplos/` guarda os corpos de teste, sem dado real.
 - `provedor.ts` (`criarProvedorEvolution`): `verificarChamada` confere o cabeçalho `x-n1-webhook-segredo` em tempo
   constante E que o `instance` do corpo é o da credencial do Canal (o segredo certo com a instância de outro Canal
   recebe a mesma 401, T-16-43). A base da URL é sempre `EVOLUTION_URL`: nenhuma URL vinda do corpo é seguida.
-  `chaveDaChamada` é o `key.id`, o que basta enquanto só `MESSAGES_UPSERT` é assinado.
+  `chaveDaChamada` é o `key.id` do `messages.upsert` e nada para os outros eventos (4.4.5: o tique repete o id).
 - `enviar` nunca reenvia o que pode ter saído (ver "A saída"); áudio com texto sai como duas mensagens e a Mensagem
   leva um anexo só.
 - O `e2e/mensageria-evolution.test.ts` prova a ida e a volta contra o servidor falso (`../testes/servidor-falso.ts`).

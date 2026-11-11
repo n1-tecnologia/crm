@@ -64,7 +64,7 @@ describe("cliente da Evolution: uma chamada por função, com apikey e o corpo e
     expect(await cliente().estadoDaConexao(APIKEY, INSTANCIA)).toBe("connecting");
   });
 
-  it("configurarWebhook: POST /webhook/set/<instancia> com enabled, url, headers com o segredo, byEvents false, base64 false e os eventos MESSAGES_UPSERT e CONNECTION_UPDATE (4.3.1)", async () => {
+  it("configurarWebhook: POST /webhook/set/<instancia> com enabled, url, headers com o segredo, byEvents false, base64 false e os eventos da mensagem, da conexão (4.3.1), do tique, da apagada e da editada (4.4.5)", async () => {
     falso.enfileirar({ kind: "ok", status: 201, corpo: { enabled: true } });
     await cliente().configurarWebhook(APIKEY, INSTANCIA, { url: "https://api.exemplo.test/webhooks/mensageria/canal_1", segredo: SEGREDO_DO_WEBHOOK });
     expect(falso.recebidas[0]).toMatchObject({ metodo: "POST", caminho: `/webhook/set/${INSTANCIA}`, cabecalhos: { apikey: APIKEY } });
@@ -75,7 +75,7 @@ describe("cliente da Evolution: uma chamada por função, com apikey e o corpo e
         headers: { "x-n1-webhook-segredo": SEGREDO_DO_WEBHOOK },
         byEvents: false,
         base64: false,
-        events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE"],
+        events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "MESSAGES_UPDATE", "MESSAGES_DELETE", "MESSAGES_EDITED"],
       },
     });
   });
@@ -99,6 +99,25 @@ describe("cliente da Evolution: uma chamada por função, com apikey e o corpo e
 
     falso.enfileirar({ kind: "ok", status: 400, corpo: { response: { message: ["text is required"] } } });
     expect(await cliente().enviarTexto(APIKEY, INSTANCIA, { numero: "5511900000000", texto: "x" })).toEqual({ status: 400 });
+  });
+
+  it("a resposta citada leva `quoted` no topo do corpo (4.4.4) em texto, mídia e áudio; sem citação o corpo não muda", async () => {
+    const citada = { key: { id: "3EB0QQ", remoteJid: "5511987654321@s.whatsapp.net", fromMe: false }, message: { conversation: "o que ela disse" } };
+    falso.enfileirar({ kind: "ok", status: 201, corpo: { key: { id: "3EB0T1" } } });
+    await cliente().enviarTexto(APIKEY, INSTANCIA, { numero: "5511987654321", texto: "certo", citada });
+    expect(falso.recebidas[0]!.corpo).toEqual({ number: "5511987654321", text: "certo", quoted: citada });
+
+    falso.enfileirar({ kind: "ok", status: 201, corpo: { key: { id: "3EB0T2" } } });
+    await cliente().enviarMidia(APIKEY, INSTANCIA, { numero: "5511987654321", mediatype: "image", media: "https://b.exemplo.test/a", mimetype: "image/png", fileName: "a.png", citada });
+    expect(falso.recebidas[1]!.corpo).toMatchObject({ mediatype: "image", quoted: citada });
+
+    falso.enfileirar({ kind: "ok", status: 201, corpo: { key: { id: "3EB0T3" } } });
+    await cliente().enviarAudio(APIKEY, INSTANCIA, { numero: "5511987654321", audio: "https://b.exemplo.test/a.ogg", citada });
+    expect(falso.recebidas[2]!.corpo).toEqual({ number: "5511987654321", audio: "https://b.exemplo.test/a.ogg", quoted: citada });
+
+    falso.enfileirar({ kind: "ok", status: 201, corpo: { key: { id: "3EB0T4" } } });
+    await cliente().enviarTexto(APIKEY, INSTANCIA, { numero: "5511987654321", texto: "sem citar" });
+    expect(falso.recebidas[3]!.corpo).toEqual({ number: "5511987654321", text: "sem citar" });
   });
 
   it("enviarMidia: POST /message/sendMedia/<instancia> com number, mediatype, media, mimetype, fileName e caption", async () => {
@@ -200,7 +219,7 @@ describe("cliente da Evolution: conectar pelo CRM (Sessão 4, 4.2.2)", () => {
         headers: { "x-n1-webhook-segredo": SEGREDO_DO_WEBHOOK },
         byEvents: false,
         base64: false,
-        events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE"],
+        events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "MESSAGES_UPDATE", "MESSAGES_DELETE", "MESSAGES_EDITED"],
       },
     });
     expect(criada).toEqual({ qrcode: { imagem: QR_DATA_URL, codigoDePareamento: "WZYEH1YY" } });

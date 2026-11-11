@@ -308,6 +308,14 @@ async function processar(
   }
   if (!conversa) return recusa<never>(404, "Conversa não encontrada.", { codigo: "CONVERSA_NAO_ENCONTRADA" });
 
+  // 4.4.2: a citação (`emRespostaAIdExterno`) só liga a uma Mensagem DESTA Conversa e deste Canal (INV-CXE-10: a FK composta
+  // recusa outra). A citada que ainda não existe aqui, ou que é de outra Conversa (já resolvida), deixa a Mensagem sem ligação.
+  let emRespostaAId: string | null = null;
+  if (evento.emRespostaAIdExterno !== undefined) {
+    const citada = await mensagens.obterPorIdExterno(workspaceId, canal.id, evento.emRespostaAIdExterno);
+    if (citada && citada.conversaId === conversa.id) emRespostaAId = citada.id;
+  }
+
   const gravada = await mensagens.inserirRecebida(workspaceId, {
     conversaId: conversa.id,
     canalId: canal.id,
@@ -320,6 +328,7 @@ async function processar(
       (evento.anexos ?? []).map((anexo) => ({ tipoDeMidia: anexo.tipoDeMidia, nome: anexo.nome, referenciaExterna: anexo.referenciaNoProvedor, baixado: false })),
     assunto: evento.assunto ?? null,
     enderecosAdicionais: [],
+    emRespostaAId,
     remetenteExterno: evento.remetente.valor,
     identificadorId,
     cargaBruta: evento.cargaBruta,

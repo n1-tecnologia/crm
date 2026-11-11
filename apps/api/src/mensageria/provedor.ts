@@ -19,7 +19,7 @@
 import type { ConexaoDoCanal, Canal } from "@n1/dominio/crm/canais";
 import type { ProvedorDeCanal } from "@n1/dominio/crm/capacidades";
 import type { TipoIdentificadorContato } from "@n1/dominio/crm/contatos";
-import type { StatusDeEntrega } from "@n1/dominio/crm/mensagens";
+import type { AutorDaReacao, OrigemDaExclusao, StatusDeEntrega } from "@n1/dominio/crm/mensagens";
 import type { RecebidaDoProvedor } from "@n1/dominio/crm/recebimento";
 
 /** O único nome de cabeçalho que leva o segredo do webhook: o do provedor de teste e o da Evolution (D-16-06). */
@@ -52,6 +52,15 @@ export type EventoDoProvedor =
       readonly em: string;
       readonly motivo?: string;
     }
+  /**
+   * 4.4.5: uma Reação a uma Mensagem que já existe (`idExterno` é o id DELA, não o do evento da reação). `emoji` vazio é a reação
+   * removida. Nunca cria Mensagem.
+   */
+  | { readonly tipo: "reacao"; readonly idExterno: string; readonly autor: AutorDaReacao; readonly emoji: string; readonly em: string }
+  /** 4.4.5: a Mensagem `idExterno` foi apagada no provedor (pelo Contato, ou no celular do Canal). */
+  | { readonly tipo: "exclusao"; readonly idExterno: string; readonly porQuem: OrigemDaExclusao; readonly em: string }
+  /** 4.4.5: o remetente externo editou a Mensagem `idExterno`; `conteudo` é o texto NOVO. */
+  | { readonly tipo: "edicao"; readonly idExterno: string; readonly conteudo: string; readonly em: string }
   | { readonly tipo: "conexao"; readonly conexao: ConexaoDoCanal; readonly motivo?: string }
   | { readonly tipo: "ignorado"; readonly motivo: string; readonly idExterno?: string };
 
@@ -67,6 +76,11 @@ export interface EnvioAoProvedor {
   readonly conteudo?: string;
   readonly anexos?: readonly AnexoDoEnvio[];
   readonly emRespostaAIdExterno?: string;
+  /**
+   * 4.4.4: o que o provedor precisa saber da Mensagem citada para montar a citação (`emRespostaAIdExterno` é o id dela): se
+   * foi o próprio Canal quem a mandou (`nossa`) e o texto que aparece na citação (sem texto, o provedor põe um marcador).
+   */
+  readonly emRespostaADetalhes?: { readonly nossa: boolean; readonly texto: string };
   readonly assunto?: string;
   readonly modelo?: { readonly idNoProvedor: string; readonly idioma: string; readonly variaveis: readonly string[] };
 }

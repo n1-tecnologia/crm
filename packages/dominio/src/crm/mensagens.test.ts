@@ -12,12 +12,20 @@ import {
   fraseDaJanelaBloqueada,
   STATUS_DE_ENTREGA,
   TIPOS_DE_ATOR_DA_MENSAGEM,
+  leEdicoesExternas,
+  leMarcacaoDeExclusao,
+  leReacoes,
+  proximaEdicaoExterna,
+  proximaMarcacaoDeExclusao,
+  proximasReacoes,
   proximoStatusDeEntrega,
+  reacoesVigentes,
   statusInicialDeEnvio,
   validarAnexosDoEnvio,
   validarEnvio,
   validarNovaMensagem,
   type AnexoConfirmado,
+  type Reacao,
 } from "./mensagens";
 import { categoriaDaMidia } from "./midia";
 
@@ -256,5 +264,129 @@ describe("valores discretos espelham os CHECK da 008", () => {
     expect([...DIRECOES_DA_MENSAGEM]).toEqual(["recebida", "enviada", "interna"]);
     expect([...STATUS_DE_ENTREGA]).toEqual(["pendente", "enviada", "entregue", "lida", "falhou"]);
     expect([...TIPOS_DE_ATOR_DA_MENSAGEM]).toEqual(["member", "agent", "automation", "integration", "system"]);
+  });
+});
+
+describe("Reações (4.4.5): o registro é de acréscimo, e vale a última de cada autor", () => {
+  const reacao = (autor: Reacao["autor"], emoji: string, em: string): Reacao => ({ autor, emoji, em });
+  const T1 = "2026-10-12T12:00:00.000Z";
+  const T2 = "2026-10-12T12:01:00.000Z";
+  const T3 = "2026-10-12T12:02:00.000Z";
+
+  it("a primeira reação entra no registro", () => {
+    expect(proximasReacoes([], reacao("contato", "👍", T1))).toEqual([reacao("contato", "👍", T1)]);
+  });
+
+  it("trocar o símbolo ACRESCENTA: o antigo continua no registro e vale o novo", () => {
+    const depois = proximasReacoes([reacao("contato", "👍", T1)], reacao("contato", "❤️", T2))!;
+    expect(depois).toHaveLength(2);
+    expect(reacoesVigentes(depois)).toEqual([{ autor: "contato", emoji: "❤️" }]);
+  });
+
+  it("remover é um registro com o símbolo vazio, e a reação some das vigentes", () => {
+    const depois = proximasReacoes([reacao("contato", "👍", T1)], reacao("contato", "", T2))!;
+    expect(depois).toHaveLength(2);
+    expect(reacoesVigentes(depois)).toEqual([]);
+  });
+
+  it("a repetida (o provedor reenvia) não muda nada", () => {
+    expect(proximasReacoes([reacao("contato", "👍", T1)], reacao("contato", "👍", T1))).toBeNull();
+  });
+
+  it("remover o que não existia não muda nada", () => {
+    expect(proximasReacoes([], reacao("contato", "", T1))).toBeNull();
+    expect(proximasReacoes([reacao("contato", "👍", T1), reacao("contato", "", T2)], reacao("contato", "", T3))).toBeNull();
+  });
+
+  it("a que chega mais VELHA que a vigente do mesmo autor é ignorada (a rede não garante a ordem)", () => {
+    expect(proximasReacoes([reacao("contato", "❤️", T2)], reacao("contato", "👍", T1))).toBeNull();
+  });
+
+  it("o Contato e o celular do Canal reagem à mesma Mensagem, cada um com a sua, e o Contato vem primeiro", () => {
+    const registro = proximasReacoes([reacao("canal", "🙏", T1)], reacao("contato", "👍", T2))!;
+    expect(reacoesVigentes(registro)).toEqual([
+      { autor: "contato", emoji: "👍" },
+      { autor: "canal", emoji: "🙏" },
+    ]);
+  });
+
+  it("o momento inválido não entra", () => {
+    expect(proximasReacoes([], reacao("contato", "👍", "ontem"))).toBeNull();
+  });
+
+  it("reacoesVigentes escolhe pelo momento, não pela ordem em que foram gravadas", () => {
+    expect(reacoesVigentes([reacao("contato", "❤️", T2), reacao("contato", "👍", T1)])).toEqual([{ autor: "contato", emoji: "❤️" }]);
+  });
+
+  it("leReacoes fica só com o formato de hoje: o dado antigo da migração não passa", () => {
+    expect(leReacoes([reacao("contato", "👍", T1), { emoji: "x" }, "texto", null, { autor: "outro", emoji: "a", em: T1 }])).toEqual([reacao("contato", "👍", T1)]);
+    expect(leReacoes(null)).toEqual([]);
+    expect(leReacoes({})).toEqual([]);
+  });
+});
+
+describe("Marcação de exclusão (4.4.5): terminal", () => {
+  const nova = { porQuem: "remetente_externo", em: "2026-10-12T12:00:00.000Z" } as const;
+
+  it("a primeira vale", () => {
+    expect(proximaMarcacaoDeExclusao(null, nova)).toEqual(nova);
+  });
+
+  it("a segunda não muda nada: a primeira fica", () => {
+    expect(proximaMarcacaoDeExclusao(nova, { porQuem: "celular_do_canal", em: "2026-10-12T13:00:00.000Z" })).toBeNull();
+  });
+
+  it("o momento inválido não vale", () => {
+    expect(proximaMarcacaoDeExclusao(null, { porQuem: "interno", em: "amanhã" })).toBeNull();
+  });
+
+  it("leMarcacaoDeExclusao lê só o formato de hoje", () => {
+    expect(leMarcacaoDeExclusao(nova)).toEqual(nova);
+    expect(leMarcacaoDeExclusao({ porQuem: "alguem", em: nova.em })).toBeNull();
+    expect(leMarcacaoDeExclusao(null)).toBeNull();
+    expect(leMarcacaoDeExclusao("apagada")).toBeNull();
+  });
+});
+
+describe("Edição pelo remetente externo (4.4.5; RN-CXE-16)", () => {
+  const recebida = { direcao: "recebida", conteudo: "oi, tudo bem?", marcacaoExclusao: null, edicoesExternas: [] } as const;
+  const EM = "2026-10-12T12:05:00.000Z";
+
+  it("o conteúdo passa a ser o novo e o anterior vai para o histórico", () => {
+    expect(proximaEdicaoExterna(recebida, "oi, tudo bem com você?", EM)).toEqual({
+      conteudo: "oi, tudo bem com você?",
+      edicoesExternas: [{ conteudoAnterior: "oi, tudo bem?", em: EM }],
+    });
+  });
+
+  it("a segunda edição acrescenta ao histórico, da mais antiga à mais nova", () => {
+    const primeira = { conteudoAnterior: "a", em: "2026-10-12T12:01:00.000Z" };
+    const r = proximaEdicaoExterna({ ...recebida, conteudo: "b", edicoesExternas: [primeira] }, "c", EM)!;
+    expect(r.edicoesExternas).toEqual([primeira, { conteudoAnterior: "b", em: EM }]);
+  });
+
+  it("a `enviada` e a `interna` nunca são editadas: corrige-se enviando outra", () => {
+    expect(proximaEdicaoExterna({ ...recebida, direcao: "enviada" }, "novo", EM)).toBeNull();
+    expect(proximaEdicaoExterna({ ...recebida, direcao: "interna" }, "novo", EM)).toBeNull();
+  });
+
+  it("a Mensagem apagada é terminal: a edição não a muda", () => {
+    expect(proximaEdicaoExterna({ ...recebida, marcacaoExclusao: { porQuem: "remetente_externo", em: EM } }, "novo", EM)).toBeNull();
+  });
+
+  it("não muda nada quando o conteúdo novo é vazio ou igual ao atual (o provedor reenvia)", () => {
+    expect(proximaEdicaoExterna(recebida, "   ", EM)).toBeNull();
+    expect(proximaEdicaoExterna(recebida, "oi, tudo bem?", EM)).toBeNull();
+  });
+
+  it("o momento inválido não vale", () => {
+    expect(proximaEdicaoExterna(recebida, "novo", "agora")).toBeNull();
+  });
+
+  it("leEdicoesExternas lê só o formato de hoje", () => {
+    expect(leEdicoesExternas([{ conteudoAnterior: "a", em: EM }, { conteudoAnterior: null, em: EM }, { em: EM }, 3])).toEqual([
+      { conteudoAnterior: "a", em: EM },
+      { conteudoAnterior: null, em: EM },
+    ]);
   });
 });

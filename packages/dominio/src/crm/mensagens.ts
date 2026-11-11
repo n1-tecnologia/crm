@@ -100,9 +100,12 @@ export interface Mensagem {
   readonly statusEntregaEm: string | null;
   readonly motivoFalha: string | null;
   readonly leiturasInternas: readonly unknown[];
-  readonly reacoes: readonly unknown[];
-  readonly marcacaoExclusao: unknown | null;
-  readonly edicoesExternas: readonly unknown[];
+  /** O registro das Reações (4.4.5): cada uma é um acréscimo, e a vigente é a última de cada autor (`reacoesVigentes`). */
+  readonly reacoes: readonly Reacao[];
+  /** Preenchida quando a Mensagem foi apagada (4.4.5): o conteúdo continua guardado, mas deixa de ser exibido. Terminal. */
+  readonly marcacaoExclusao: MarcacaoDeExclusao | null;
+  /** O histórico das edições que o remetente externo transmitiu (4.4.5): o conteúdo ANTERIOR de cada uma, da mais antiga à mais nova. */
+  readonly edicoesExternas: readonly EdicaoExterna[];
   readonly anonimizada: boolean;
   readonly criadoEm: string;
   readonly registradoEm: string;
@@ -279,3 +282,125 @@ export function proximoStatusDeEntrega(atual: StatusDeEntrega | null, novo: Stat
   return POSICAO_NA_ENTREGA[novo] > POSICAO_NA_ENTREGA[atual] ? novo : atual;
 }
 
+/**
+ * 4.4.5, ontologia 7.6: quem reagiu. A Conversa é de um Contato e um Canal, então só há dois autores possíveis: o Contato e o
+ * celular do próprio Canal (a reação dada no aparelho conectado).
+ */
+export type AutorDaReacao = "contato" | "canal";
+
+/**
+ * Uma Reação é um ACRÉSCIMO ao registro (RN-CXE-16: "Reações (acréscimo)"); a que foi removida é o registro com o símbolo
+ * vazio. O que vale hoje é a última de cada autor (`reacoesVigentes`), e uma reação nova do mesmo autor a substitui.
+ */
+export interface Reacao {
+  readonly autor: AutorDaReacao;
+  /** O símbolo; `""` é a reação removida. */
+  readonly emoji: string;
+  /** O momento que o provedor deu. */
+  readonly em: string;
+}
+
+/** Quem apagou: o Contato no provedor, o celular do Canal, ou um Membro (a exclusão interna). */
+export type OrigemDaExclusao = "remetente_externo" | "celular_do_canal" | "interno";
+
+/**
+ * A Marcação de exclusão (ontologia 7.6; RN-CXE-16): terminal e irreversível. A Mensagem continua na Conversa com um marcador;
+ * o conteúdo e os anexos ficam guardados mas deixam de ser exibidos.
+ */
+export interface MarcacaoDeExclusao {
+  readonly porQuem: OrigemDaExclusao;
+  readonly em: string;
+}
+
+/** Uma edição que o remetente externo transmitiu (WhatsApp, Instagram): o conteúdo ANTES dela e o momento. O conteúdo da Mensagem passa a ser o novo. */
+export interface EdicaoExterna {
+  readonly conteudoAnterior: string | null;
+  readonly em: string;
+}
+
+const AUTORES_DA_REACAO: readonly AutorDaReacao[] = ["contato", "canal"];
+const ORIGENS_DA_EXCLUSAO: readonly OrigemDaExclusao[] = ["remetente_externo", "celular_do_canal", "interno"];
+
+function ehObjeto(valor: unknown): valor is Record<string, unknown> {
+  return typeof valor === "object" && valor !== null && !Array.isArray(valor);
+}
+
+/**
+ * O que o banco guarda é JSON: de uma linha antiga (a migração do CRM antigo copiou a lista como estava) pode vir uma forma que
+ * não é a de hoje. Estas leituras ficam só com o que tem o formato certo, para a tela nunca tropeçar num dado velho.
+ */
+export function leReacoes(valor: unknown): readonly Reacao[] {
+  if (!Array.isArray(valor)) return [];
+  return valor.flatMap((item): Reacao[] => {
+    if (!ehObjeto(item)) return [];
+    const { autor, emoji, em } = item;
+    if (!AUTORES_DA_REACAO.includes(autor as AutorDaReacao) || typeof emoji !== "string" || typeof em !== "string") return [];
+    return [{ autor: autor as AutorDaReacao, emoji, em }];
+  });
+}
+
+export function leMarcacaoDeExclusao(valor: unknown): MarcacaoDeExclusao | null {
+  if (!ehObjeto(valor)) return null;
+  const { porQuem, em } = valor;
+  if (!ORIGENS_DA_EXCLUSAO.includes(porQuem as OrigemDaExclusao) || typeof em !== "string") return null;
+  return { porQuem: porQuem as OrigemDaExclusao, em };
+}
+
+export function leEdicoesExternas(valor: unknown): readonly EdicaoExterna[] {
+  if (!Array.isArray(valor)) return [];
+  return valor.flatMap((item): EdicaoExterna[] => {
+    if (!ehObjeto(item)) return [];
+    const { conteudoAnterior, em } = item;
+    if ((conteudoAnterior !== null && typeof conteudoAnterior !== "string") || typeof em !== "string") return [];
+    return [{ conteudoAnterior: conteudoAnterior ?? null, em }];
+  });
+}
+
+/** A Reação que vale hoje de cada autor: a de maior momento (a última gravada, no empate), sem as removidas. O Contato vem antes do Canal. */
+export function reacoesVigentes(reacoes: readonly Reacao[]): readonly { readonly autor: AutorDaReacao; readonly emoji: string }[] {
+  const ultima = new Map<AutorDaReacao, Reacao>();
+  for (const reacao of reacoes) {
+    const atual = ultima.get(reacao.autor);
+    if (atual === undefined || Date.parse(reacao.em) >= Date.parse(atual.em)) ultima.set(reacao.autor, reacao);
+  }
+  return AUTORES_DA_REACAO.flatMap((autor) => {
+    const reacao = ultima.get(autor);
+    return reacao === undefined || reacao.emoji === "" ? [] : [{ autor, emoji: reacao.emoji }];
+  });
+}
+
+/**
+ * O registro depois de uma Reação nova, ou `null` quando ela não muda nada: a repetida (mesmo autor, símbolo e momento: o
+ * provedor reenvia), a remoção de uma reação que não existia, e a que chega mais VELHA que a vigente do mesmo autor (a rede não
+ * garante a ordem). Acréscimo: nada é apagado do registro, e a remoção é um registro com o símbolo vazio.
+ */
+export function proximasReacoes(atuais: readonly Reacao[], nova: Reacao): readonly Reacao[] | null {
+  if (Number.isNaN(Date.parse(nova.em))) return null;
+  if (atuais.some((r) => r.autor === nova.autor && r.emoji === nova.emoji && r.em === nova.em)) return null;
+  const doAutor = atuais.filter((r) => r.autor === nova.autor);
+  const vigente = doAutor.reduce<Reacao | undefined>((a, r) => (a === undefined || Date.parse(r.em) >= Date.parse(a.em) ? r : a), undefined);
+  if (vigente !== undefined && Date.parse(nova.em) < Date.parse(vigente.em)) return null;
+  if (nova.emoji === "" && (vigente === undefined || vigente.emoji === "")) return null;
+  return [...atuais, nova];
+}
+
+/** A Marcação de exclusão que vale: a primeira (terminal), e `null` quando já havia uma. */
+export function proximaMarcacaoDeExclusao(atual: MarcacaoDeExclusao | null, nova: MarcacaoDeExclusao): MarcacaoDeExclusao | null {
+  if (atual !== null || Number.isNaN(Date.parse(nova.em))) return null;
+  return nova;
+}
+
+/**
+ * A edição que o remetente externo transmitiu (RN-CXE-16): só a Mensagem `recebida` e ainda não apagada muda, o conteúdo
+ * passa a ser o novo e o anterior vai para o histórico. `null` quando não muda nada: a `enviada` e a `interna` nunca são
+ * editadas ("corrige-se enviando outra"), a apagada é terminal, o conteúdo novo é vazio ou igual ao atual (o provedor reenvia).
+ */
+export function proximaEdicaoExterna(
+  mensagem: Pick<Mensagem, "direcao" | "conteudo" | "marcacaoExclusao" | "edicoesExternas">,
+  conteudoNovo: string,
+  em: string,
+): { readonly conteudo: string; readonly edicoesExternas: readonly EdicaoExterna[] } | null {
+  if (mensagem.direcao !== "recebida" || mensagem.marcacaoExclusao !== null) return null;
+  if (conteudoNovo.trim() === "" || conteudoNovo === mensagem.conteudo || Number.isNaN(Date.parse(em))) return null;
+  return { conteudo: conteudoNovo, edicoesExternas: [...mensagem.edicoesExternas, { conteudoAnterior: mensagem.conteudo, em }] };
+}

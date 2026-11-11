@@ -22,12 +22,20 @@
 import type { Pool, PoolClient } from "pg";
 import type { Pagina } from "@n1/dominio/crm/comum";
 import {
+  leEdicoesExternas,
+  leMarcacaoDeExclusao,
+  leReacoes,
+  proximaEdicaoExterna,
+  proximaMarcacaoDeExclusao,
+  proximasReacoes,
   proximoStatusDeEntrega,
   type AnexoDaMensagem,
   type AtorDaMensagem,
   type DirecaoDaMensagem,
   type EnderecoAdicional,
+  type MarcacaoDeExclusao,
   type Mensagem,
+  type Reacao,
   type StatusDeEntrega,
   type TipoDeAtorDaMensagem,
 } from "@n1/dominio/crm/mensagens";
@@ -61,6 +69,8 @@ export interface LinhaDeMensagemRecebida {
   readonly anexos: readonly AnexoDaMensagem[];
   readonly assunto: string | null;
   readonly enderecosAdicionais: readonly EnderecoAdicional[];
+  /** A Mensagem da MESMA Conversa que esta cita (INV-CXE-10); quem chama já conferiu que ela existe nessa Conversa. */
+  readonly emRespostaAId?: string | null;
   readonly remetenteExterno: string | null;
   readonly identificadorId: string | null;
   readonly cargaBruta: unknown;
@@ -131,6 +141,19 @@ export interface RepositorioDeMensagens {
     em: string,
     motivo?: string,
   ): Promise<{ readonly mensagem: Mensagem; readonly mudou: boolean } | undefined>;
+  /**
+   * Uma Reação que o provedor transmitiu (4.4.5), à Mensagem de (Canal, id externo), com `for update`: ACRESCENTA ao registro
+   * (`proximasReacoes`) e nunca cria Mensagem. `undefined` quando nenhuma Mensagem do Canal tem esse id externo; `mudou:
+   * false` quando a Reação não muda nada (repetida, remoção do que não existia, mais velha que a vigente).
+   */
+  registrarReacao(workspaceId: string, canalId: string, idExterno: string, reacao: Reacao): Promise<{ readonly mensagem: Mensagem; readonly mudou: boolean } | undefined>;
+  /** A Marcação de exclusão (4.4.5; terminal): a primeira vale. O conteúdo e os anexos continuam guardados. Mesmo contrato de `registrarReacao`. */
+  marcarExclusao(workspaceId: string, canalId: string, idExterno: string, marcacao: MarcacaoDeExclusao): Promise<{ readonly mensagem: Mensagem; readonly mudou: boolean } | undefined>;
+  /**
+   * A edição que o remetente externo transmitiu (4.4.5; RN-CXE-16): só a `recebida` e ainda não apagada muda (`proximaEdicaoExterna`),
+   * com o conteúdo anterior no histórico. Mesmo contrato de `registrarReacao`.
+   */
+  registrarEdicaoExterna(workspaceId: string, canalId: string, idExterno: string, edicao: { readonly conteudo: string; readonly em: string }): Promise<{ readonly mensagem: Mensagem; readonly mudou: boolean } | undefined>;
   /**
    * A entrada de mídia (16-10): troca a lista de anexos de uma Mensagem `recebida` já gravada (a mídia que não tinha baixado
    * e agora baixou). SÓ de `recebida`: o anexo da `enviada` nasce pronto e nunca muda. `undefined` quando não há essa Mensagem.
@@ -209,13 +232,25 @@ export function linhaParaMensagem(linha: LinhaDoBancoDeMensagem): Mensagem {
     statusEntregaEm: linha.status_entrega_em === null ? null : linha.status_entrega_em.toISOString(),
     motivoFalha: linha.motivo_falha,
     leiturasInternas: linha.leituras_internas,
-    reacoes: linha.reacoes,
-    marcacaoExclusao: linha.marcacao_exclusao,
-    edicoesExternas: linha.edicoes_externas,
+    reacoes: leReacoes(linha.reacoes),
+    marcacaoExclusao: leMarcacaoDeExclusao(linha.marcacao_exclusao),
+    edicoesExternas: leEdicoesExternas(linha.edicoes_externas),
     anonimizada: linha.anonimizada,
     criadoEm: linha.criado_em.toISOString(),
     registradoEm: linha.registrado_em.toISOString(),
   };
+}
+
+/** A linha da Mensagem de (Canal, id externo) com `for update`: dois eventos da mesma Mensagem se aplicam um depois do outro. */
+async function travarPorIdExterno(cliente: Pool | PoolClient, workspaceId: string, canalId: string, idExterno: string): Promise<LinhaDoBancoDeMensagem | undefined> {
+  const { rows } = await cliente.query<LinhaDoBancoDeMensagem>(
+    `select ${COLUNAS_DE_MENSAGEM}
+       from plataforma.mensagens
+      where workspace_id = $1 and canal_id = $2 and id_externo = $3
+        for update`,
+    [workspaceId, canalId, idExterno],
+  );
+  return rows[0];
 }
 
 export function criarRepositorioDeMensagensPg(cliente: Pool | PoolClient): RepositorioDeMensagens {
@@ -301,10 +336,10 @@ export function criarRepositorioDeMensagensPg(cliente: Pool | PoolClient): Repos
         `insert into plataforma.mensagens
            (workspace_id, conversa_id, canal_id, direcao, ator_tipo, ator_id, id_externo, criado_em,
             conteudo, anexos, assunto, enderecos_adicionais, remetente_externo, identificador_id, carga_bruta,
-            status_entrega, status_entrega_em)
+            status_entrega, status_entrega_em, em_resposta_a_id)
          values ($1, $2, $3, $13::text, 'integration', $3, $4, $5::timestamptz,
                  $6, $7::jsonb, $8, $9::jsonb, $10, $11, $12::jsonb,
-                 $14::text, case when $14::text is null then null else $5::timestamptz end)
+                 $14::text, case when $14::text is null then null else $5::timestamptz end, $15::text)
          on conflict (workspace_id, canal_id, id_externo) where id_externo is not null do nothing
          returning ${COLUNAS_DE_MENSAGEM}`,
         [
@@ -322,6 +357,7 @@ export function criarRepositorioDeMensagensPg(cliente: Pool | PoolClient): Repos
           JSON.stringify(linha.cargaBruta ?? null),
           doAparelho ? "enviada" : "recebida",
           doAparelho ? "enviada" : null,
+          linha.emRespostaAId ?? null,
         ],
       );
       return rows[0] ? linhaParaMensagem(rows[0]) : undefined;
@@ -411,6 +447,45 @@ export function criarRepositorioDeMensagensPg(cliente: Pool | PoolClient): Repos
           where workspace_id = $1 and id = $2
           returning ${COLUNAS_DE_MENSAGEM}`,
         [workspaceId, mensagem.id, proximo, em, proximo === "falhou" ? (motivo ?? null) : null],
+      );
+      return { mensagem: linhaParaMensagem(rows[0]!), mudou: true };
+    },
+
+    async registrarReacao(workspaceId, canalId, idExterno, reacao) {
+      const atual = await travarPorIdExterno(cliente, workspaceId, canalId, idExterno);
+      if (!atual) return undefined;
+      const mensagem = linhaParaMensagem(atual);
+      const registro = proximasReacoes(mensagem.reacoes, reacao);
+      if (registro === null) return { mensagem, mudou: false };
+      const { rows } = await cliente.query<LinhaDoBancoDeMensagem>(
+        `update plataforma.mensagens set reacoes = $3::jsonb where workspace_id = $1 and id = $2 returning ${COLUNAS_DE_MENSAGEM}`,
+        [workspaceId, mensagem.id, JSON.stringify(registro)],
+      );
+      return { mensagem: linhaParaMensagem(rows[0]!), mudou: true };
+    },
+
+    async marcarExclusao(workspaceId, canalId, idExterno, marcacao) {
+      const atual = await travarPorIdExterno(cliente, workspaceId, canalId, idExterno);
+      if (!atual) return undefined;
+      const mensagem = linhaParaMensagem(atual);
+      const valida = proximaMarcacaoDeExclusao(mensagem.marcacaoExclusao, marcacao);
+      if (valida === null) return { mensagem, mudou: false };
+      const { rows } = await cliente.query<LinhaDoBancoDeMensagem>(
+        `update plataforma.mensagens set marcacao_exclusao = $3::jsonb where workspace_id = $1 and id = $2 returning ${COLUNAS_DE_MENSAGEM}`,
+        [workspaceId, mensagem.id, JSON.stringify(valida)],
+      );
+      return { mensagem: linhaParaMensagem(rows[0]!), mudou: true };
+    },
+
+    async registrarEdicaoExterna(workspaceId, canalId, idExterno, edicao) {
+      const atual = await travarPorIdExterno(cliente, workspaceId, canalId, idExterno);
+      if (!atual) return undefined;
+      const mensagem = linhaParaMensagem(atual);
+      const proxima = proximaEdicaoExterna(mensagem, edicao.conteudo, edicao.em);
+      if (proxima === null) return { mensagem, mudou: false };
+      const { rows } = await cliente.query<LinhaDoBancoDeMensagem>(
+        `update plataforma.mensagens set conteudo = $3, edicoes_externas = $4::jsonb where workspace_id = $1 and id = $2 returning ${COLUNAS_DE_MENSAGEM}`,
+        [workspaceId, mensagem.id, proxima.conteudo, JSON.stringify(proxima.edicoesExternas)],
       );
       return { mensagem: linhaParaMensagem(rows[0]!), mudou: true };
     },

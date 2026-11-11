@@ -10,6 +10,16 @@
  * tem `emitOwnEvents: false`, então o que a plataforma envia não volta por aqui (e, se um dia voltar, o id externo já gravado
  * descarta a repetida e `gravarEnvio` desfaz a cópia que chegou antes do aceite).
  *
+ * Os demais eventos da Evolution que mudam uma Mensagem que já existe (4.4.5), conferidos no código dela (2.4.0-rc2):
+ *   - `messages.update` `{ keyId, remoteJid, fromMe, status }`: o tique. `fromMe` é o da Mensagem (verdadeiro para a que NÓS
+ *     mandamos). Sem instante no corpo: vale o da chegada. O mesmo evento carrega a edição (`message.editedMessage`) com um
+ *     `status` falso, e por isso ela é descartada aqui;
+ *   - `messages.delete` `{ remoteJid, fromMe, id, status: "DELETED" }`: apagada para todos; `fromMe` é de quem apagou;
+ *   - `messages.edited`: o `ProtocolMessage` cru `{ key: { id }, type, editedMessage, timestampMs }`; a revogação também chega
+ *     por aqui (e por `messages.delete`) e é descartada;
+ *   - a Reação é um `MESSAGES_UPSERT` com `message.reactionMessage { key: { id }, text }`: `key.id` é a Mensagem reagida, e
+ *     `text` vazio é a reação removida.
+ *
  * O instante vem só de `messageTimestamp` (segundos Unix). O `date_time` do corpo é hora local com sufixo `Z` e nunca
  * é lido (Pitfall 16). O corpo nunca leva `url` de mídia seguida: a mídia sai de `getBase64FromMediaMessage`.
  */
@@ -53,6 +63,22 @@ function instanteDoProvedor(valor: unknown): string | undefined {
   return Number.isNaN(instante.getTime()) ? undefined : instante.toISOString();
 }
 
+/** Milissegundos Unix (número, texto numérico ou um `Long` serializado `{ low, high }`) → ISO; `undefined` se não vier. */
+function instanteEmMilissegundos(valor: unknown): string | undefined {
+  let ms: number | undefined;
+  if (typeof valor === "number") ms = valor;
+  else if (typeof valor === "string" && /^\d+$/.test(valor.trim())) ms = Number(valor.trim());
+  else if (ehObjeto(valor) && typeof valor.low === "number") ms = (typeof valor.high === "number" ? valor.high * 4294967296 : 0) + (valor.low >>> 0);
+  if (ms === undefined || !Number.isFinite(ms) || ms <= 0) return undefined;
+  const instante = new Date(ms);
+  return Number.isNaN(instante.getTime()) ? undefined : instante.toISOString();
+}
+
+/** O nome do evento sem diferença de grafia: `messages.update` e `MESSAGES_UPDATE` são o mesmo. */
+function ehEvento(evento: unknown, nome: string): boolean {
+  return typeof evento === "string" && evento.trim().toLowerCase().replace(/_/g, ".") === nome;
+}
+
 function ignorado(motivo: string, idExterno?: string): readonly EventoDoProvedor[] {
   return [{ tipo: "ignorado", motivo, ...(idExterno === undefined ? {} : { idExterno }) }];
 }
@@ -89,6 +115,87 @@ function traduzirConexao(dados: unknown): readonly EventoDoProvedor[] {
   }
   if (estado === "connecting") return ignorado("conectando");
   return ignorado("conexao_sem_estado");
+}
+
+/** O `status` de `messages.update` (renderStatus da Evolution) → o status de entrega do CRM. `PENDING` não diz nada que o CRM não saiba. */
+const STATUS_DA_EVOLUTION: Readonly<Record<string, "enviada" | "entregue" | "lida" | "falhou">> = {
+  SERVER_ACK: "enviada",
+  DELIVERY_ACK: "entregue",
+  READ: "lida",
+  PLAYED: "lida",
+  ERROR: "falhou",
+};
+
+/** `messages.update` (4.4.5): o tique de uma Mensagem que NÓS mandamos. Grupo e `status@broadcast` não entram (Sessão 6). */
+function traduzirStatus(dados: unknown): readonly EventoDoProvedor[] {
+  if (!ehObjeto(dados)) return ignorado("formato_invalido");
+  const idExterno = typeof dados.keyId === "string" && dados.keyId !== "" ? dados.keyId : undefined;
+  if (idExterno === undefined) return ignorado("status_sem_id");
+  const jid = typeof dados.remoteJid === "string" ? dados.remoteJid : "";
+  if (jid === "status@broadcast") return ignorado("status", idExterno);
+  if (jid.endsWith("@g.us")) return ignorado("grupo", idExterno);
+  // A edição chega aqui com um status de enfeite (`SERVER_ACK`): quem trata a edição é `messages.edited`.
+  if (ehObjeto(dados.message) && ehObjeto(dados.message.editedMessage)) return ignorado("edicao_no_status", idExterno);
+  // `fromMe` falso é o recibo de uma Mensagem que o Contato mandou (o nosso celular a leu): o CRM não tem status dela.
+  if (dados.fromMe === false) return ignorado("status_de_recebida", idExterno);
+  const bruto = typeof dados.status === "string" ? dados.status.trim().toUpperCase() : "";
+  const status = STATUS_DA_EVOLUTION[bruto];
+  if (status === undefined) return ignorado(bruto === "" ? "status_sem_valor" : `status:${bruto.toLowerCase()}`, idExterno);
+  return [{ tipo: "status", idExterno, status, em: new Date().toISOString(), ...(status === "falhou" ? { motivo: bruto } : {}) }];
+}
+
+/** `messages.delete` (4.4.5): a Mensagem `id` foi apagada para todos. `fromMe` é de quem apagou. */
+function traduzirExclusao(dados: unknown): readonly EventoDoProvedor[] {
+  if (!ehObjeto(dados)) return ignorado("formato_invalido");
+  const chave = ehObjeto(dados.key) ? dados.key : dados;
+  const idExterno = typeof chave.id === "string" && chave.id !== "" ? chave.id : undefined;
+  if (idExterno === undefined) return ignorado("exclusao_sem_id");
+  const jid = typeof dados.remoteJid === "string" ? dados.remoteJid : typeof chave.remoteJid === "string" ? chave.remoteJid : "";
+  if (jid === "status@broadcast") return ignorado("status", idExterno);
+  if (jid.endsWith("@g.us")) return ignorado("grupo", idExterno);
+  const fromMe = typeof dados.fromMe === "boolean" ? dados.fromMe : chave.fromMe === true;
+  return [{ tipo: "exclusao", idExterno, porQuem: fromMe ? "celular_do_canal" : "remetente_externo", em: new Date().toISOString() }];
+}
+
+/** O `ProtocolMessage.type` que quer dizer revogação (apagar para todos): o Baileys o serializa como `REVOKE` ou como o número 0. */
+function ehRevogacao(tipo: unknown): boolean {
+  return tipo === 0 || (typeof tipo === "string" && tipo.trim().toUpperCase() === "REVOKE");
+}
+
+/** O texto novo de uma mensagem editada: `conversation`, ou `extendedTextMessage.text`, com ou sem o embrulho `message`. */
+function textoDaEdicao(editada: unknown): string | undefined {
+  if (!ehObjeto(editada)) return undefined;
+  const corpo = ehObjeto(editada.message) ? editada.message : editada;
+  if (typeof corpo.conversation === "string") return corpo.conversation;
+  const estendida = ehObjeto(corpo.extendedTextMessage) ? corpo.extendedTextMessage : undefined;
+  return typeof estendida?.text === "string" ? estendida.text : undefined;
+}
+
+/**
+ * `messages.edited` (4.4.5): o `ProtocolMessage` cru. `key.id` é a Mensagem ORIGINAL (o `remoteJid` e o `fromMe` de dentro são do
+ * ponto de vista de quem editou, e nunca são lidos). A revogação também chega aqui, e quem a trata é `messages.delete`.
+ */
+function traduzirEdicao(dados: unknown): readonly EventoDoProvedor[] {
+  if (!ehObjeto(dados)) return ignorado("formato_invalido");
+  const chave = ehObjeto(dados.key) ? dados.key : undefined;
+  const idExterno = typeof chave?.id === "string" && chave.id !== "" ? chave.id : undefined;
+  if (idExterno === undefined) return ignorado("edicao_sem_id");
+  if (ehRevogacao(dados.type)) return ignorado("revogacao", idExterno);
+  const jid = typeof chave?.remoteJid === "string" ? chave.remoteJid : "";
+  if (jid.endsWith("@g.us")) return ignorado("grupo", idExterno);
+  const conteudo = textoDaEdicao(dados.editedMessage);
+  if (conteudo === undefined) return ignorado("edicao_sem_texto", idExterno);
+  return [{ tipo: "edicao", idExterno, conteudo, em: instanteEmMilissegundos(dados.timestampMs) ?? new Date().toISOString() }];
+}
+
+/** A Mensagem que esta cita, pelo `stanzaId` do `contextInfo` (de onde ele vier em cada versão da Evolution); `undefined` se não cita nenhuma. */
+function idDaCitada(dados: Record<string, unknown>, mensagem: Record<string, unknown>): string | undefined {
+  const candidatos: unknown[] = [dados.contextInfo];
+  for (const valor of Object.values(mensagem)) if (ehObjeto(valor)) candidatos.push(valor.contextInfo);
+  for (const contexto of candidatos) {
+    if (ehObjeto(contexto) && typeof contexto.stanzaId === "string" && contexto.stanzaId.trim() !== "") return contexto.stanzaId.trim();
+  }
+  return undefined;
 }
 
 function numeroDoJid(jid: unknown): string | undefined {
@@ -153,6 +260,9 @@ function nomeDoAnexo(campo: string, midia: Record<string, unknown>, idExterno: s
 export function traduzirChamadaDaEvolution(corpo: unknown, instancia: string): readonly EventoDoProvedor[] {
   if (!ehObjeto(corpo) || corpo.instance !== instancia) return [];
   if (ehEventoDeConexao(corpo.event)) return traduzirConexao(corpo.data);
+  if (ehEvento(corpo.event, "messages.update")) return traduzirStatus(corpo.data);
+  if (ehEvento(corpo.event, "messages.delete")) return traduzirExclusao(corpo.data);
+  if (ehEvento(corpo.event, "messages.edited")) return traduzirEdicao(corpo.data);
   if (corpo.event !== EVENTO_DE_MENSAGEM) return [];
   const dados = corpo.data;
   if (!ehObjeto(dados) || !ehObjeto(dados.key)) return ignorado("formato_invalido");
@@ -171,8 +281,23 @@ export function traduzirChamadaDaEvolution(corpo: unknown, instancia: string): r
 
   const mensagem = desembrulhar(ehObjeto(dados.message) ? dados.message : {});
   const tipoDoCorpo = typeof dados.messageType === "string" ? dados.messageType : undefined;
-  if (ehObjeto(mensagem.reactionMessage)) return ignorado("reacao", idExterno);
+  if (ehObjeto(mensagem.reactionMessage)) {
+    // A Reação não é Mensagem: `reactionMessage.key.id` é a Mensagem reagida e o `key.fromMe` de fora diz quem reagiu.
+    const reagida = ehObjeto(mensagem.reactionMessage.key) && typeof mensagem.reactionMessage.key.id === "string" ? mensagem.reactionMessage.key.id : "";
+    if (reagida === "") return ignorado("reacao_sem_alvo", idExterno);
+    return [
+      {
+        tipo: "reacao",
+        idExterno: reagida,
+        autor: digitadaNoAparelho ? "canal" : "contato",
+        emoji: typeof mensagem.reactionMessage.text === "string" ? mensagem.reactionMessage.text : "",
+        em: instanteEmMilissegundos(mensagem.reactionMessage.senderTimestampMs) ?? instanteDoProvedor(dados.messageTimestamp) ?? new Date().toISOString(),
+      },
+    ];
+  }
   if (ehObjeto(mensagem.protocolMessage) || ehObjeto(mensagem.editedMessage)) return ignorado("edicao", idExterno);
+
+  const citada = idDaCitada(dados, mensagem);
 
   // O `pushName` de uma Mensagem `fromMe` é o nome de quem digitou (o dono do número), não o do Contato.
   const nome = !digitadaNoAparelho && typeof dados.pushName === "string" ? dados.pushName.trim() : "";
@@ -183,6 +308,7 @@ export function traduzirChamadaDaEvolution(corpo: unknown, instancia: string): r
     remetente: { tipo: "whatsapp" as const, valor: `+${digitos}`, ...(nome === "" ? {} : { nomeExibido: nome }) },
     cargaBruta: semApikey(corpo),
     ...(digitadaNoAparelho ? { digitadaNoAparelho: true } : {}),
+    ...(citada === undefined ? {} : { emRespostaAIdExterno: citada }),
   };
 
   const estendida = ehObjeto(mensagem.extendedTextMessage) ? mensagem.extendedTextMessage : undefined;

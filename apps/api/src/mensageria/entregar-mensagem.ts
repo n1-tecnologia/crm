@@ -222,7 +222,13 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
       mensagemId: mensagem.id,
       destino: { tipo: destino.tipo, valor: valorDoDestino },
       ...(mensagem.conteudo === null ? {} : { conteudo: mensagem.conteudo }),
-      ...(respondida?.idExterno ? { emRespostaAIdExterno: respondida.idExterno } : {}),
+      ...(respondida?.idExterno
+        ? {
+            emRespostaAIdExterno: respondida.idExterno,
+            // 4.4.4: o que o WhatsApp mostra na citação. A Mensagem só com anexo não tem texto: vai um marcador.
+            emRespostaADetalhes: { nossa: respondida.direcao === "enviada", texto: (respondida.conteudo ?? "").trim().slice(0, 500) || "📎 Anexo" },
+          }
+        : {}),
     };
 
     // Antes de a chamada sair (cofre, registro): uma exceção aqui é transitória, nada foi enviado.

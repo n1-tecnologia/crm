@@ -145,6 +145,16 @@ revisão do Espaço e reenfileira as Mensagens `pendente` do Canal.
   que o comando cifrou. O comando grava no banco do `DATABASE_URL`; para ligar o Canal de produção, rode-o com a
   `DATABASE_URL` e a `COFRE_CHAVE` de produção, de uma máquina com acesso ao banco.
 
+**`canal:atualizar-webhook-evolution` (Sessão 4, 4.4.5).**
+`npm run canal:atualizar-webhook-evolution -w @n1/api -- --canal <id> | --todos [--espaco <id>] [--seco] [--url-publica <url>]`
+reaplica, nas instâncias da Evolution já ligadas, a lista atual de eventos do webhook (`EVENTOS_DO_WEBHOOK`): o tique, a Mensagem
+apagada e a editada entraram na 4.4.5, e uma instância conectada antes guarda a lista velha. Para cada Canal `whatsapp-nao-oficial`
+ativo e não simulado lê a credencial `{ instancia, apikey }` e o segredo do webhook do cofre e chama `POST /webhook/set/<instância>`
+com o token da instância e o endereço de sempre. **Não escreve no banco, não troca o segredo** (isso é do `canal:ligar-evolution`),
+não usa a chave global e nunca toca a `numeropvmarcos`. Canal sem credencial ou sem segredo é pulado com o motivo; a Evolution que
+falha num Canal não derruba os outros e o comando sai com 1. `--seco` percorre o caminho sem chamar a Evolution. A saída traz só o id
+do Canal e o nome da instância. Ambiente: `EVOLUTION_URL`, `API_URL_PUBLICA`, `COFRE_CHAVE` e o `DATABASE_URL` de quem tem o cofre.
+
 ## Bootstrap × evolver (Plan 02-08)
 
 Dois módulos deste diretório resolvem problemas diferentes, e nenhum dos dois

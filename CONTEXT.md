@@ -187,8 +187,8 @@ com `EVOLUTION_URL`) recebe e envia texto e mídia de um Canal real, e quem liga
 Canal a uma instância é `npm run canal:ligar-evolution -w @n1/api -- --canal <id>
 --instancia <nome>`, que recusa a instância `numeropvmarcos` (é do `automation/`).
 Ficaram para a Sessão 4 o QR code e o botão "Conectar" (feitos, ver abaixo), a
-mensagem que a pessoa digita no celular e o nono dígito (feitos, ver abaixo) e o status
-de entrega (aberto, 4.4). Ver `apps/api/src/mensageria/CONTEXT.md`.
+mensagem que a pessoa digita no celular, o nono dígito, o tique, a Reação, a Mensagem
+apagada e a editada, e a citação nos dois sentidos (feitos, ver abaixo). Ver `apps/api/src/mensageria/CONTEXT.md`.
 
 Depois da verificação da fase (`16-VERIFICATION.md`), um plano de lacunas (16-17
 a 16-22) fechou o que ela achou: "Simular conexão" recusa o Canal já ligado a um
@@ -235,9 +235,11 @@ Evolution 2.4.0 já está instalada na VM (4.1.2) e, em 2026-11-11, a fumaça
 (`npm run evolution:fumaca`, `apps/api/deploy/CONTEXT.md`) confirmou contra ela, com
 a `EVOLUTION_API_KEY` já no `api.env`, o formato do `create` (com QR), do
 `fetchInstances` (com `token`), do `connectionState`, do `connect`, do logout e do
-delete. **Ainda não rodou com um celular**: o `connection.update` depois de escanear
-o QR, o `ownerJid` de uma instância aberta e o `statusReason` são do primeiro
-"Conectar" de verdade, que é do dono.
+delete. O primeiro "Conectar" com um celular foi do dono, em 2026-11-11, e funcionou: o
+Canal conectou, o envio pelo painel chegou e a mensagem digitada no aparelho apareceu na
+Caixa. **Segue sem prova real** o corpo exato do `connection.update`, o `statusReason`, a
+queda do celular e os eventos novos da 4.4.5 (tique, apagada, editada, Reação e a citação do
+texto), cujos formatos vêm do código da Evolution, não de uma captura.
 
 ## Comandos
 

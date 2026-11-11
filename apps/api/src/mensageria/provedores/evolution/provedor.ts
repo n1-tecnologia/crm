@@ -31,7 +31,7 @@ import {
   type ProvedorDeMensageria,
   type ResultadoDoEnvio,
 } from "../../provedor";
-import { criarClienteDaEvolution, ErroDaEvolution, type RespostaDaEvolution } from "./cliente";
+import { criarClienteDaEvolution, ErroDaEvolution, type CitacaoParaEvolution, type RespostaDaEvolution } from "./cliente";
 import { traduzirChamadaDaEvolution } from "./traduzir";
 
 export interface OpcoesDoProvedorEvolution {
@@ -152,6 +152,10 @@ export function criarProvedorEvolution(opcoes: OpcoesDoProvedorEvolution): Prove
 
     chaveDaChamada(corpo: unknown): string | undefined {
       if (typeof corpo !== "object" || corpo === null) return undefined;
+      // 4.4.5: só o `messages.upsert` tem chave. Um `messages.update` (o tique) da mesma Mensagem chega várias vezes com ids
+      // iguais (entregue, depois lida) e não pode ser descartado como repetido; aplicar um status de novo é inofensivo.
+      const evento = (corpo as { event?: unknown }).event;
+      if (typeof evento !== "string" || evento.trim().toLowerCase().replace(/_/g, ".") !== "messages.upsert") return undefined;
       const dados = (corpo as { data?: unknown }).data;
       const chave = typeof dados === "object" && dados !== null ? (dados as { key?: unknown }).key : undefined;
       const id = typeof chave === "object" && chave !== null ? (chave as { id?: unknown }).id : undefined;
@@ -164,12 +168,21 @@ export function criarProvedorEvolution(opcoes: OpcoesDoProvedorEvolution): Prove
       if (envio.destino.tipo !== "whatsapp") return recusa("DESTINO_INVALIDO", "Este Canal só envia para um número de WhatsApp.");
       const numero = digitosDoDestino(envio.destino.valor);
       const texto = envio.conteudo ?? "";
+      // 4.4.4: a resposta citada leva o id da Mensagem, o chat, de quem ela era e o texto que aparece na citação.
+      const citada: CitacaoParaEvolution | undefined =
+        envio.emRespostaAIdExterno === undefined
+          ? undefined
+          : {
+              key: { id: envio.emRespostaAIdExterno, remoteJid: `${numero}@s.whatsapp.net`, fromMe: envio.emRespostaADetalhes?.nossa ?? false },
+              message: { conversation: envio.emRespostaADetalhes?.texto ?? "" },
+            };
+      const comCitacao = citada === undefined ? {} : { citada };
       const anexos = envio.anexos ?? [];
       const { apikey, instancia } = credencial;
       try {
         if (anexos.length === 0) {
           if (texto.trim() === "") return recusa("MENSAGEM_VAZIA", "A Mensagem está vazia.");
-          return resultadoDaResposta(await cliente.enviarTexto(apikey, instancia, { numero, texto }));
+          return resultadoDaResposta(await cliente.enviarTexto(apikey, instancia, { numero, texto, ...comCitacao }));
         }
         if (anexos.length > 1) return recusa("ANEXO_INVALIDO", "Uma Mensagem leva um arquivo por vez.");
         const anexo = anexos[0]!;
@@ -178,7 +191,7 @@ export function criarProvedorEvolution(opcoes: OpcoesDoProvedorEvolution): Prove
 
         if (categoria === "audio") {
           // A mensagem de voz não tem legenda: o texto, se houver, vai em seguida como mensagem à parte.
-          const audio = resultadoDaResposta(await cliente.enviarAudio(apikey, instancia, { numero, audio: anexo.urlAssinada }));
+          const audio = resultadoDaResposta(await cliente.enviarAudio(apikey, instancia, { numero, audio: anexo.urlAssinada, ...comCitacao }));
           if (!audio.ok || texto.trim() === "") return audio;
           const depois = resultadoDaResposta(await cliente.enviarTexto(apikey, instancia, { numero, texto }));
           // O áudio já saiu: se o texto não se confirma, a Mensagem não volta à fila (reenviaria o áudio).
@@ -195,6 +208,7 @@ export function criarProvedorEvolution(opcoes: OpcoesDoProvedorEvolution): Prove
             mimetype: normalizarTipoDeMidia(anexo.tipoDeMidia),
             fileName: anexo.nome,
             ...(texto.trim() === "" ? {} : { caption: texto }),
+            ...comCitacao,
           }),
         );
       } catch (erro) {
