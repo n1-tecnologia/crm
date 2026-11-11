@@ -131,7 +131,35 @@ describe("fumaça da Evolution", () => {
     expect(resultado.passos[0]!.ok).toBe(false);
   });
 
-  it("a instância que continua existindo depois de apagada falha o último passo", async () => {
+  it("a Evolution 2.4.0 ainda lista a instância por ~1 s depois do DELETE: o último passo confere de novo e passa", async () => {
+    ok(200, { version: "2.4.0" });
+    ok(201, { hash: TOKEN, qrcode: { base64: QR } });
+    ok(200, [{ name: NOME, ownerJid: null, token: TOKEN, connectionStatus: "connecting" }]);
+    ok(200, { instance: { state: "connecting" } });
+    ok(200, { base64: QR });
+    ok(200, { status: "SUCCESS" });
+    ok(200, { status: "SUCCESS" });
+    const aindaListada = { name: NOME, ownerJid: null, token: TOKEN, connectionStatus: "close" };
+    ok(200, [aindaListada]);
+    ok(200, [aindaListada]);
+    ok(404, { status: 404, error: "Not Found", response: { message: [`The "${NOME}" instance does not exist`] } });
+    const pausas: number[] = [];
+    const resultado = await rodarFumacaDaEvolution({
+      cliente: criarClienteDaEvolution({ url: falso.url, timeoutMs: 1_000 }),
+      configuracao: { apikeyGlobal: GLOBAL, urlPublica: "https://api.n1.teste" },
+      sufixo: "teste01",
+      gerarToken: () => TOKEN,
+      esperar: async (ms) => {
+        pausas.push(ms);
+      },
+    });
+    expect(resultado.ok).toBe(true);
+    expect(resultado.passos.at(-1)).toMatchObject({ ok: true, detalhe: "não existe mais (a Evolution a tirou da lista na 3ª conferência)" });
+    expect(pausas).toEqual([2_000, 2_000]);
+    expect(falso.recebidas.filter((r) => r.caminho.startsWith("/instance/fetchInstances"))).toHaveLength(4);
+  });
+
+  it("a instância que continua existindo depois de apagada falha o último passo, dizendo isso (não 'erro inesperado')", async () => {
     ok(200, { version: "2.4.0" });
     ok(201, { hash: TOKEN, qrcode: { base64: QR } });
     ok(200, [{ name: NOME, ownerJid: null, token: TOKEN, connectionStatus: "close" }]);
@@ -139,9 +167,11 @@ describe("fumaça da Evolution", () => {
     ok(200, { base64: QR });
     ok(200, { status: "SUCCESS" });
     ok(200, { status: "SUCCESS" });
-    ok(200, [{ name: NOME, ownerJid: null, token: TOKEN, connectionStatus: "close" }]);
+    for (let i = 0; i < 6; i += 1) ok(200, [{ name: NOME, ownerJid: null, token: TOKEN, connectionStatus: "close" }]);
     const resultado = await rodar();
-    expect(resultado.passos.at(-1)).toMatchObject({ ok: false, detalhe: "erro inesperado" });
+    expect(resultado.ok).toBe(false);
+    expect(resultado.passos.at(-1)).toMatchObject({ ok: false, detalhe: "a instância continua na lista depois de 6 conferências" });
+    expect(falso.recebidas.filter((r) => r.caminho.startsWith("/instance/fetchInstances"))).toHaveLength(7);
   });
 
   it("o `token` que a Evolution NÃO expõe no fetchInstances é dito em claro (é o que impede retomar um resto de tentativa)", async () => {

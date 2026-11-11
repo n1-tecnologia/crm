@@ -276,7 +276,9 @@ contagens no log.
 **A fumaça** (`bootstrap/evolution-fumaca.ts`, `npm run evolution:fumaca -w @n1/api`): contra a Evolution REAL, cria uma
 instância `n1-fumaca-<aleatório>` sem número, confere cada chamada do "Conectar" e a apaga. É o que fecha a dúvida do
 formato real das respostas, que os testes (servidor falso) não fecham. Cada passo é independente e a limpeza roda sempre;
-a saída nunca leva chave, token, QR nem corpo de resposta.
+a saída nunca leva chave, token, QR nem corpo de resposta. Na Evolution 2.4.0 real (2026-11-11) todos os passos conferiram; a
+exclusão da instância só aparece na lista ~1 s depois do `DELETE`, então o último passo repete a conferência por ~10 s. A
+fumaça não escaneia QR: o `connection.update` e o `ownerJid` de uma instância aberta seguem sem prova real.
 
 **Limite conhecido do painel:** um Canal que já está `com_erro` e falha de novo para `com_erro` não muda de estado, então a
 tela não tem o que observar e continua mostrando o QR (renovado). A frase de "QR lido por outro número" só aparece quando o
