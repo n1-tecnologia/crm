@@ -182,6 +182,98 @@ describeComBanco("RepositorioDeMensagens — Postgres local", () => {
     expect(await mensagens.remetenteExternoDaUltimaRecebida(ws, suporte.conversaId)).toBeNull();
   });
 
+  describe("a Reação, a exclusão e a edição que o provedor transmite (4.4.5)", () => {
+    const T1 = "2026-10-12T10:01:00.000Z";
+    const T2 = "2026-10-12T10:02:00.000Z";
+
+    it("registrarReacao ACRESCENTA ao registro, nunca cria Mensagem, e a repetida, a mais velha e a remoção sem reação não mudam nada", async () => {
+      const { ws, comercial } = await cenario("reacao");
+      const original = (await mensagens.inserirRecebida(ws, recebida(comercial.conversaId, comercial.canalId, { idExterno: "wamid.r1" })))!;
+      const contar = async () => (await pool().query<{ n: number }>("select count(*)::int as n from plataforma.mensagens where workspace_id = $1", [ws])).rows[0]!.n;
+
+      const primeira = await mensagens.registrarReacao(ws, comercial.canalId, "wamid.r1", { autor: "contato", emoji: "👍", em: T1 });
+      expect(primeira).toMatchObject({ mudou: true, mensagem: { id: original.id, reacoes: [{ autor: "contato", emoji: "👍", em: T1 }] } });
+
+      const trocou = await mensagens.registrarReacao(ws, comercial.canalId, "wamid.r1", { autor: "contato", emoji: "❤️", em: T2 });
+      expect(trocou!.mensagem.reacoes).toHaveLength(2);
+
+      expect(await mensagens.registrarReacao(ws, comercial.canalId, "wamid.r1", { autor: "contato", emoji: "❤️", em: T2 })).toMatchObject({ mudou: false });
+      expect(await mensagens.registrarReacao(ws, comercial.canalId, "wamid.r1", { autor: "contato", emoji: "😂", em: T1 })).toMatchObject({ mudou: false });
+      const relida = (await mensagens.obter(ws, original.id))!;
+      expect(relida.reacoes).toHaveLength(2);
+      expect(await contar()).toBe(1);
+    });
+
+    it("a Reação a um id que o Canal não tem devolve undefined; o mesmo id em OUTRO Canal não é tocado", async () => {
+      const { ws, comercial, suporte } = await cenario("reacao-canal");
+      await mensagens.inserirRecebida(ws, recebida(suporte.conversaId, suporte.canalId, { idExterno: "wamid.r2" }));
+      expect(await mensagens.registrarReacao(ws, comercial.canalId, "wamid.r2", { autor: "contato", emoji: "👍", em: T1 })).toBeUndefined();
+      expect((await mensagens.obterPorIdExterno(ws, suporte.canalId, "wamid.r2"))!.reacoes).toEqual([]);
+    });
+
+    it("marcarExclusao é terminal: a primeira vale, o conteúdo e os anexos continuam guardados", async () => {
+      const { ws, comercial } = await cenario("exclusao");
+      const original = (await mensagens.inserirRecebida(ws, recebida(comercial.conversaId, comercial.canalId, { idExterno: "wamid.e1", conteudo: "segredo" })))!;
+
+      const apagada = await mensagens.marcarExclusao(ws, comercial.canalId, "wamid.e1", { porQuem: "remetente_externo", em: T1 });
+      expect(apagada).toMatchObject({ mudou: true, mensagem: { id: original.id, conteudo: "segredo", marcacaoExclusao: { porQuem: "remetente_externo", em: T1 } } });
+
+      const segunda = await mensagens.marcarExclusao(ws, comercial.canalId, "wamid.e1", { porQuem: "celular_do_canal", em: T2 });
+      expect(segunda).toMatchObject({ mudou: false, mensagem: { marcacaoExclusao: { porQuem: "remetente_externo", em: T1 } } });
+      expect(await mensagens.marcarExclusao(ws, comercial.canalId, "wamid.inexistente", { porQuem: "remetente_externo", em: T1 })).toBeUndefined();
+    });
+
+    it("registrarEdicaoExterna troca o conteúdo da `recebida` e guarda o anterior; a repetida não muda nada", async () => {
+      const { ws, comercial } = await cenario("edicao");
+      await mensagens.inserirRecebida(ws, recebida(comercial.conversaId, comercial.canalId, { idExterno: "wamid.d1", conteudo: "texto antigo" }));
+
+      const editada = await mensagens.registrarEdicaoExterna(ws, comercial.canalId, "wamid.d1", { conteudo: "texto novo", em: T1 });
+      expect(editada).toMatchObject({ mudou: true, mensagem: { conteudo: "texto novo", edicoesExternas: [{ conteudoAnterior: "texto antigo", em: T1 }] } });
+
+      expect(await mensagens.registrarEdicaoExterna(ws, comercial.canalId, "wamid.d1", { conteudo: "texto novo", em: T2 })).toMatchObject({ mudou: false });
+      const segunda = await mensagens.registrarEdicaoExterna(ws, comercial.canalId, "wamid.d1", { conteudo: "texto novíssimo", em: T2 });
+      expect(segunda!.mensagem.edicoesExternas.map((e) => e.conteudoAnterior)).toEqual(["texto antigo", "texto novo"]);
+    });
+
+    it("a `enviada` do CRM e a Mensagem apagada nunca são editadas pelo provedor", async () => {
+      const { ws, comercial } = await cenario("edicao-recusada");
+      // Uma `enviada` entra pelo caminho da digitada no celular (id externo do provedor, direção `enviada`).
+      await mensagens.inserirRecebida(ws, recebida(comercial.conversaId, comercial.canalId, { idExterno: "wamid.d2", conteudo: "mandei pelo celular", digitadaNoAparelho: true }));
+      expect(await mensagens.registrarEdicaoExterna(ws, comercial.canalId, "wamid.d2", { conteudo: "outra coisa", em: T1 })).toMatchObject({ mudou: false, mensagem: { conteudo: "mandei pelo celular" } });
+
+      await mensagens.inserirRecebida(ws, recebida(comercial.conversaId, comercial.canalId, { idExterno: "wamid.d3", conteudo: "vai ser apagada" }));
+      await mensagens.marcarExclusao(ws, comercial.canalId, "wamid.d3", { porQuem: "remetente_externo", em: T1 });
+      expect(await mensagens.registrarEdicaoExterna(ws, comercial.canalId, "wamid.d3", { conteudo: "editada depois", em: T2 })).toMatchObject({ mudou: false, mensagem: { conteudo: "vai ser apagada" } });
+    });
+
+    it("a Reação e a exclusão valem também para a `enviada` (a que o celular mandou, e a que o CRM mandou)", async () => {
+      const { ws, comercial } = await cenario("enviada");
+      await mensagens.inserirRecebida(ws, recebida(comercial.conversaId, comercial.canalId, { idExterno: "wamid.n1", digitadaNoAparelho: true }));
+      expect(await mensagens.registrarReacao(ws, comercial.canalId, "wamid.n1", { autor: "contato", emoji: "🙏", em: T1 })).toMatchObject({ mudou: true });
+      expect(await mensagens.marcarExclusao(ws, comercial.canalId, "wamid.n1", { porQuem: "celular_do_canal", em: T2 })).toMatchObject({ mudou: true });
+    });
+
+    it("o dado antigo da migração (outro formato nas listas) não derruba a leitura", async () => {
+      const { ws, comercial } = await cenario("dado-antigo");
+      const m = (await mensagens.inserirRecebida(ws, recebida(comercial.conversaId, comercial.canalId, { idExterno: "wamid.v1" })))!;
+      await pool().query(
+        "update plataforma.mensagens set reacoes = '[{\"emoji\":\"x\"}, 3]'::jsonb, edicoes_externas = '[{\"a\":1}]'::jsonb, marcacao_exclusao = '{\"quem\":\"eu\"}'::jsonb where workspace_id = $1 and id = $2",
+        [ws, m.id],
+      );
+      expect(await mensagens.obter(ws, m.id)).toMatchObject({ reacoes: [], edicoesExternas: [], marcacaoExclusao: null });
+    });
+
+    it("a `recebida` que cita grava em_resposta_a_id; a citada de OUTRA Conversa é recusada pela chave composta (INV-CXE-10)", async () => {
+      const { ws, comercial, suporte } = await cenario("citacao");
+      const alvo = (await mensagens.inserirRecebida(ws, recebida(comercial.conversaId, comercial.canalId, { idExterno: "wamid.c1" })))!;
+      const resposta = await mensagens.inserirRecebida(ws, recebida(comercial.conversaId, comercial.canalId, { idExterno: "wamid.c2", emRespostaAId: alvo.id }));
+      expect(resposta).toMatchObject({ emRespostaAId: alvo.id });
+      await expect(
+        mensagens.inserirRecebida(ws, recebida(suporte.conversaId, suporte.canalId, { idExterno: "wamid.c3", emRespostaAId: alvo.id })),
+      ).rejects.toMatchObject({ code: "23503" });
+    });
+  });
+
   describe("a Mensagem digitada no celular do Canal (4.4.2)", () => {
     const doAparelho = (conversaId: string, canalId: string, extras: Partial<LinhaDeMensagemRecebida> = {}) =>
       recebida(conversaId, canalId, { idExterno: "cel.1", conteudo: "respondi pelo celular", remetenteExterno: "+5511987654321", identificadorId: "ident_x", digitadaNoAparelho: true, ...extras });

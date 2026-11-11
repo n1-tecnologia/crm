@@ -14,7 +14,7 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "@n1/dominio/seed";
 import { buildApp } from "../app";
 import { criarWorkerDeSaida } from "../mensageria/entregar-mensagem";
@@ -41,7 +41,18 @@ const membroBase = buildSeed().members.find((m) => m.id === "mem_maryane")!;
 interface Envelope {
   ok: boolean;
   dados?: { id: string; statusEntrega: string | null; conversaId?: string };
-  itens?: Array<{ id: string; statusEntrega: string | null; idExterno: string | null; conteudo: string | null; direcao: string; motivoFalha: string | null }>;
+  itens?: Array<{
+    id: string;
+    statusEntrega: string | null;
+    idExterno: string | null;
+    conteudo: string | null;
+    direcao: string;
+    motivoFalha: string | null;
+    emRespostaAId: string | null;
+    reacoes: Array<{ autor: string; emoji: string; em: string }>;
+    marcacaoExclusao: { porQuem: string; em: string } | null;
+    edicoesExternas: Array<{ conteudoAnterior: string | null; em: string }>;
+  }>;
 }
 
 describeComBanco("Fase 16 ponta a ponta: a Evolution (servidor falso) entra pelo webhook do Canal e responde por sendText", () => {
@@ -220,6 +231,112 @@ describeComBanco("Fase 16 ponta a ponta: a Evolution (servidor falso) entra pelo
     const worker = criarWorkerDeSaida({ workerId: "teste-evolution-nove-saida", workspaceId: ws, chaves, registro });
     expect(await worker.processarUm()).toBe(true);
     expect(falso.recebidas.at(-1)!.corpo).toEqual({ number: "551187654321", text: "respondendo sem o nove" });
+  });
+
+  describe("o que muda uma Mensagem que já existe (4.4.5)", () => {
+    const conversaId = async () => (await pool().query<{ id: string }>("select id from plataforma.conversas where workspace_id = $1 and canal_id = $2", [ws, canalId])).rows[0]!.id;
+    const fio = async () => ((await app().inject({ method: "GET", url: `/mensagens?conversaId=${await conversaId()}`, headers: MEMBRO })).json() as Envelope).itens!;
+    const da = async (idExterno: string) => (await fio()).find((m) => m.idExterno === idExterno)!;
+
+    /** O que a Evolution manda, chamado e processado: o webhook grava na fila e o processador aplica. */
+    async function entregar(corpo: unknown) {
+      expect((await chamar(corpo)).statusCode).toBe(200);
+      const processador = criarProcessadorDeEntrada({ workerId: "teste-evolution-4-4-5", chaves, registro });
+      expect(await processador.processarUm()).toBe(true);
+      return (await linhas()).at(-1)!;
+    }
+    const evento = (nome: string, data: unknown) => ({ event: nome, instance: INSTANCIA, data });
+    const upsert = (id: string, message: unknown, chave: Record<string, unknown> = {}) => ({
+      ...texto,
+      data: { ...texto.data, key: { ...texto.data.key, id, ...chave }, message, messageTimestamp: Math.floor(Date.now() / 1000) },
+    });
+
+    it("os tiques de uma Mensagem do CRM: SERVER_ACK, DELIVERY_ACK e READ chegam com o MESMO keyId e nenhum é descartado como repetido", async () => {
+      const id = (await app().inject({ method: "POST", url: "/mensagens", headers: MEMBRO, payload: { conversaId: await conversaId(), direcao: "enviada", conteudo: "tique" } })).json() as Envelope;
+      falso.enfileirar({ kind: "ok", status: 201, corpo: { key: { remoteJid: "5511987654321@s.whatsapp.net", fromMe: true, id: "3EB0TQ" }, status: "PENDING" } });
+      const worker = criarWorkerDeSaida({ workerId: "teste-evolution-tique-saida", workspaceId: ws, chaves, registro });
+      expect(await worker.processarUm()).toBe(true);
+      expect(await da("3EB0TQ")).toMatchObject({ id: id.dados!.id, statusEntrega: "enviada" });
+
+      const tique = (status: string) => evento("messages.update", { keyId: "3EB0TQ", remoteJid: "5511987654321@s.whatsapp.net", fromMe: true, status, instanceId: "i" });
+      expect(await entregar(tique("DELIVERY_ACK"))).toMatchObject({ estado: "processado", chave: null });
+      expect(await da("3EB0TQ")).toMatchObject({ statusEntrega: "entregue" });
+      expect(await entregar(tique("READ"))).toMatchObject({ estado: "processado", chave: null });
+      expect(await da("3EB0TQ")).toMatchObject({ statusEntrega: "lida" });
+      // O tique que chega atrasado nunca desfaz o que já foi lido.
+      expect(await entregar(tique("DELIVERY_ACK"))).toMatchObject({ estado: "processado", resultado: expect.stringContaining("status_atrasado") });
+      expect(await da("3EB0TQ")).toMatchObject({ statusEntrega: "lida" });
+    });
+
+    it("o tique também vale para a Mensagem que o dono digitou no celular", async () => {
+      const antes = await da(textoDoCelular.data.key.id);
+      expect(antes.statusEntrega).toBe("enviada");
+      await entregar(evento("messages.update", { keyId: textoDoCelular.data.key.id, remoteJid: "5511987654321@s.whatsapp.net", fromMe: true, status: "READ" }));
+      expect((await da(textoDoCelular.data.key.id)).statusEntrega).toBe("lida");
+    });
+
+    it("o tique de uma Mensagem que o CRM não tem fica registrado como sem Mensagem e não grava nada", async () => {
+      const linha = await entregar(evento("messages.update", { keyId: "3EB0NAOTEM", remoteJid: "5511987654321@s.whatsapp.net", fromMe: true, status: "READ" }));
+      expect(linha).toMatchObject({ estado: "processado", resultado: expect.stringContaining("status_sem_mensagem") });
+    });
+
+    it("a reação do Contato entra no registro da Mensagem reagida, sem criar Mensagem, e trocá-la acrescenta", async () => {
+      const antes = (await fio()).length;
+      await entregar(upsert("3EB0RE01", { reactionMessage: { key: { remoteJid: "5511987654321@s.whatsapp.net", fromMe: true, id: "3EB0TQ" }, text: "👍", senderTimestampMs: Date.now() } }));
+      expect((await da("3EB0TQ")).reacoes).toMatchObject([{ autor: "contato", emoji: "👍" }]);
+      await entregar(upsert("3EB0RE02", { reactionMessage: { key: { remoteJid: "5511987654321@s.whatsapp.net", fromMe: true, id: "3EB0TQ" }, text: "", senderTimestampMs: Date.now() + 1000 } }));
+      const depois = await da("3EB0TQ");
+      expect(depois.reacoes.map((r) => r.emoji)).toEqual(["👍", ""]);
+      expect((await fio()).length).toBe(antes);
+    });
+
+    it("a reação dada no celular do Canal tem o autor `canal`", async () => {
+      await entregar(upsert("3EB0RE03", { reactionMessage: { key: { remoteJid: "5511987654321@s.whatsapp.net", fromMe: false, id: texto.data.key.id }, text: "🙏", senderTimestampMs: Date.now() } }, { fromMe: true }));
+      expect((await da(texto.data.key.id)).reacoes).toMatchObject([{ autor: "canal", emoji: "🙏" }]);
+    });
+
+    it("a edição do Contato (messages.edited) troca o conteúdo da `recebida` e guarda o anterior; o mesmo evento como messages.update não é tique", async () => {
+      await entregar(upsert("3EB0ED01", { conversation: "versão 1" }));
+      const edicao = { key: { remoteJid: "5511987654321@s.whatsapp.net", fromMe: false, id: "3EB0ED01" }, type: "MESSAGE_EDIT", editedMessage: { conversation: "versão 2" }, timestampMs: String(Date.now()) };
+      expect(await entregar(evento("messages.edited", edicao))).toMatchObject({ estado: "processado" });
+      expect(await da("3EB0ED01")).toMatchObject({ conteudo: "versão 2", edicoesExternas: [{ conteudoAnterior: "versão 1" }] });
+
+      // A Evolution manda a mesma edição também como messages.update com um status de enfeite.
+      const comoStatus = evento("messages.update", { keyId: "3EB0ED01", remoteJid: "5511987654321@s.whatsapp.net", fromMe: false, status: "SERVER_ACK", message: { editedMessage: { message: { conversation: "versão 2" } } } });
+      expect(await entregar(comoStatus)).toMatchObject({ estado: "processado", resultado: expect.stringContaining("edicao_no_status") });
+      expect(await da("3EB0ED01")).toMatchObject({ conteudo: "versão 2" });
+    });
+
+    it("a Mensagem apagada pelo Contato ganha a Marcação de exclusão e o conteúdo continua guardado; a revogação que vem por messages.edited não a duplica", async () => {
+      await entregar(upsert("3EB0DE01", { conversation: "vou me arrepender" }));
+      expect(await entregar(evento("messages.delete", { remoteJid: "5511987654321@s.whatsapp.net", fromMe: false, id: "3EB0DE01", status: "DELETED" }))).toMatchObject({ estado: "processado" });
+      expect(await da("3EB0DE01")).toMatchObject({ conteudo: "vou me arrepender", marcacaoExclusao: { porQuem: "remetente_externo" } });
+
+      const revogacao = evento("messages.edited", { key: { remoteJid: "5511987654321@s.whatsapp.net", fromMe: false, id: "3EB0DE01" }, type: "REVOKE" });
+      expect(await entregar(revogacao)).toMatchObject({ estado: "processado", resultado: expect.stringContaining("revogacao") });
+      expect(await entregar(evento("messages.delete", { remoteJid: "5511987654321@s.whatsapp.net", fromMe: false, id: "3EB0DE01", status: "DELETED" }))).toMatchObject({ resultado: expect.stringContaining("exclusao_sem_efeito") });
+    });
+
+    it("a resposta do Contato que cita uma Mensagem liga à citada", async () => {
+      const alvo = await da("3EB0TQ");
+      await entregar(upsert("3EB0CT01", { extendedTextMessage: { text: "sobre aquilo", contextInfo: { stanzaId: "3EB0TQ", participant: "5511977770001@s.whatsapp.net", quotedMessage: { conversation: "tique" } } } }));
+      expect(await da("3EB0CT01")).toMatchObject({ conteudo: "sobre aquilo", emRespostaAId: alvo.id });
+    });
+
+    it("a resposta escrita na Caixa a uma Mensagem sai com `quoted`: o id da Evolution da Mensagem respondida, o chat e o texto", async () => {
+      const alvo = await da("3EB0CT01");
+      falso.enfileirar({ kind: "ok", status: 201, corpo: { key: { remoteJid: "5511987654321@s.whatsapp.net", fromMe: true, id: "3EB0QR01" }, status: "PENDING" } });
+      const criada = await app().inject({ method: "POST", url: "/mensagens", headers: MEMBRO, payload: { conversaId: await conversaId(), direcao: "enviada", conteudo: "combinado", emRespostaAId: alvo.id } });
+      expect(criada.statusCode).toBe(201);
+      const worker = criarWorkerDeSaida({ workerId: "teste-evolution-citacao-saida", workspaceId: ws, chaves, registro });
+      expect(await worker.processarUm()).toBe(true);
+      expect(falso.recebidas.at(-1)!.corpo).toEqual({
+        number: "5511987654321",
+        text: "combinado",
+        quoted: { key: { id: "3EB0CT01", remoteJid: "5511987654321@s.whatsapp.net", fromMe: false }, message: { conversation: "sobre aquilo" } },
+      });
+      expect(await da("3EB0QR01")).toMatchObject({ emRespostaAId: alvo.id });
+    });
   });
 
   it("o mesmo corpo com a instância de OUTRO Canal recebe 401 e nada é gravado", async () => {

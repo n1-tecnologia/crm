@@ -1046,7 +1046,12 @@ funções antigas saíram de `derive-conversacional.ts` no 15-42.
   com e sem o nono dígito é de `variantesDoNumeroBrasileiro` (4.4.3, em `crm/normalizacao.ts`: `[com o 9, sem o 9]` do celular
   brasileiro, e só dele; o fixo e o número de fora têm uma forma) e `numeroParaResponderNoWhatsapp` (o número por onde a pessoa
   escreveu, só se for o mesmo celular do Identificador). O status de entrega só avança: `proximoStatusDeEntrega` (em `crm/mensagens.ts`) nunca deixa `lida` voltar a
-  `entregue`.
+  `entregue`. Sessão 4 (4.4.5), em `crm/mensagens.ts`: `Reacao` (`autor` `contato` ou `canal`, `emoji`, `em`), `MarcacaoDeExclusao`
+  (`porQuem`: `remetente_externo`, `celular_do_canal` ou `interno`) e `EdicaoExterna` (`conteudoAnterior`, `em`) tipam o que antes
+  era `unknown` na `Mensagem`; `proximasReacoes` (registro de acréscimo, a repetida e a mais velha não mudam nada),
+  `reacoesVigentes` (a última de cada autor, sem as removidas), `proximaMarcacaoDeExclusao` (terminal) e `proximaEdicaoExterna`
+  (só a `recebida` ainda não apagada; o conteúdo anterior vai ao histórico) são as regras; `leReacoes`, `leMarcacaoDeExclusao` e
+  `leEdicoesExternas` leem o JSON do banco tolerando o formato antigo da migração do CRM antigo.
   `proximaConexao` ganhou o terceiro argumento `FatosDaConexao` (CR-01, 16-17): `simular_conexao` recusa o Canal
   ligado a um provedor real (`ligadoAoProvedor`, `FRASE_DO_CANAL_REAL`) e recusa quando o fato não vem (falha
   fechada, `FRASE_SEM_FATOS_DA_CONEXAO`); `desconectar` e `conexao_confirmada` o ignoram. `CanalNaFicha` é o `Canal`

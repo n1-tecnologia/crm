@@ -102,6 +102,28 @@ describe("provedor da Evolution: o que só ele tem", () => {
     expect(provedor.chaveDaChamada?.(null)).toBeUndefined();
   });
 
+  it("só o messages.upsert tem chave: o tique da mesma Mensagem (entregue, depois lida) repete o id e não pode ser descartado como repetido (4.4.5)", () => {
+    for (const nome of ["messages.update", "messages.delete", "messages.edited", "connection.update", "MESSAGES_UPDATE"]) {
+      expect(provedor.chaveDaChamada?.({ event: nome, instance: INSTANCIA, data: { key: { id: texto.data.key.id }, keyId: texto.data.key.id } })).toBeUndefined();
+    }
+    expect(provedor.chaveDaChamada?.({ ...texto, event: "MESSAGES_UPSERT" })).toBe(texto.data.key.id);
+    expect(provedor.chaveDaChamada?.({ data: texto.data })).toBeUndefined();
+  });
+
+  it("interpretarChamada traduz o tique, a apagada e a editada (4.4.5)", () => {
+    const canal = canalDaEvolution();
+    const corpo = (event: string, data: unknown) => ({ event, instance: INSTANCIA, data });
+    expect(provedor.interpretarChamada(corpo("messages.update", { keyId: "3EB0AA", remoteJid: "5511987654321@s.whatsapp.net", fromMe: true, status: "READ" }), canal)).toMatchObject([
+      { tipo: "status", idExterno: "3EB0AA", status: "lida" },
+    ]);
+    expect(provedor.interpretarChamada(corpo("messages.delete", { remoteJid: "5511987654321@s.whatsapp.net", fromMe: false, id: "3EB0AA", status: "DELETED" }), canal)).toMatchObject([
+      { tipo: "exclusao", idExterno: "3EB0AA", porQuem: "remetente_externo" },
+    ]);
+    expect(provedor.interpretarChamada(corpo("messages.edited", { key: { id: "3EB0AA" }, type: "MESSAGE_EDIT", editedMessage: { conversation: "novo" } }), canal)).toMatchObject([
+      { tipo: "edicao", idExterno: "3EB0AA", conteudo: "novo" },
+    ]);
+  });
+
   it("o provedor se chama whatsapp-nao-oficial", () => {
     expect(provedor.provedor).toBe("whatsapp-nao-oficial");
   });
@@ -233,5 +255,39 @@ describe("provedor da Evolution: conferirConexao (Sessão 4, 4.3.1) — o 'open'
     const resultado = await provedor.conferirConexao!(canalDoNumero());
     expect(JSON.stringify(resultado)).not.toMatch(new RegExp(`${GLOBAL}|${TOKEN_DA_INSTANCIA}|5521999990000|5511987654321`));
     await falso.fechar();
+  });
+});
+
+describe("provedor da Evolution: a resposta citada (4.4.4)", () => {
+  async function enviarCitando(envio: Partial<Parameters<ReturnType<typeof criarProvedorEvolution>["enviar"]>[1]>) {
+    const falso = await criarServidorFalso();
+    try {
+      const provedor = criarProvedorEvolution({ url: falso.url, timeoutMs: 2_000 });
+      falso.enfileirar({ kind: "ok", status: 201, corpo: { key: { remoteJid: "5511987654321@s.whatsapp.net", fromMe: true, id: "3EB0CI" }, status: "PENDING" } });
+      const r = await provedor.enviar(canalDaEvolution(), { mensagemId: "m1", destino: { tipo: "whatsapp", valor: "+5511987654321" }, conteudo: "certo, combinado", ...envio });
+      return { r, corpo: falso.recebidas[0]!.corpo };
+    } finally {
+      await falso.fechar();
+    }
+  }
+
+  it("a resposta a uma Mensagem do Contato leva quoted: o id dela, o chat, fromMe falso e o texto que aparece na citação", async () => {
+    const { r, corpo } = await enviarCitando({ emRespostaAIdExterno: "3EB0QQ", emRespostaADetalhes: { nossa: false, texto: "posso ligar amanhã?" } });
+    expect(r).toMatchObject({ ok: true, idExterno: "3EB0CI" });
+    expect(corpo).toEqual({
+      number: "5511987654321",
+      text: "certo, combinado",
+      quoted: { key: { id: "3EB0QQ", remoteJid: "5511987654321@s.whatsapp.net", fromMe: false }, message: { conversation: "posso ligar amanhã?" } },
+    });
+  });
+
+  it("a resposta a uma Mensagem que NÓS mandamos leva fromMe verdadeiro", async () => {
+    const { corpo } = await enviarCitando({ emRespostaAIdExterno: "3EB0NN", emRespostaADetalhes: { nossa: true, texto: "oi" } });
+    expect(corpo).toMatchObject({ quoted: { key: { id: "3EB0NN", fromMe: true } } });
+  });
+
+  it("sem citação o corpo é o de sempre", async () => {
+    const { corpo } = await enviarCitando({});
+    expect(corpo).toEqual({ number: "5511987654321", text: "certo, combinado" });
   });
 });

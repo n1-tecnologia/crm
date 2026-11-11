@@ -94,5 +94,9 @@ export function urlDoWebhookDoCanal(urlPublica: string, canalId: string): string
   return `${urlPublica}/webhooks/mensageria/${encodeURIComponent(canalId)}`;
 }
 
-/** Os eventos que a instância manda ao CRM: a mensagem recebida e a mudança de conexão (4.3.1). */
-export const EVENTOS_DO_WEBHOOK = ["MESSAGES_UPSERT", "CONNECTION_UPDATE"] as const;
+/**
+ * Os eventos que a instância manda ao CRM: a mensagem recebida (que também traz as reações), a mudança de conexão (4.3.1) e, desde
+ * a 4.4.5, o tique (`MESSAGES_UPDATE`), a Mensagem apagada (`MESSAGES_DELETE`) e a editada (`MESSAGES_EDITED`). Uma instância que
+ * já estava conectada guarda a lista de quando foi ligada: `npm run canal:atualizar-webhook-evolution` a reaplica.
+ */
+export const EVENTOS_DO_WEBHOOK = ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "MESSAGES_UPDATE", "MESSAGES_DELETE", "MESSAGES_EDITED"] as const;

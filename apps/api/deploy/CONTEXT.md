@@ -387,6 +387,18 @@ porque, depois de um `connect`, a Evolution 2.4.0 ainda lista a instância (`clo
 o passo confere por até ~10 s antes de reprovar. Para rodá-la na VM carregue o `api.env` antes
 (`set -a; . /opt/n1-crm/shared/api.env; set +a`): o comando lê `EVOLUTION_URL`, `EVOLUTION_API_KEY` e `API_URL_PUBLICA` do ambiente.
 
+**Depois de publicar uma versão que muda os eventos do webhook (4.4.5: tique, apagada e editada)**, a instância que já estava
+conectada continua com a lista velha. Reaplique-a, sem novo QR code e sem trocar o segredo:
+
+```bash
+cd /opt/n1-crm/current && set -a && . /opt/n1-crm/shared/api.env && set +a \
+  && PATH=/opt/n1-crm/node/bin:$PATH npm run canal:atualizar-webhook-evolution -w @n1/api -- --todos --seco   # só mostra
+  # e, sem o --seco, aplica
+```
+
+Ele chama `POST /webhook/set/<instância>` com o token da instância que está no cofre; não escreve no banco, não usa a chave
+global e nunca toca a `numeropvmarcos`. Uma instância ligada depois dessa versão já nasce com a lista nova.
+
 `EVOLUTION_URL`, `API_URL_PUBLICA` e `COFRE_CHAVE` já são exigidos desde a Fase 16. Sem `EVOLUTION_API_KEY`
 o botão responde 503 dizendo o que falta, e `npm run canal:ligar-evolution` continua ligando uma instância
 que o dono criou à mão. A conferência e o webhook de uma instância assim funcionam igual.

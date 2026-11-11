@@ -490,6 +490,42 @@ describeComBanco("ServicoDeRecebimento — Postgres local", () => {
     });
   });
 
+  describe("a Mensagem que cita outra (4.4.2)", () => {
+    it("liga a Mensagem à citada da MESMA Conversa e do mesmo Canal", async () => {
+      const c = await espaco("cita");
+      const a = valor(await servico.receberMensagem(c.ws, c.canalId, evento({ idExterno: "alvo" })));
+      const b = valor(await servico.receberMensagem(c.ws, c.canalId, evento({ idExterno: "resposta", conteudo: "respondendo", emRespostaAIdExterno: "alvo" })));
+      expect(b.conversa.id).toBe(a.conversa.id);
+      expect(b.mensagem.emRespostaAId).toBe(a.mensagem.id);
+    });
+
+    it("a citada que não existe aqui (anterior à plataforma, ou id desconhecido) deixa a Mensagem sem ligação, sem erro", async () => {
+      const c = await espaco("cita-falta");
+      const r = valor(await servico.receberMensagem(c.ws, c.canalId, evento({ emRespostaAIdExterno: "nao-existe" })));
+      expect(r.mensagem.emRespostaAId).toBeNull();
+    });
+
+    it("a citada de OUTRA Conversa (a anterior já resolvida e fora da janela) não liga: a chave composta recusaria", async () => {
+      const c = await espaco("cita-outra");
+      const antiga = valor(await servico.receberMensagem(c.ws, c.canalId, evento({ idExterno: "antiga" })));
+      await pool().query(
+        "update plataforma.conversas set situacao = 'resolvida', resolvida_em = now() - interval '200 hours' where workspace_id = $1 and id = $2",
+        [c.ws, antiga.conversa.id],
+      );
+      const nova = valor(await servico.receberMensagem(c.ws, c.canalId, evento({ idExterno: "nova", emRespostaAIdExterno: "antiga" })));
+      expect(nova.conversaNova).toBe(true);
+      expect(nova.mensagem.emRespostaAId).toBeNull();
+    });
+
+    it("um id externo de OUTRO Canal do mesmo Espaço não é a citada", async () => {
+      const c = await espaco("cita-canal");
+      const outroCanal = await semearCanal(c.ws, { nome: "Outro", tipo: "whatsapp", provedor: "whatsapp-nao-oficial", identificadorExterno: "+5511977770002", conexao: "conectada", configuradoPor: "mem_dona" });
+      valor(await servico.receberMensagem(c.ws, outroCanal, evento({ idExterno: "so-no-outro" })));
+      const r = valor(await servico.receberMensagem(c.ws, c.canalId, evento({ idExterno: "aqui", emRespostaAIdExterno: "so-no-outro" })));
+      expect(r.mensagem.emRespostaAId).toBeNull();
+    });
+  });
+
   describe("o nono dígito do celular brasileiro (4.4.3)", () => {
     const COM_NOVE = "+5511987654321";
     const SEM_NOVE = "+551187654321";

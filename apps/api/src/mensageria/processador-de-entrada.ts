@@ -57,6 +57,7 @@ import { aplicarConexaoAoCanal, type OpcoesDaConexao } from "./aplicar-conexao";
 import { avisarCrm } from "./avisar";
 import { FRASES_DA_SAIDA } from "./entregar-mensagem";
 import { criarGuardaDeMidia } from "./midia";
+import type { EventoDoProvedor } from "./provedor";
 import { canalParaProvedor, provedorDoCanal, registroPadrao, type RegistroDeProvedores } from "./registro";
 
 export interface OpcoesDoProcessadorDeEntrada {
@@ -187,6 +188,40 @@ export function criarProcessadorDeEntrada(opcoes: OpcoesDoProcessadorDeEntrada):
   }
 
   /**
+   * 4.4.5: a Reação, a Marcação de exclusão ou a edição que o provedor transmitiu a uma Mensagem que já existe, numa transação
+   * própria (o `for update` do repositório segura a linha até o commit). Nunca cria Mensagem. Avisa as abas (`mensagem.status`: a
+   * tela relê o fio) só quando a Mensagem mudou, e devolve o motivo de `resultado` quando não mudou nada.
+   */
+  async function aplicarAlteracao(
+    linha: LinhaReivindicada,
+    evento: Extract<EventoDoProvedor, { readonly tipo: "reacao" | "exclusao" | "edicao" }>,
+  ): Promise<string | undefined> {
+    const quando = Number.isNaN(Date.parse(evento.em)) ? relogio.agora().toISOString() : new Date(evento.em).toISOString();
+    const cliente = await pool().connect();
+    try {
+      await cliente.query("begin");
+      const mensagens = criarRepositorioDeMensagensPg(cliente);
+      const r =
+        evento.tipo === "reacao"
+          ? await mensagens.registrarReacao(linha.workspace_id, linha.canal_id, evento.idExterno, { autor: evento.autor, emoji: evento.emoji, em: quando })
+          : evento.tipo === "exclusao"
+            ? await mensagens.marcarExclusao(linha.workspace_id, linha.canal_id, evento.idExterno, { porQuem: evento.porQuem, em: quando })
+            : await mensagens.registrarEdicaoExterna(linha.workspace_id, linha.canal_id, evento.idExterno, { conteudo: evento.conteudo, em: quando });
+      if (r?.mudou) {
+        await avisarCrm(cliente, { workspaceId: linha.workspace_id, tipo: "mensagem.status", conversaId: r.mensagem.conversaId, mensagemId: r.mensagem.id });
+      }
+      await cliente.query("commit");
+      if (r === undefined) return `ignorado:${evento.tipo}_sem_mensagem`;
+      return r.mudou ? undefined : `ignorado:${evento.tipo}_sem_efeito`;
+    } catch (erro) {
+      await cliente.query("rollback").catch(() => undefined);
+      throw erro;
+    } finally {
+      cliente.release();
+    }
+  }
+
+  /**
    * 3.6.5: o status que o provedor informa, numa transação própria (o `for update` do repositório segura a linha da
    * Mensagem até o commit: dois status da mesma Mensagem se aplicam um depois do outro). Devolve o motivo de
    * `resultado` quando o evento não mudou nada.
@@ -276,6 +311,9 @@ export function criarProcessadorDeEntrada(opcoes: OpcoesDoProcessadorDeEntrada):
         resultados.add(`ignorado:${evento.motivo}`);
       } else if (evento.tipo === "status") {
         const resultado = await aplicarStatus(linha, evento);
+        if (resultado !== undefined) resultados.add(resultado);
+      } else if (evento.tipo === "reacao" || evento.tipo === "exclusao" || evento.tipo === "edicao") {
+        const resultado = await aplicarAlteracao(linha, evento);
         if (resultado !== undefined) resultados.add(resultado);
       } else if (evento.tipo === "conexao") {
         // Sessão 4 (4.3.1): o evento `open` da Evolution é só um aviso. Antes de gravar `conectada`, o provedor que sabe
