@@ -170,6 +170,18 @@ describeComBanco("RepositorioDeMensagens — Postgres local", () => {
     expect(await mensagens.identificadorDaUltimaRecebida(ws, suporte.conversaId)).toBeNull();
   });
 
+  it("4.4.3: remetenteExternoDaUltimaRecebida devolve o número como o provedor o entregou, da mesma recebida que escolhe o Identificador", async () => {
+    const { ws, comercial, suporte } = await cenario("remetente-externo");
+    expect(await mensagens.remetenteExternoDaUltimaRecebida(ws, comercial.conversaId)).toBeNull();
+
+    await mensagens.inserirRecebida(ws, recebida(comercial.conversaId, comercial.canalId, { idExterno: "r.1", criadoEm: "2026-10-10T10:00:00.000Z", remetenteExterno: "+5511987654321", identificadorId: "ident_a" }));
+    await mensagens.inserirRecebida(ws, recebida(comercial.conversaId, comercial.canalId, { idExterno: "r.2", criadoEm: "2026-10-11T11:30:00.000Z", remetenteExterno: "+551187654321", identificadorId: "ident_a" }));
+    // Sem Identificador (Contato novo sem vínculo) e a digitada no celular não contam: a leitura salta para a que tem.
+    await mensagens.inserirRecebida(ws, recebida(comercial.conversaId, comercial.canalId, { idExterno: "r.3", criadoEm: "2026-10-12T12:00:00.000Z", remetenteExterno: "+5511900000000", identificadorId: null }));
+    expect(await mensagens.remetenteExternoDaUltimaRecebida(ws, comercial.conversaId)).toBe("+551187654321");
+    expect(await mensagens.remetenteExternoDaUltimaRecebida(ws, suporte.conversaId)).toBeNull();
+  });
+
   describe("a Mensagem digitada no celular do Canal (4.4.2)", () => {
     const doAparelho = (conversaId: string, canalId: string, extras: Partial<LinhaDeMensagemRecebida> = {}) =>
       recebida(conversaId, canalId, { idExterno: "cel.1", conteudo: "respondi pelo celular", remetenteExterno: "+5511987654321", identificadorId: "ident_x", digitadaNoAparelho: true, ...extras });

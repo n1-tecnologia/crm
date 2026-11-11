@@ -75,8 +75,27 @@ como uma `enviada` do CRM). O que difere da `recebida`:
   como `fromMe`. Se voltar ANTES de `gravarEnvio` registrar o aceite, a cópia ficaria com o `id_externo` e o aceite quebraria no
   índice único; por isso `gravarEnvio` apaga, na mesma transação, a `enviada` do Canal como Integração que tem esse id externo
   (só quando a Mensagem do CRM ainda está `pendente`) e a do CRM fica com o id. Se voltar depois, a repetida é descartada.
-- **Ainda não:** os tiques dessas Mensagens (4.4.5), a mídia que o dono manda do celular nunca foi vista na Evolution real
-  (o pipeline é o da `recebida`) e o nono dígito (4.4.3) pode abrir um Contato novo para quem já existe com o outro formato.
+- **Ainda não:** os tiques dessas Mensagens (4.4.5) e a mídia que o dono manda do celular, que nunca foi vista na Evolution
+  real (o pipeline é o da `recebida`).
+
+## O nono dígito do celular brasileiro (Sessão 4, 4.4.3)
+
+O WhatsApp antigo entrega muitos celulares sem o nono dígito (`551187654321`) e o mesmo Contato pode estar cadastrado com ele
+(`+5511987654321`): sem juntar as duas formas, a mesma pessoa virava dois Contatos. `variantesDoNumeroBrasileiro`
+(`@n1/dominio/crm/normalizacao`) devolve `[com o 9, sem o 9]` do celular brasileiro (`55` + DDD + 8 dígitos que começam em 6 a 9,
+com ou sem o `9` na frente) e só dele: fixo, número de fora e comprimento estranho têm uma forma só.
+
+- **Entrada (`servicos/crm/recebimento.ts`).** O Contato é procurado pela forma que chegou primeiro e depois pela outra; o que
+  tem uma das duas recebe a Mensagem (a `recebida` e a digitada no celular). Contato novo grava o Identificador na forma COM
+  o 9 (o título da Conversa e o nome sem `pushName` usam essa forma), e `remetente_externo` da Mensagem guarda o número como
+  chegou. Só vale para o tipo `whatsapp`; nada casa por semelhança além dessa troca do 9 (T-16-03). Se o Espaço já tem dois
+  Contatos, um com cada forma, a forma que chegou vence: juntá-los é o "Mesclar" da ficha, não desta rota.
+- **Saída (`entregar-mensagem.ts`).** O destino continua sendo o Identificador que `identificadorDeResposta` escolhe, e para o
+  WhatsApp a resposta sai pelo número como o WhatsApp o conhece: o `remetente_externo` da última `recebida`
+  (`remetenteExternoDaUltimaRecebida`), SÓ se for o mesmo celular do Identificador (`numeroParaResponderNoWhatsapp`). Qualquer
+  outro valor é ignorado e a resposta sai pelo Identificador: nunca por um número que o Contato não tem.
+- **Não muda nada para quem já tem Contato** com a forma que o WhatsApp entrega. Contatos duplicados que já existem não são
+  mesclados sozinhos.
 
 ## O segredo do webhook
 

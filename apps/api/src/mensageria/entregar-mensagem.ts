@@ -36,6 +36,7 @@
 import type { Pool, PoolClient } from "pg";
 import type { Canal } from "@n1/dominio/crm/canais";
 import { identificadorDeResposta } from "@n1/dominio/crm/conversas";
+import { numeroParaResponderNoWhatsapp } from "@n1/dominio/crm/normalizacao";
 import { ehDocumento } from "@n1/dominio/crm/midia";
 import { pool as poolPadrao } from "../persistencia/conexao";
 import { EVENTOS } from "../persistencia/outbox";
@@ -204,6 +205,12 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
     const idDeQuemEscreveu = await mensagens.identificadorDaUltimaRecebida(workspaceId, conversa.id);
     const destino = identificadorDeResposta(identificadoresDoContato, canal, idDeQuemEscreveu);
     if (!destino) return encerra(await recusarEnvio(workspaceId, mensagem.id, semIdentificador(canal), "CONTATO_SEM_IDENTIFICADOR_DO_CANAL"));
+    // 4.4.3: o WhatsApp antigo entrega o celular sem o nono dígito e o Identificador guarda a forma com ele; a resposta sai pelo
+    // número como o WhatsApp o conhece (o da última recebida), só quando é o mesmo celular do Identificador.
+    const valorDoDestino =
+      destino.tipo === "whatsapp"
+        ? numeroParaResponderNoWhatsapp(destino.valor, await mensagens.remetenteExternoDaUltimaRecebida(workspaceId, conversa.id))
+        : destino.valor;
 
     // 16-10: o envio exige anexo confirmado e guardado; um `baixado: false` aqui é dado inconsistente, e nada sai.
     if (mensagem.anexos.some((anexo) => !anexo.baixado || !anexo.objectKey)) {
@@ -213,7 +220,7 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
     const respondida = mensagem.emRespostaAId ? await mensagens.obter(workspaceId, mensagem.emRespostaAId) : undefined;
     const envio: EnvioAoProvedor = {
       mensagemId: mensagem.id,
-      destino: { tipo: destino.tipo, valor: destino.valor },
+      destino: { tipo: destino.tipo, valor: valorDoDestino },
       ...(mensagem.conteudo === null ? {} : { conteudo: mensagem.conteudo }),
       ...(respondida?.idExterno ? { emRespostaAIdExterno: respondida.idExterno } : {}),
     };

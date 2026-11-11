@@ -10,6 +10,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { RecebidaDoProvedor } from "@n1/dominio/crm/recebimento";
 import { encerrar, pool } from "../../persistencia/conexao";
+import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearCanal, semearMembro } from "../../testes/banco-crm";
 import { criarServicoDeRecebimento } from "./recebimento";
 import type { ResultadoCrm } from "./resultado";
@@ -486,6 +487,103 @@ describeComBanco("ServicoDeRecebimento — Postgres local", () => {
         [c.ws, a.contatoId, sobrevivente.contatoId],
       );
       expect(recusado(await servico.receberMensagem(c.ws, c.canalId, doCelular()))).toMatchObject({ status: 409, codigo: "CONTATO_MESCLADO" });
+    });
+  });
+
+  describe("o nono dígito do celular brasileiro (4.4.3)", () => {
+    const COM_NOVE = "+5511987654321";
+    const SEM_NOVE = "+551187654321";
+    const de = (numero: string, extras: Partial<RecebidaDoProvedor> = {}) =>
+      evento({ remetente: { tipo: "whatsapp", valor: numero, nomeExibido: "Ana" }, ...extras });
+
+    /** Um Contato cadastrado à mão (como o de uma ficha), com o Identificador whatsapp na forma dada. */
+    async function cadastrar(ws: string, numero: string, nome = "Ana Cadastrada") {
+      const contatos = criarRepositorioDeContatosPg(pool());
+      const contato = await contatos.inserir(ws, { nome, modoCriacao: "manual", proprietarioId: "mem_dona", criadoPor: "mem_dona" });
+      const identificador = await contatos.inserirIdentificador(ws, contato.id, { tipo: "whatsapp", valor: numero, principal: true });
+      return { contatoId: contato.id, identificadorId: identificador.id };
+    }
+
+    it("a Mensagem que chega SEM o 9 cai no Contato cadastrado COM o 9, sem criar outro", async () => {
+      const c = await espaco("nove-sem");
+      const ana = await cadastrar(c.ws, COM_NOVE);
+      const r = valor(await servico.receberMensagem(c.ws, c.canalId, de(SEM_NOVE)));
+
+      expect(r).toMatchObject({ contatoNovo: false, contatoId: ana.contatoId, conversaNova: true });
+      expect(r.mensagem).toMatchObject({ identificadorId: ana.identificadorId, remetenteExterno: SEM_NOVE });
+      expect(await contar(c.ws, "contatos")).toBe(1);
+    });
+
+    it("a Mensagem que chega COM o 9 cai no Contato cadastrado SEM o 9", async () => {
+      const c = await espaco("nove-com");
+      const ana = await cadastrar(c.ws, SEM_NOVE);
+      const r = valor(await servico.receberMensagem(c.ws, c.canalId, de(COM_NOVE)));
+
+      expect(r).toMatchObject({ contatoNovo: false, contatoId: ana.contatoId });
+      expect(r.mensagem).toMatchObject({ identificadorId: ana.identificadorId, remetenteExterno: COM_NOVE });
+      expect(await contar(c.ws, "contatos")).toBe(1);
+    });
+
+    it("um número novo que chega sem o 9 vira Contato com o Identificador na forma COM o 9, e a Mensagem guarda como chegou", async () => {
+      const c = await espaco("nove-novo");
+      const r = valor(await servico.receberMensagem(c.ws, c.canalId, de(SEM_NOVE, { remetente: { tipo: "whatsapp", valor: SEM_NOVE } })));
+
+      expect(r.contatoNovo).toBe(true);
+      expect(r.mensagem.remetenteExterno).toBe(SEM_NOVE);
+      expect(r.conversa.titulo).toBe(COM_NOVE);
+      const identificadores = (
+        await pool().query<{ valor: string }>("select valor from plataforma.contato_identificadores where workspace_id = $1 and contato_id = $2", [c.ws, r.contatoId])
+      ).rows.map((linha) => linha.valor);
+      expect(identificadores).toEqual([COM_NOVE]);
+    });
+
+    it("as duas formas do mesmo número, uma depois da outra, são um Contato, uma Conversa e duas Mensagens", async () => {
+      const c = await espaco("nove-duas");
+      const a = valor(await servico.receberMensagem(c.ws, c.canalId, de(SEM_NOVE, { idExterno: "a" })));
+      const b = valor(await servico.receberMensagem(c.ws, c.canalId, de(COM_NOVE, { idExterno: "b" })));
+
+      expect(b).toMatchObject({ contatoNovo: false, conversaNova: false, contatoId: a.contatoId });
+      expect(b.conversa.id).toBe(a.conversa.id);
+      expect(await contar(c.ws, "contatos")).toBe(1);
+      expect(await contar(c.ws, "mensagens")).toBe(2);
+    });
+
+    it("com um Contato para cada forma (duplicata que já existia), a forma que chegou vence", async () => {
+      const c = await espaco("nove-dupla");
+      const comNove = await cadastrar(c.ws, COM_NOVE, "Com nove");
+      const semNove = await cadastrar(c.ws, SEM_NOVE, "Sem nove");
+
+      expect(valor(await servico.receberMensagem(c.ws, c.canalId, de(SEM_NOVE, { idExterno: "x" }))).contatoId).toBe(semNove.contatoId);
+      expect(valor(await servico.receberMensagem(c.ws, c.canalId, de(COM_NOVE, { idExterno: "y" }))).contatoId).toBe(comNove.contatoId);
+    });
+
+    it("não casa um número parecido: outro DDD, outro final, ou fixo", async () => {
+      const c = await espaco("nove-parecido");
+      await cadastrar(c.ws, COM_NOVE);
+      const outroDdd = valor(await servico.receberMensagem(c.ws, c.canalId, de("+552187654321", { idExterno: "ddd" })));
+      const outroFinal = valor(await servico.receberMensagem(c.ws, c.canalId, de("+551187654322", { idExterno: "fim" })));
+      const fixo = valor(await servico.receberMensagem(c.ws, c.canalId, de("+551134567890", { idExterno: "fixo" })));
+
+      expect([outroDdd.contatoNovo, outroFinal.contatoNovo, fixo.contatoNovo]).toEqual([true, true, true]);
+      expect(await contar(c.ws, "contatos")).toBe(4);
+    });
+
+    it("a Mensagem digitada no celular também acha o Contato pela outra forma", async () => {
+      const c = await espaco("nove-celular");
+      const ana = await cadastrar(c.ws, COM_NOVE);
+      const r = valor(await servico.receberMensagem(c.ws, c.canalId, de(SEM_NOVE, { idExterno: "cel", digitadaNoAparelho: true })));
+
+      expect(r).toMatchObject({ contatoNovo: false, contatoId: ana.contatoId });
+      expect(r.mensagem.direcao).toBe("enviada");
+      expect(await contar(c.ws, "contatos")).toBe(1);
+    });
+
+    it("número de outro país não ganha forma nenhuma", async () => {
+      const c = await espaco("nove-eua");
+      const r = valor(await servico.receberMensagem(c.ws, c.canalId, de("+14155552671")));
+      expect(r.conversa.titulo).toBe("Ana");
+      const valores = (await pool().query<{ valor: string }>("select valor from plataforma.contato_identificadores where workspace_id = $1", [c.ws])).rows.map((l) => l.valor);
+      expect(valores).toEqual(["+14155552671"]);
     });
   });
 

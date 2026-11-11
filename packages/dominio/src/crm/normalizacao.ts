@@ -73,6 +73,40 @@ export function normalizarWhatsapp(valor: string): OperationResult<string> {
   return normalizarTelefone(valor);
 }
 
+/**
+ * Celular brasileiro: `55` + DDD + (o nono dígito `9`, opcional) + 8 dígitos que começam em 6 a 9. O comprimento decide se
+ * o `9` está lá (12 ou 13 dígitos); o fixo (8 dígitos que começam em 2 a 5) não tem forma com o 9 e fica de fora.
+ */
+const CELULAR_BRASILEIRO = /^55([1-9][1-9])9?([6-9]\d{7})$/;
+
+/**
+ * 4.4.3: as formas de um mesmo celular brasileiro no WhatsApp, com e sem o nono dígito, na ordem `[com o 9, sem o 9]`
+ * (`+5511987654321` e `+551187654321`). O WhatsApp antigo entrega muitos celulares sem o 9, e o mesmo Contato pode estar
+ * cadastrado com ele: sem juntar as duas formas, a mesma pessoa virava dois Contatos. Número que não é celular brasileiro
+ * (fixo, outro país, tamanho estranho) devolve só `[numero]`, como veio. Quem chama passa o valor já normalizado
+ * (`normalizarWhatsapp`); o `+` e a pontuação não importam para casar, e as formas devolvidas saem normalizadas.
+ */
+export function variantesDoNumeroBrasileiro(numero: string): readonly string[] {
+  const achado = CELULAR_BRASILEIRO.exec(numero.replace(/\D/g, ""));
+  if (!achado) return [numero];
+  const [, ddd, resto] = achado;
+  return [`+55${ddd}9${resto}`, `+55${ddd}${resto}`];
+}
+
+/**
+ * 4.4.3: o número para onde a resposta vai, "como o WhatsApp o conhece". O Identificador do Contato guarda a forma com o 9
+ * (a que o CRM grava), mas quem escreveu pode ter vindo pela forma antiga, sem ele: a resposta sai por onde ela chegou
+ * (`remetenteExterno`, o `remoteJid` da última Mensagem recebida). Só vale se for o MESMO celular que o Identificador (uma das
+ * suas variantes): qualquer outro valor é ignorado e a resposta sai pelo Identificador, nunca por um número que o Contato
+ * não tem.
+ */
+export function numeroParaResponderNoWhatsapp(valorDoIdentificador: string, remetenteExterno: string | null | undefined): string {
+  if (remetenteExterno == null || remetenteExterno.trim() === "") return valorDoIdentificador;
+  const normalizado = normalizarWhatsapp(remetenteExterno);
+  if (!normalizado.ok) return valorDoIdentificador;
+  return variantesDoNumeroBrasileiro(valorDoIdentificador).includes(normalizado.value) ? normalizado.value : valorDoIdentificador;
+}
+
 export function normalizarInstagram(valor: string): OperationResult<string> {
   const usuario = valor
     .trim()

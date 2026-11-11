@@ -89,6 +89,12 @@ export interface RepositorioDeMensagens {
    * de Identificadores do Contato da Conversa.
    */
   identificadorDaUltimaRecebida(workspaceId: string, conversaId: string): Promise<string | null>;
+  /**
+   * O `remetente_externo` da MESMA `recebida` que `identificadorDaUltimaRecebida` escolhe: o número como o provedor o entregou
+   * (4.4.3: o celular antigo chega sem o nono dígito, e o Identificador do Contato guarda a forma com ele). Só vale como destino
+   * se for o mesmo número do Identificador (`numeroParaResponderNoWhatsapp`), nunca por si.
+   */
+  remetenteExternoDaUltimaRecebida(workspaceId: string, conversaId: string): Promise<string | null>;
   /** Grava a `recebida` (ou a `enviada` digitada no celular); `undefined` quando o id externo já existe no Canal (INV-CXE-08). */
   inserirRecebida(workspaceId: string, linha: LinhaDeMensagemRecebida): Promise<Mensagem | undefined>;
   obterPorIdExterno(workspaceId: string, canalId: string, idExterno: string): Promise<Mensagem | undefined>;
@@ -275,6 +281,18 @@ export function criarRepositorioDeMensagensPg(cliente: Pool | PoolClient): Repos
         [workspaceId, conversaId],
       );
       return rows[0]?.identificador_id ?? null;
+    },
+
+    async remetenteExternoDaUltimaRecebida(workspaceId, conversaId) {
+      const { rows } = await cliente.query<{ remetente_externo: string | null }>(
+        `select remetente_externo
+           from plataforma.mensagens
+          where workspace_id = $1 and conversa_id = $2 and direcao = 'recebida' and identificador_id is not null
+          order by criado_em desc, plataforma.mensagens.seq desc
+          limit 1`,
+        [workspaceId, conversaId],
+      );
+      return rows[0]?.remetente_externo ?? null;
     },
 
     async inserirRecebida(workspaceId, linha) {

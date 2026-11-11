@@ -10,8 +10,10 @@
  *      grava Contato, Conversa nem Mensagem (INV-CXE-08); só completa o anexo que estava `baixado: false` quando a
  *      entrada de mídia (16-10) o trouxe pronto numa passada seguinte;
  *   3. o Contato é achado por `detentorDoIdentificador` com o valor NORMALIZADO exato, ou criado com
- *      `modo_criacao = 'automatico_mensagem'`. Nada de casar por semelhança ou variante do nono dígito
- *      (T-16-03, 4.4.3 é da Sessão 4): a conversa de uma pessoa nunca cai no Contato de outra;
+ *      `modo_criacao = 'automatico_mensagem'`. Nada de casar por semelhança (T-16-03): a conversa de uma pessoa nunca cai
+ *      no Contato de outra. A única junção é a do nono dígito do celular brasileiro (4.4.3, `variantesDoNumeroBrasileiro`):
+ *      `+551187654321` e `+5511987654321` são o mesmo número, então o Contato que tem uma das duas formas recebe a Mensagem
+ *      que chegou pela outra (a forma que chegou é procurada primeiro) e o Contato novo grava a forma com o 9;
  *   4. o Contato arquivado ou na lixeira volta a `ativo` (RN-CON-13); o mesclado é recusado;
  *   5. a Conversa é decidida por `destinoDaRecebida` (RN-CXE-09), com a janela de `inbox` em
  *      `plataforma.registros`;
@@ -37,7 +39,7 @@ import type { Pool, PoolClient } from "pg";
 import type { Conversa, ParticipanteDaConversa } from "@n1/dominio/crm/conversas";
 import { TIPO_DE_IDENTIFICADOR_DO_CANAL, tituloDaConversa } from "@n1/dominio/crm/conversas";
 import type { AnexoDaMensagem, Mensagem } from "@n1/dominio/crm/mensagens";
-import { normalizarIdentificadorDeContato } from "@n1/dominio/crm/normalizacao";
+import { normalizarIdentificadorDeContato, variantesDoNumeroBrasileiro } from "@n1/dominio/crm/normalizacao";
 import {
   JANELA_DE_REABERTURA_PADRAO_HORAS,
   contatoDaRecebida,
@@ -181,6 +183,11 @@ async function processar(
   const normalizado = normalizarIdentificadorDeContato(evento.remetente.tipo, evento.remetente.valor);
   if (!normalizado.ok) return valorInvalido({ error: normalizado.error, field: "remetente" });
   const valor = normalizado.value;
+  // 4.4.3: o celular brasileiro tem duas formas no WhatsApp (com e sem o nono dígito); a que chegou é procurada primeiro, e o
+  // Contato novo grava a forma com o 9. Qualquer outro número tem uma forma só.
+  const formasDoNumero = evento.remetente.tipo === "whatsapp" ? variantesDoNumeroBrasileiro(valor) : [valor];
+  const formasParaProcurar = [valor, ...formasDoNumero.filter((forma) => forma !== valor)];
+  const valorParaCriar = formasDoNumero[0] ?? valor;
 
   // INV-CXE-08: a repetida não grava Contato, Conversa nem Mensagem.
   const existente = await mensagens.obterPorIdExterno(workspaceId, canal.id, evento.idExterno);
@@ -209,7 +216,15 @@ async function processar(
   }
 
   // O Contato: o detentor do valor normalizado exato, ou um novo (T-16-03).
-  const detentor = await contatos.detentorDoIdentificador(workspaceId, evento.remetente.tipo, valor);
+  let detentor: Awaited<ReturnType<typeof contatos.detentorDoIdentificador>> = undefined;
+  let valorDoDetentor = valor;
+  for (const forma of formasParaProcurar) {
+    detentor = await contatos.detentorDoIdentificador(workspaceId, evento.remetente.tipo, forma);
+    if (detentor) {
+      valorDoDetentor = forma;
+      break;
+    }
+  }
   let contatoId: string;
   let identificadorId: string;
   let nomeDoContato: { readonly nome: string | null; readonly sobrenome: string | null };
@@ -223,7 +238,7 @@ async function processar(
     }
     // RN-CON-13: quem escreve volta à ativa. A Mensagem digitada no celular é nossa, não do Contato: não o reativa.
     if (decisao.acao === "reativar" && evento.digitadaNoAparelho !== true) await contatos.definirEstado(workspaceId, contato.id, "ativo");
-    const doBanco = (await contatos.listarIdentificadores(workspaceId, contato.id)).find((i) => i.tipo === evento.remetente.tipo && i.valor === valor);
+    const doBanco = (await contatos.listarIdentificadores(workspaceId, contato.id)).find((i) => i.tipo === evento.remetente.tipo && i.valor === valorDoDetentor);
     if (!doBanco) return recusa<never>(404, "Identificador não encontrado.", { codigo: "IDENTIFICADOR_NAO_ENCONTRADO" });
     contatoId = contato.id;
     identificadorId = doBanco.id;
@@ -231,7 +246,7 @@ async function processar(
   } else {
     const proprietarioId = canal.proprietarioPadraoId ?? canal.configuradoPor;
     const nomeExibido = (evento.remetente.nomeExibido ?? "").trim();
-    const nome = nomeExibido === "" ? valor : nomeExibido;
+    const nome = nomeExibido === "" ? valorParaCriar : nomeExibido;
     const contato = await contatos.inserir(workspaceId, {
       nome,
       modoCriacao: "automatico_mensagem",
@@ -239,12 +254,14 @@ async function processar(
       criadoPor: proprietarioId,
       ...(canal.origemPadraoId !== null ? { origem: canal.origemPadraoId } : {}),
     });
-    const identificador = await contatos.inserirIdentificador(workspaceId, contato.id, { tipo: evento.remetente.tipo, valor, principal: true });
+    const identificador = await contatos.inserirIdentificador(workspaceId, contato.id, { tipo: evento.remetente.tipo, valor: valorParaCriar, principal: true });
     contatoId = contato.id;
     identificadorId = identificador.id;
     nomeDoContato = { nome: contato.nome, sobrenome: contato.sobrenome };
     contatoNovo = true;
   }
+
+  const valorDoIdentificador = detentor ? valorDoDetentor : valorParaCriar;
 
   // A Conversa (RN-CXE-09): reaproveita a aberta/pendente, reabre a resolvida na janela, ou abre outra.
   const aberta = await conversas.abertaDoPar(workspaceId, contatoId, canal.id);
@@ -281,7 +298,7 @@ async function processar(
     conversa = await conversas.inserir(workspaceId, {
       canalId: canal.id,
       contatoId,
-      titulo: tituloDaConversa(nomeDoContato, valor),
+      titulo: tituloDaConversa(nomeDoContato, valorDoIdentificador),
       filaId: canal.filaPadraoId,
       atribuido: null,
       participantes,

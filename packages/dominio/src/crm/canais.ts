@@ -289,7 +289,7 @@ function finalDe(digitos: string): string {
 /**
  * O número que o provedor diz estar conectado é o do Canal (16-13, D-16-05): antes de marcar `conectada` de
  * verdade, uma instância ligada a OUTRO número é recusada. Tolera o nono dígito brasileiro só para não recusar
- * o número certo; juntar Contatos com e sem o 9 é a 4.4.3 (Sessão 4), não esta função. A frase mostra só o final.
+ * o número certo; juntar Contatos com e sem o 9 é `variantesDoNumeroBrasileiro` (4.4.3), não esta função. A frase mostra só o final.
  */
 export function conferirNumeroConectado(
   canal: Pick<Canal, "identificadorExterno">,
