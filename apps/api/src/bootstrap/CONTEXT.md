@@ -102,6 +102,11 @@ que o CRM cria; `canal:ligar-evolution` segue para a que o dono criou à mão). 
 só: os dois falam com o banco que o `DATABASE_URL` apontar, então rode-os sabendo qual é. Os testes rodam só contra
 Postgres local e contra a Evolution falsa de `testes/servidor-falso.ts`.
 
+**`evolution:fumaca` (Sessão 4).** `npm run evolution:fumaca -w @n1/api` confere, contra a Evolution configurada, cada chamada que o
+"Conectar" pelo CRM faz, com uma instância descartável `n1-fumaca-...` sem número que ela mesma apaga. Não usa o banco. Sai 0
+(tudo certo), 1 (algum passo falhou) ou 2 (faltou `EVOLUTION_URL`, `EVOLUTION_API_KEY` ou `API_URL_PUBLICA`). Ver
+`mensageria/CONTEXT.md`.
+
 **`canal:segredo-de-teste` (16-02, D-16-03).** `npm run canal:segredo-de-teste -w @n1/api -- --canal <id>` gera o
 segredo do webhook de um Canal **simulado**, guarda no cofre (`donoTipo: "canal"`, `tipo: "webhook_segredo"`), revoga o
 anterior e o mostra uma única vez, com o caminho, o cabeçalho e um `curl` de exemplo. Canal real é recusado (sai com 2):

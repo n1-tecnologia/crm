@@ -372,6 +372,17 @@ coisas no `api.env` do servidor (o `n1crm` o edita; reinicie com `sudo systemctl
 | `EVOLUTION_CONFERENCIA_ATIVA=true` | liga a conferência de 5 min (opcional; sem ela, só o webhook atualiza a conexão) |
 | `PERMITIR_CONEXAO_SIMULADA` | **não defina em produção.** Sem ela, "Simular conexão" não existe (a rota responde 404). Se algum Canal de demonstração precisar dela, defina `true` e reinicie |
 
+**Antes do primeiro "Conectar", rode a fumaça** (com `EVOLUTION_API_KEY` já no `api.env`):
+
+```bash
+cd /opt/n1-crm/current && npm run evolution:fumaca -w @n1/api
+```
+
+Ela cria UMA instância descartável `n1-fumaca-<aleatório>` (sem número: nenhum WhatsApp é tocado), confere cada chamada que o
+"Conectar" faz (criar, achar, estado, QR, sair da sessão) contra a Evolution REAL, apaga a instância e confere que sumiu. A
+saída só diz passou ou falhou e fatos sem segredo; sai 0 se tudo respondeu como o CRM espera, 1 se algum passo falhou e 2 se
+faltou configuração. É a única prova do formato real das respostas da Evolution 2.4.0 (os testes usam um servidor falso).
+
 `EVOLUTION_URL`, `API_URL_PUBLICA` e `COFRE_CHAVE` já são exigidos desde a Fase 16. Sem `EVOLUTION_API_KEY`
 o botão responde 503 dizendo o que falta, e `npm run canal:ligar-evolution` continua ligando uma instância
 que o dono criou à mão. A conferência e o webhook de uma instância assim funcionam igual.

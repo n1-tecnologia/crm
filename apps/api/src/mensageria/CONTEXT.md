@@ -273,6 +273,11 @@ credencial, pergunta o estado da instância e corrige o banco quando diverge (ce
 NADA muda. Trava consultiva (`pg_try_advisory_lock`), uma rodada por vez, primeira rodada 30 s depois do boot, só
 contagens no log.
 
+**A fumaça** (`bootstrap/evolution-fumaca.ts`, `npm run evolution:fumaca -w @n1/api`): contra a Evolution REAL, cria uma
+instância `n1-fumaca-<aleatório>` sem número, confere cada chamada do "Conectar" e a apaga. É o que fecha a dúvida do
+formato real das respostas, que os testes (servidor falso) não fecham. Cada passo é independente e a limpeza roda sempre;
+a saída nunca leva chave, token, QR nem corpo de resposta.
+
 **Limite conhecido do painel:** um Canal que já está `com_erro` e falha de novo para `com_erro` não muda de estado, então a
 tela não tem o que observar e continua mostrando o QR (renovado). A frase de "QR lido por outro número" só aparece quando o
 estado muda depois de o painel pedir o QR.
