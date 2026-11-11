@@ -14,7 +14,9 @@ import {
   normalizarInstagram,
   normalizarTelefone,
   normalizarWhatsapp,
+  numeroParaResponderNoWhatsapp,
   PROVEDORES_PUBLICOS_DE_EMAIL,
+  variantesDoNumeroBrasileiro,
 } from "./normalizacao";
 
 describe("normalizarEmail (a)", () => {
@@ -130,5 +132,66 @@ describe("normalizarIdentificadorDeContato (f)", () => {
     expect(normalizarIdentificadorDeContato("email", " A@B.com ")).toEqual({ ok: true, value: "a@b.com" });
     expect(normalizarIdentificadorDeContato("telefone", "11 3456-7890")).toEqual({ ok: true, value: "+551134567890" });
     expect(normalizarIdentificadorDeContato("instagram", "@Ana")).toEqual({ ok: true, value: "ana" });
+  });
+});
+
+describe("variantesDoNumeroBrasileiro (4.4.3)", () => {
+  it("o celular com o nono dígito devolve [com o 9, sem o 9]", () => {
+    expect(variantesDoNumeroBrasileiro("+5511987654321")).toEqual(["+5511987654321", "+551187654321"]);
+  });
+
+  it("o celular sem o nono dígito devolve as mesmas duas formas, na mesma ordem", () => {
+    expect(variantesDoNumeroBrasileiro("+551187654321")).toEqual(["+5511987654321", "+551187654321"]);
+  });
+
+  it("o `+` e a pontuação não importam, e as formas saem normalizadas", () => {
+    expect(variantesDoNumeroBrasileiro("55 (11) 98765-4321")).toEqual(["+5511987654321", "+551187654321"]);
+  });
+
+  it("vale para qualquer DDD", () => {
+    expect(variantesDoNumeroBrasileiro("+5521991234567")).toEqual(["+5521991234567", "+552191234567"]);
+    expect(variantesDoNumeroBrasileiro("+559291234567")).toEqual(["+5592991234567", "+559291234567"]);
+  });
+
+  it("o fixo não tem forma com o 9: devolve só o número que veio", () => {
+    expect(variantesDoNumeroBrasileiro("+551134567890")).toEqual(["+551134567890"]);
+  });
+
+  it("um celular antigo de 8 dígitos que começa com 9 não é confundido com a forma nova", () => {
+    // 55 11 9 8765432 (12 dígitos): o 9 é o primeiro dígito do número de 8, não o nono dígito.
+    expect(variantesDoNumeroBrasileiro("+551198765432")).toEqual(["+5511998765432", "+551198765432"]);
+  });
+
+  it("número de outro país, curto ou comprido fica como veio", () => {
+    expect(variantesDoNumeroBrasileiro("+14155552671")).toEqual(["+14155552671"]);
+    expect(variantesDoNumeroBrasileiro("+55119876543")).toEqual(["+55119876543"]);
+    expect(variantesDoNumeroBrasileiro("+55119876543210")).toEqual(["+55119876543210"]);
+    expect(variantesDoNumeroBrasileiro("+5511887654321")).toEqual(["+5511887654321"]);
+  });
+});
+
+describe("numeroParaResponderNoWhatsapp (4.4.3)", () => {
+  it("responde pelo número como o WhatsApp o conhece: sem o 9, quando foi por ele que a pessoa escreveu", () => {
+    expect(numeroParaResponderNoWhatsapp("+5511987654321", "+551187654321")).toBe("+551187654321");
+  });
+
+  it("e com o 9 quando foi assim que chegou", () => {
+    expect(numeroParaResponderNoWhatsapp("+551187654321", "+5511987654321")).toBe("+5511987654321");
+  });
+
+  it("sem remetente (nunca recebeu), a resposta vai pelo Identificador", () => {
+    expect(numeroParaResponderNoWhatsapp("+5511987654321", null)).toBe("+5511987654321");
+    expect(numeroParaResponderNoWhatsapp("+5511987654321", undefined)).toBe("+5511987654321");
+    expect(numeroParaResponderNoWhatsapp("+5511987654321", "  ")).toBe("+5511987654321");
+  });
+
+  it("o remetente que NÃO é o mesmo celular nunca vira o destino", () => {
+    expect(numeroParaResponderNoWhatsapp("+5511987654321", "+5511911112222")).toBe("+5511987654321");
+    expect(numeroParaResponderNoWhatsapp("+5511987654321", "+551187654322")).toBe("+5511987654321");
+    expect(numeroParaResponderNoWhatsapp("+5511987654321", "lixo")).toBe("+5511987654321");
+  });
+
+  it("número fora do Brasil responde pelo próprio número", () => {
+    expect(numeroParaResponderNoWhatsapp("+14155552671", "+14155552671")).toBe("+14155552671");
   });
 });

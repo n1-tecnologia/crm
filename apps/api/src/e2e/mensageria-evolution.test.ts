@@ -199,6 +199,29 @@ describeComBanco("Fase 16 ponta a ponta: a Evolution (servidor falso) entra pelo
     expect(doEco[0]).toMatchObject({ id: idDoCrm, idExterno: "3EB0EC", statusEntrega: "enviada", motivoFalha: null });
   });
 
+  it("4.4.3: a mesma Ana escrevendo SEM o nono dígito cai no mesmo Contato e na mesma Conversa, e a resposta sai pelo número como o WhatsApp o conhece", async () => {
+    const semNove = { ...texto, data: { ...texto.data, key: { ...texto.data.key, id: "3EB0NOVE", remoteJid: "551187654321@s.whatsapp.net" }, message: { conversation: "oi, sem o nove" } } };
+    expect((await chamar(semNove)).statusCode).toBe(200);
+    const processador = criarProcessadorDeEntrada({ workerId: "teste-evolution-nove", chaves, registro });
+    expect(await processador.processarUm()).toBe(true);
+    expect((await linhas()).at(-1)).toMatchObject({ estado: "processado", chave: "3EB0NOVE" });
+
+    const contatos = (await pool().query<{ valor: string }>("select valor from plataforma.contato_identificadores where workspace_id = $1 and tipo = 'whatsapp'", [ws])).rows;
+    expect(contatos).toEqual([{ valor: WHATSAPP_DA_ANA }]);
+    const conversas = (await pool().query<{ id: string }>("select id from plataforma.conversas where workspace_id = $1 and canal_id = $2", [ws, canalId])).rows;
+    expect(conversas).toHaveLength(1);
+    const conversaId = conversas[0]!.id;
+    const recebida = (await app().inject({ method: "GET", url: `/mensagens?conversaId=${conversaId}`, headers: MEMBRO })).json() as Envelope;
+    expect(recebida.itens!.find((m) => m.idExterno === "3EB0NOVE")).toMatchObject({ direcao: "recebida", conteudo: "oi, sem o nove" });
+
+    falso.enfileirar({ kind: "ok", status: 201, corpo: { key: { remoteJid: "551187654321@s.whatsapp.net", fromMe: true, id: "3EB0NV2" }, status: "PENDING" } });
+    const criada = await app().inject({ method: "POST", url: "/mensagens", headers: MEMBRO, payload: { conversaId, direcao: "enviada", conteudo: "respondendo sem o nove" } });
+    expect(criada.statusCode).toBe(201);
+    const worker = criarWorkerDeSaida({ workerId: "teste-evolution-nove-saida", workspaceId: ws, chaves, registro });
+    expect(await worker.processarUm()).toBe(true);
+    expect(falso.recebidas.at(-1)!.corpo).toEqual({ number: "551187654321", text: "respondendo sem o nove" });
+  });
+
   it("o mesmo corpo com a instância de OUTRO Canal recebe 401 e nada é gravado", async () => {
     const antes = (await linhas()).length;
     const resposta = await chamar({ ...texto, instance: "outra" });

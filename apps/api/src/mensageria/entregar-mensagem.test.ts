@@ -420,6 +420,48 @@ describeComBanco("entregador de mensagens: a política de tentativas que não du
     expect(provedorDeTeste.enviados[0]!.destino.valor).not.toBe(numeroDeB);
   });
 
+  /** 4.4.3: uma `recebida` do Contato do cenário, pelo Identificador principal, vinda do número `remetenteExterno`. */
+  async function escreveuPeloPrincipal(c: Awaited<ReturnType<typeof cenario>>, remetenteExterno: string) {
+    const gravada = await criarRepositorioDeMensagensPg(pool()).inserirRecebida(ws, {
+      conversaId: c.conversaId,
+      canalId: c.canalId,
+      idExterno: `nove-${sequencia}`,
+      criadoEm: new Date().toISOString(),
+      conteudo: "oi",
+      anexos: [],
+      assunto: null,
+      enderecosAdicionais: [],
+      remetenteExterno,
+      identificadorId: c.idDoPrincipal!,
+      cargaBruta: null,
+    });
+    expect(gravada).toBeDefined();
+  }
+
+  it("4.4.3: o Contato escreveu SEM o nono dígito: a resposta sai por esse número, como o WhatsApp o conhece, e não pela forma com o 9 do Identificador", async () => {
+    const c = await cenario();
+    const semNove = c.numeroDoPrincipal.replace(/^(\+5511)9/, "$1");
+    expect(semNove).not.toBe(c.numeroDoPrincipal);
+    await escreveuPeloPrincipal(c, semNove);
+    provedorDeTeste.programarEnvio({ ok: true, idExterno: `nove-a-${sequencia}` });
+
+    expect(await worker().processarUm()).toBe(true);
+
+    expect(provedorDeTeste.enviados).toHaveLength(1);
+    expect(provedorDeTeste.enviados[0]!.destino.valor).toBe(semNove);
+  });
+
+  it("4.4.3: o remetente que não é o mesmo celular do Identificador nunca vira o destino: a resposta sai pelo Identificador", async () => {
+    const c = await cenario();
+    await escreveuPeloPrincipal(c, "+5511911112222");
+    provedorDeTeste.programarEnvio({ ok: true, idExterno: `nove-b-${sequencia}` });
+
+    expect(await worker().processarUm()).toBe(true);
+
+    expect(provedorDeTeste.enviados).toHaveLength(1);
+    expect(provedorDeTeste.enviados[0]!.destino.valor).toBe(c.numeroDoPrincipal);
+  });
+
   it("motivo do provedor com apikey: nem a Mensagem nem a linha do outbox a carregam", async () => {
     const c = await cenario();
     provedorDeTeste.programarEnvio({

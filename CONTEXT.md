@@ -187,8 +187,8 @@ com `EVOLUTION_URL`) recebe e envia texto e mídia de um Canal real, e quem liga
 Canal a uma instância é `npm run canal:ligar-evolution -w @n1/api -- --canal <id>
 --instancia <nome>`, que recusa a instância `numeropvmarcos` (é do `automation/`).
 Ficaram para a Sessão 4 o QR code e o botão "Conectar" (feitos, ver abaixo), a
-mensagem que a pessoa digita no celular (feita, ver abaixo), o status de entrega e o
-nono dígito (abertos, 4.4). Ver `apps/api/src/mensageria/CONTEXT.md`.
+mensagem que a pessoa digita no celular e o nono dígito (feitos, ver abaixo) e o status
+de entrega (aberto, 4.4). Ver `apps/api/src/mensageria/CONTEXT.md`.
 
 Depois da verificação da fase (`16-VERIFICATION.md`), um plano de lacunas (16-17
 a 16-22) fechou o que ela achou: "Simular conexão" recusa o Canal já ligado a um

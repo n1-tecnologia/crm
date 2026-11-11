@@ -1043,7 +1043,9 @@ funções antigas saíram de `derive-conversacional.ts` no 15-42.
   `conexao_perdida` (o provedor avisou que a sessão caiu: leva a `com_erro`, e num Canal já `desconectada` não há conexão a
   perder); `conectaPorQrCode`/`podeConectarPorQrCode` decidem o botão da ficha, `CanalNaFicha.simulacaoPermitida` e
   `podeSimularConexao` o da simulação, e `ConexaoPorQrCode` é o contrato de `POST /canais/:id/conectar`. Juntar Contatos
-  com e sem o nono dígito é a 4.4.3. O status de entrega só avança: `proximoStatusDeEntrega` (em `crm/mensagens.ts`) nunca deixa `lida` voltar a
+  com e sem o nono dígito é de `variantesDoNumeroBrasileiro` (4.4.3, em `crm/normalizacao.ts`: `[com o 9, sem o 9]` do celular
+  brasileiro, e só dele; o fixo e o número de fora têm uma forma) e `numeroParaResponderNoWhatsapp` (o número por onde a pessoa
+  escreveu, só se for o mesmo celular do Identificador). O status de entrega só avança: `proximoStatusDeEntrega` (em `crm/mensagens.ts`) nunca deixa `lida` voltar a
   `entregue`.
   `proximaConexao` ganhou o terceiro argumento `FatosDaConexao` (CR-01, 16-17): `simular_conexao` recusa o Canal
   ligado a um provedor real (`ligadoAoProvedor`, `FRASE_DO_CANAL_REAL`) e recusa quando o fato não vem (falha
