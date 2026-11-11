@@ -10,7 +10,8 @@
 import type { BloqueiosCrm } from "@n1/dominio/crm/comum";
 
 export interface Recusa {
-  readonly status: 400 | 403 | 404 | 409 | 422;
+  /** 502 e 503: o provedor de um Canal (Sessão 8) recusou ou não está configurado neste ambiente. */
+  readonly status: 400 | 403 | 404 | 409 | 422 | 502 | 503;
   readonly error: string;
   readonly codigo?: string;
   readonly campo?: string;

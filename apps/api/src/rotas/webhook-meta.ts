@@ -4,10 +4,19 @@
  * `Authorization: Bearer` (`config: { publica: true }`, o mesmo gancho de
  * `/saude`).
  *
- * Por ora SÓ ESCUTAM: conferem a origem, registram o corpo no log do processo e
- * respondem 200. Nada é gravado e nenhuma Mensagem é criada — o formato que a
- * Meta manda ainda será validado, e `registrarRecebida` (Mensagens) é a porta
- * que o provedor vai usar quando esse passo vier.
+ * O WhatsApp oficial ainda SÓ ESCUTA (Sessão 7): confere a origem, registra o
+ * corpo no log e responde 200. O Instagram (Sessão 8) entra na mensageria como
+ * qualquer provedor: com a assinatura conferida, `enfileirarInstagram`
+ * (`mensageria/provedores/instagram/entrada.ts`) acha o Canal de cada conta do
+ * corpo, confere a chamada pelo provedor dele e GUARDA cada evento em
+ * `plataforma.webhooks_recebidos`; a rota responde 200 e acorda o processador de
+ * entrada, que é quem chama `receberMensagem`. Nada é interpretado na requisição.
+ * Sem segredo configurado, o Instagram volta a só escutar: evento sem assinatura
+ * nunca vira dado, e o corpo dele não vai ao log (tem dado pessoal).
+ *
+ * Do Instagram também vêm, por formulário com `signed_request`, a desautorização
+ * e o pedido de exclusão de dados (`/desautorizar` e `/exclusao-de-dados`), e a
+ * página de situação da exclusão (`GET /exclusao-de-dados/:codigo`).
  *
  * Cada canal tem duas rotas no mesmo caminho, porque a Meta usa as duas:
  *   · GET  — o aperto de mão ao cadastrar a URL: devolve `hub.challenge` se o
@@ -23,11 +32,16 @@
  * `META_APP_SECRET`. O log do POST aceito diz qual segredo bateu.
  */
 
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { ChamadaDoWebhook } from "../mensageria/provedor";
+import { codigoDeExclusao, lerCodigoDeExclusao } from "../mensageria/provedores/instagram/desautorizacao";
+import type { ResultadoDaEntradaDoInstagram } from "../mensageria/provedores/instagram/entrada";
+import { assinaturaDoCorpoConfere as assinaturaConfere, iguais, lerSignedRequest } from "../mensageria/provedores/meta/assinatura";
 
 export const CAMINHO_WEBHOOK_META_WHATSAPP = "/webhooks/meta/whatsapp";
 export const CAMINHO_WEBHOOK_META_INSTAGRAM = "/webhooks/meta/instagram";
+export const CAMINHO_DESAUTORIZAR_INSTAGRAM = "/webhooks/meta/instagram/desautorizar";
+export const CAMINHO_EXCLUSAO_INSTAGRAM = "/webhooks/meta/instagram/exclusao-de-dados";
 
 export interface OpcoesDeWebhookMeta {
   /** Padrão: `process.env.META_WEBHOOK_VERIFY_TOKEN`, lido a cada pedido. */
@@ -36,6 +50,15 @@ export interface OpcoesDeWebhookMeta {
   readonly segredoDoApp?: string;
   /** Padrão: `process.env.INSTAGRAM_APP_SECRET`, lido a cada pedido. */
   readonly segredoDoInstagram?: string;
+  /**
+   * Sessão 8: guarda os eventos do Instagram na fila de entrada da mensageria. Ausente, o
+   * Instagram só escuta (é o que os testes das rotas usam); `app.ts` liga a fila de verdade.
+   */
+  readonly enfileirarInstagram?: (chamada: ChamadaDoWebhook) => Promise<ResultadoDaEntradaDoInstagram>;
+  /** Chamado depois do 200 quando algo entrou na fila: acorda o processador de entrada. Nunca derruba a resposta. */
+  readonly acordarProcessador?: () => void;
+  /** Sessão 8: desliga os Canais do `user_id` da Meta (desautorização e exclusão). Devolve quantos. */
+  readonly esquecerContaDoInstagram?: (userId: string) => Promise<number>;
 }
 
 /** O corpo como o parser o entrega: o JSON lido e os bytes exatos que a assinatura cobre. */
@@ -57,19 +80,16 @@ interface CanalDeWebhook {
   readonly variaveis: string;
   readonly tokenDeVerificacao: () => string | undefined;
   readonly segredos: () => readonly SegredoCandidato[];
+  /** Só o Instagram tem: guarda o evento já conferido na fila de entrada. */
+  readonly enfileirar?: (chamada: ChamadaDoWebhook) => Promise<ResultadoDaEntradaDoInstagram>;
+  readonly acordarProcessador?: () => void;
 }
 
-/** Compara em tempo constante; o hash faz os dois lados terem o mesmo tamanho. */
-function iguais(a: string, b: string): boolean {
-  const ha = createHash("sha256").update(a).digest();
-  const hb = createHash("sha256").update(b).digest();
-  return timingSafeEqual(ha, hb);
-}
-
-function assinaturaConfere(segredo: string, bruto: Buffer, cabecalho: string | undefined): boolean {
-  if (!cabecalho?.startsWith("sha256=")) return false;
-  const esperada = createHmac("sha256", segredo).update(bruto).digest("hex");
-  return iguais(cabecalho.slice("sha256=".length), esperada);
+/** Um valor de cabeçalho do Node pode ser lista; o provedor lê só o primeiro. */
+function cabecalhosEmTexto(cabecalhos: Readonly<Record<string, string | string[] | undefined>>): Record<string, string | undefined> {
+  const saida: Record<string, string | undefined> = {};
+  for (const [nome, valor] of Object.entries(cabecalhos)) saida[nome] = Array.isArray(valor) ? valor[0] : valor;
+  return saida;
 }
 
 function texto(valor: unknown): string | undefined {
@@ -124,6 +144,36 @@ function registrarWebhook(app: FastifyInstance, canal: CanalDeWebhook): void {
       );
     }
 
+    if (canal.enfileirar) {
+      if (!segredoUsado) {
+        request.log.warn({ rota: "webhook-meta", canal: canal.canal }, "evento sem assinatura conferida: não foi guardado");
+        return reply.code(200).send({ ok: true });
+      }
+      let resultado: ResultadoDaEntradaDoInstagram;
+      try {
+        resultado = await canal.enfileirar({
+          cabecalhos: cabecalhosEmTexto(request.headers),
+          corpoCru: corpo?.bruto ?? Buffer.alloc(0),
+          corpo: corpo?.json ?? null,
+        });
+      } catch (erro) {
+        // 500 faz a Meta reenviar; a fila não duplica a linha (chave = `mid`). Só o tipo do erro vai ao log.
+        request.log.error({ rota: "webhook-meta", canal: canal.canal, erro: erro instanceof Error ? erro.name : "erro" }, "falha ao guardar o webhook da Meta");
+        return reply.code(500).send({ ok: false, error: "Falha ao guardar o evento." });
+      }
+      // Só contagens: o texto e quem escreveu não vão para o log.
+      request.log.info({ rota: "webhook-meta", canal: canal.canal, status: 200, segredo: segredoUsado, ...resultado }, "webhook da Meta guardado na fila");
+      reply.code(200).send({ ok: true });
+      if (resultado.guardadas > 0) {
+        try {
+          canal.acordarProcessador?.();
+        } catch {
+          // O acordador é um atalho: o intervalo do processador cobre uma falha dele.
+        }
+      }
+      return reply;
+    }
+
     request.log.info(
       { rota: "webhook-meta", canal: canal.canal, status: 200, segredo: segredoUsado, payload: corpo?.json ?? null },
       "webhook da Meta recebido",
@@ -159,14 +209,87 @@ export async function rotasDeWebhookMeta(app: FastifyInstance, opcoes: OpcoesDeW
     tokenDeVerificacao,
     segredos: () => [{ nome: "META_APP_SECRET", valor: segredoDoApp() }],
   });
+  const segredosDoInstagram = () => [
+    { nome: "INSTAGRAM_APP_SECRET", valor: segredoDoInstagram() },
+    { nome: "META_APP_SECRET", valor: segredoDoApp() },
+  ];
   registrarWebhook(app, {
     canal: "instagram",
     caminho: CAMINHO_WEBHOOK_META_INSTAGRAM,
     variaveis: "INSTAGRAM_APP_SECRET e META_APP_SECRET",
     tokenDeVerificacao,
-    segredos: () => [
-      { nome: "INSTAGRAM_APP_SECRET", valor: segredoDoInstagram() },
-      { nome: "META_APP_SECRET", valor: segredoDoApp() },
-    ],
+    segredos: segredosDoInstagram,
+    ...(opcoes.enfileirarInstagram ? { enfileirar: opcoes.enfileirarInstagram } : {}),
+    ...(opcoes.acordarProcessador ? { acordarProcessador: opcoes.acordarProcessador } : {}),
+  });
+
+  registrarAvisosDoInstagram(app, {
+    segredos: () => segredosDoInstagram().map((s) => s.valor).filter((v): v is string => !!v),
+    esquecer: opcoes.esquecerContaDoInstagram,
+  });
+}
+
+/**
+ * Desautorização e exclusão de dados do Instagram: a Meta manda um formulário com
+ * `signed_request`. O parser de formulário fica neste plugin, como o do corpo cru.
+ */
+function registrarAvisosDoInstagram(
+  app: FastifyInstance,
+  opcoes: { readonly segredos: () => readonly string[]; readonly esquecer: ((userId: string) => Promise<number>) | undefined },
+): void {
+  app.addContentTypeParser("application/x-www-form-urlencoded", { parseAs: "string" }, (_request, corpo, feito) => {
+    feito(null, Object.fromEntries(new URLSearchParams(corpo as string)));
+  });
+
+  /** O `user_id` de um `signed_request` válido, e o segredo que o assinou; ou a resposta de recusa já dada. */
+  function conferir(request: FastifyRequest): { readonly userId: string; readonly segredo: string } | { readonly status: 400 | 503 } {
+    const segredos = opcoes.segredos();
+    if (segredos.length === 0 || !opcoes.esquecer) return { status: 503 };
+    const corpo = (request.body ?? {}) as Record<string, unknown>;
+    const assinado = typeof corpo.signed_request === "string" ? corpo.signed_request : "";
+    for (const segredo of segredos) {
+      const pedido = lerSignedRequest(assinado, segredo);
+      if (pedido) return { userId: pedido.userId, segredo };
+    }
+    return { status: 400 };
+  }
+
+  app.post(CAMINHO_DESAUTORIZAR_INSTAGRAM, { config: { publica: true } }, async (request, reply) => {
+    const conferido = conferir(request);
+    if ("status" in conferido) {
+      request.log.warn({ rota: "webhook-meta", aviso: "desautorizacao", status: conferido.status }, "aviso da Meta recusado");
+      return reply.code(conferido.status).send({ ok: false, error: conferido.status === 503 ? "Indisponível." : "Pedido inválido." });
+    }
+    const canais = await opcoes.esquecer!(conferido.userId);
+    request.log.info({ rota: "webhook-meta", aviso: "desautorizacao", canais }, "conta do Instagram desautorizada");
+    return reply.code(200).send({ ok: true });
+  });
+
+  app.post(CAMINHO_EXCLUSAO_INSTAGRAM, { config: { publica: true } }, async (request, reply) => {
+    const conferido = conferir(request);
+    if ("status" in conferido) {
+      request.log.warn({ rota: "webhook-meta", aviso: "exclusao", status: conferido.status }, "aviso da Meta recusado");
+      return reply.code(conferido.status).send({ ok: false, error: conferido.status === 503 ? "Indisponível." : "Pedido inválido." });
+    }
+    const canais = await opcoes.esquecer!(conferido.userId);
+    const codigo = codigoDeExclusao(conferido.segredo);
+    request.log.info({ rota: "webhook-meta", aviso: "exclusao", canais }, "dados da conta do Instagram apagados");
+    // A forma que a Meta exige: onde acompanhar e o código que ela mostra à pessoa.
+    return reply.code(200).send({ url: `${request.protocol}://${request.host}${CAMINHO_EXCLUSAO_INSTAGRAM}/${codigo}`, confirmation_code: codigo });
+  });
+
+  app.get(`${CAMINHO_EXCLUSAO_INSTAGRAM}/:codigo`, { config: { publica: true } }, async (request, reply) => {
+    const { codigo } = request.params as { codigo: string };
+    const momento = lerCodigoDeExclusao(opcoes.segredos(), codigo);
+    if (!momento) {
+      return reply.code(404).type("text/plain; charset=utf-8").send("Pedido de exclusão não encontrado. / Data deletion request not found.");
+    }
+    return reply
+      .code(200)
+      .type("text/plain; charset=utf-8")
+      .send(
+        `Pedido de exclusão ${codigo}, recebido em ${momento.toISOString()}: concluído. O token de acesso e o vínculo da conta do Instagram foram apagados do N1 Digital no momento do pedido.\n\n` +
+          `Data deletion request ${codigo}, received at ${momento.toISOString()}: completed. The access token and the Instagram account link were deleted from N1 Digital when the request arrived.`,
+      );
   });
 }

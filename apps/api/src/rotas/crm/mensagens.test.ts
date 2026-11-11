@@ -627,6 +627,21 @@ describeComBanco("rotas de Mensagens — serviço real, Postgres local", () => {
       beforeAll(async () => {
         instagram.canalId = await semearCanal(ws, { nome: "Instagram", tipo: "instagram", provedor: "instagram-graph", identificadorExterno: "@n1_teste", conexao: "desconectada" });
         instagram.conversaId = await conversaNova(ws, instagram.canalId, "Dani");
+        // Sessão 8 (8.3.4): no Instagram só se responde a quem escreveu, dentro de 24 h. A Dani escreveu agora, para a
+        // janela estar aberta e a recusa do PDF ser a do tipo de arquivo, não a da janela.
+        await mensagens().inserirRecebida(ws, {
+          conversaId: instagram.conversaId,
+          canalId: instagram.canalId,
+          idExterno: `mid.dani.${Date.now()}`,
+          criadoEm: new Date().toISOString(),
+          conteudo: "Oi",
+          anexos: [],
+          assunto: null,
+          enderecosAdicionais: [],
+          remetenteExterno: null,
+          identificadorId: null,
+          cargaBruta: null,
+        });
       });
 
       it("a sessão de outra Conversa responde 422 \"Este arquivo não é desta Conversa.\" e nenhuma Mensagem é gravada", async () => {

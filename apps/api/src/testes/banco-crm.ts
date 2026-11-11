@@ -76,6 +76,10 @@ export async function limparEspaco(workspaceId: string): Promise<void> {
       "conversas",
       // A fila de entrada da mensageria (013) tem FK para `canais`: sai antes dele.
       "webhooks_recebidos",
+      // A conta e os remetentes do Instagram (014) apontam para o Canal; a credencial no cofre (009) não tem FK.
+      "instagram_remetentes",
+      "instagram_contas",
+      "credenciais",
       "canais",
       "negocios",
       "contato_empresa",

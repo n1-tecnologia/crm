@@ -20,6 +20,7 @@ import {
   validarArquivamento,
   validarEdicaoDeCanal,
   validarNovoCanal,
+  contaDoProvedorConfere,
 } from "./canais";
 
 describe("validarNovoCanal", () => {
@@ -272,5 +273,15 @@ describe("validarEdicaoDeCanal (INV-CXE-02)", () => {
   it("apara o nome", () => {
     const r = validarEdicaoDeCanal({ nome: "  Comercial " });
     expect(r.ok && r.value.nome).toBe("Comercial");
+  });
+});
+
+describe("conexão pelo provedor (Sessão 8, 8.2.2)", () => {
+  it("a conta autorizada confere com o @ do Canal, sem caixa nem @", () => {
+    const canal = { tipo: "instagram", identificadorExterno: "loja.n1" } as const;
+    expect(contaDoProvedorConfere(canal, "loja.n1")).toBe(true);
+    expect(contaDoProvedorConfere(canal, "@Loja.N1")).toBe(true);
+    expect(contaDoProvedorConfere(canal, "outra.loja")).toBe(false);
+    expect(contaDoProvedorConfere(canal, "")).toBe(false);
   });
 });

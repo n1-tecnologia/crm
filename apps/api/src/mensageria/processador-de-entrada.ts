@@ -31,6 +31,9 @@
  * Cada chamada registra UMA linha de etapas (espera na fila, baixar, subir, transação e total, em ms): é a medição da prova
  * ao vivo do "menos de 2 s" com áudio, e leva só o id da linha e números.
  *
+ * Quem escreveu (Sessão 8): um provedor com `resolverRemetente` (o Instagram, cujo webhook só traz o IGSID) troca o id
+ * opaco pelo Identificador do Contato antes de `receberMensagem`, também fora da transação. Falhar ali é transitório.
+ *
  * A rota do webhook chama `acordar()` depois do 200 (Pitfall 3): o laço de `intervaloMs` é só a reserva.
  *
  * Nada aqui loga corpo, texto, telefone nem segredo: `registrar` só recebe o id da linha, contagens e
@@ -282,7 +285,10 @@ export function criarProcessadorDeEntrada(opcoes: OpcoesDoProcessadorDeEntrada):
     let midiaPendente = false;
     for (const evento of eventos) {
       if (evento.tipo === "mensagem") {
-        const { tipo: _tipo, ...recebida } = evento;
+        const { tipo: _tipo, ...doProvedor } = evento;
+        // Sessão 8: o provedor que só conhece um id opaco de quem escreveu (o IGSID do Instagram) o troca pelo
+        // Identificador do Contato aqui, fora da transação. Uma exceção sobe: a linha volta à fila (`marcarTransitoria`).
+        const recebida = provedor.resolverRemetente ? await provedor.resolverRemetente(paraOProvedor, doProvedor) : doProvedor;
         // 16-10 / 3.9.4: a mídia é baixada e guardada ANTES da transação, para a conexão do banco não esperar o provedor.
         const guardados =
           (recebida.anexos ?? []).length > 0

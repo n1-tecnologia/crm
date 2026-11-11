@@ -17,7 +17,7 @@ import {
 import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyServerOptions } from "fastify";
 import { verificarTokenDoSupabase, type VerificarToken } from "./autenticacao/verificar-token";
 import { capturarErroNoSentry } from "./observabilidade/sentry";
-import { carregarEnv } from "./persistencia/conexao";
+import { carregarEnv, pool } from "./persistencia/conexao";
 import { membroPorUsuario } from "./persistencia/membros";
 import { registrarAutenticacao, type OpcoesDeAutenticacao } from "./plugins/autenticacao";
 import {
@@ -35,6 +35,8 @@ import { rotasDeFormulariosPublicos, type OpcoesDeFormulariosPublicos } from "./
 import { rotasDeTarefasPublicas, type OpcoesDeTarefasPublicas } from "./rotas/tarefas-publicas";
 import { rotasDeWebhookMeta, type OpcoesDeWebhookMeta } from "./rotas/webhook-meta";
 import { rotasDeWebhooksDeMensageria, type OpcoesDeWebhooksDeMensageria } from "./rotas/webhooks-de-mensageria";
+import { criarEsquecimentoDoInstagram } from "./mensageria/provedores/instagram/desautorizacao";
+import { criarEntradaDoInstagram } from "./mensageria/provedores/instagram/entrada";
 import { rotasDeIntegracaoDeSolicitacoes } from "./rotas/integracao-solicitacoes";
 import { rotasDeOperacoes } from "./rotas/operacoes";
 import { rotasDeConvites } from "./rotas/convites";
@@ -287,7 +289,16 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
   app.register(rotasDeTarefasPublicas, { workspaceId, ...opcoes.tarefasPublicas });
   // O webhook da Meta chama de servidor, sem JWT: a confiança vem do token de
   // verificação (GET) e da assinatura do corpo (POST), não de Authorization.
-  app.register(rotasDeWebhookMeta, opcoes.webhookMeta ?? {});
+  // Sessão 8: sem opções de teste, o Instagram guarda os eventos na fila de entrada da mensageria (o mesmo acordador
+  // do processador que o webhook por Canal usa) e atende a desautorização da Meta.
+  app.register(
+    rotasDeWebhookMeta,
+    opcoes.webhookMeta ?? {
+      enfileirarInstagram: criarEntradaDoInstagram(),
+      esquecerContaDoInstagram: criarEsquecimentoDoInstagram({ pool }),
+      ...(opcoes.webhooksDeMensageria?.acordarProcessador ? { acordarProcessador: opcoes.webhooksDeMensageria.acordarProcessador } : {}),
+    },
+  );
   // O webhook de mensageria por Canal também chama de servidor, sem JWT: a confiança é o segredo do Canal
   // no cabeçalho `x-n1-webhook-segredo` (D-16-03). Plugin irmão do da Meta e fora de `rotasDeCrm`, para o
   // `config: { publica: true }` valer só para ele e o parser do corpo cru não vazar para as outras rotas.

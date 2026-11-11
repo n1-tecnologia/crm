@@ -518,7 +518,7 @@ devolvê-la. O e2e `canais-fluxo.test.ts` confere a string crua da resposta.
 servidor lê o Canal da tabela como `crm.canais` e o passa como argumento (nada é gravado em `plataforma.registros`);
 ver `persistencia/CONTEXT.md`. O cenário que prova isso por HTTP é `e2e/canais-fluxo.test.ts`.
 
-## Webhooks da Meta — WhatsApp oficial e Instagram (só escutam)
+## Webhooks da Meta — WhatsApp oficial (só escuta) e Instagram (fila de entrada)
 
 `webhook-meta.ts` — `rotasDeWebhookMeta(app, opcoes)` — `GET` e `POST` em
 `/webhooks/meta/whatsapp` e em `/webhooks/meta/instagram`, sem `Authorization: Bearer`
@@ -530,11 +530,22 @@ o WhatsApp confere só contra `META_APP_SECRET`; o Instagram aceita `INSTAGRAM_A
 Meta usa — o log do POST aceito traz `segredo` com o nome do que bateu. Um canal nunca
 aceita o segredo exclusivo do outro.
 
-**Do Instagram, só estas duas rotas existem.** Ficam por fazer: as de desautorização
-(`/webhooks/meta/instagram/deauthorize`) e exclusão de dados (`.../data-deletion`), que
-recebem `signed_request` (outro formato de assinatura) e a de conexão da conta (OAuth,
-token longo criptografado, `subscribed_apps`) — sem a conexão não há Canal para casar com
-`entry[].id`, então nenhuma DM vira Mensagem ainda.
+**Sessão 8: o Instagram entra pela mensageria.** A Meta chama UM endereço para todas as
+contas do app, então a rota não é a por Canal (`/webhooks/mensageria/:canalId`): com a
+assinatura conferida, `enfileirarInstagram` (`mensageria/provedores/instagram/entrada.ts`,
+ligado em `app.ts`) acha o Canal de cada conta do corpo (`entry[].id` →
+`instagram_contas`), confere a chamada pelo provedor do Canal (`verificarChamada`) e
+guarda cada item como uma linha `pendente` de `plataforma.webhooks_recebidos` (chave = o
+`mid`). A rota responde 200 e acorda o processador de entrada, o mesmo da rota por Canal;
+quem troca o IGSID pelo @ e chama `receberMensagem` é ele. Sem segredo configurado, evento
+sem assinatura nunca vira dado; falha do banco responde 500 para a Meta reenviar. O log do
+Instagram leva só contagens, nunca o corpo.
+Também do Instagram, públicas e conferidas pelo `signed_request`
+(`mensageria/provedores/meta/assinatura.ts`): `POST /webhooks/meta/instagram/desautorizar`,
+`POST /webhooks/meta/instagram/exclusao-de-dados` e a situação
+`GET /webhooks/meta/instagram/exclusao-de-dados/:codigo`. A conexão da conta
+(OAuth) é autenticada e mora em `rotas/crm/instagram.ts`. Tudo em
+`mensageria/provedores/instagram/CONTEXT.md`.
 
 A descrição abaixo vale para os dois canais.
 O `GET` é o aperto de mão da Meta ao cadastrar a URL: devolve `hub.challenge` em
@@ -544,12 +555,11 @@ definido exige `X-Hub-Signature-256` (HMAC-SHA256 do corpo CRU — o parser JSON
 deste plugin guarda os bytes, encapsulado, e não vaza para as outras rotas); sem
 ele aceita e avisa no log.
 
-**Não grava nada e não cria Mensagem.** O formato do payload ainda será validado;
-quando for, a porta é `receberMensagem` (`servicos/crm/recebimento.ts`; o gesto
-`registrarRecebida` saiu na Fase 16), pela rota por Canal e pela fila de entrada
-abaixo, e não por aqui: esta rota fica como está até as Sessões 7 e 8 (D-16-07).
-O log leva o corpo inteiro — número e texto de quem escreveu —
-e deve ser reduzido quando o formato estiver conhecido.
+**O WhatsApp oficial ainda não grava nada e não cria Mensagem** (Sessão 7). Quando
+gravar, a porta é `receberMensagem` (`servicos/crm/recebimento.ts`; o gesto
+`registrarRecebida` saiu na Fase 16), pela fila de entrada abaixo, como o Instagram.
+O log dele leva o corpo inteiro — número e texto de quem escreveu — e deve ser
+reduzido quando o formato estiver conhecido. O do Instagram já leva só contagens.
 
 ## Webhook de mensageria por Canal e tempo real (Fase 16)
 

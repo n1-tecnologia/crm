@@ -9,6 +9,12 @@
  * preparar o próprio mundo (memória do provedor de teste, servidor falso da Evolution).
  *
  * Nada aqui usa um segredo conhecido de antemão: quem monta a `fabrica` gera o do Canal.
+ *
+ * Sessão 8: nem todo provedor tem segredo por Canal nem remetente com telefone. O Instagram confere a assinatura da Meta
+ * (a chave do app, `X-Hub-Signature-256`) e quem escreve é um IGSID. Para ele, a `fabrica` diz quais chamadas o provedor
+ * deve recusar (`chamadasRecusadas`), a forma do remetente (`remetenteValido`), o destino do envio (`destinoDoEnvio`) e os
+ * segredos que nunca podem aparecer (`segredos`). Sem esses campos, valem os casos de sempre (segredo errado, cabeçalho
+ * ausente, Canal sem segredo; E.164; WhatsApp).
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -17,6 +23,7 @@ import {
   ErroDeProvedor,
   type CanalParaProvedor,
   type ChamadaDoWebhook,
+  type EnvioAoProvedor,
   type ProvedorDeMensageria,
 } from "./provedor";
 
@@ -31,6 +38,17 @@ export interface FabricaDoContrato {
   /** Deixa uma mídia maior que `tetoBytes` à espera e devolve a referência dela no provedor. */
   prepararMidiaGrande(tetoBytes: number): Promise<string>;
   encerrar(): Promise<void>;
+  /**
+   * As chamadas que o provedor deve recusar. Padrão: o segredo do cabeçalho errado, o cabeçalho ausente e o Canal sem
+   * segredo. Quem não tem segredo por Canal (o Instagram) dá as suas, e o cabeçalho ausente continua obrigatório.
+   */
+  chamadasRecusadas?(): readonly { readonly nome: string; readonly chamada: ChamadaDoWebhook; readonly canal: CanalParaProvedor }[];
+  /** A forma do `remetente.valor` que `interpretarChamada` devolve. Padrão: E.164. */
+  readonly remetenteValido?: RegExp;
+  /** O destino dos envios do contrato. Padrão: um número de WhatsApp. */
+  readonly destinoDoEnvio?: EnvioAoProvedor["destino"];
+  /** Segredos além do do webhook e da credencial que nenhum resultado ou erro pode carregar (a chave do app, o token). */
+  readonly segredos?: readonly string[];
 }
 
 const E164 = /^\+[1-9]\d{7,14}$/;
@@ -56,16 +74,23 @@ export function descreverContratoDoProvedor(nome: string, fabrica: () => Promise
       const valida = f.chamadaDeTexto();
       expect(f.provedor.verificarChamada(valida, f.canal)).toBe(true);
 
-      const errada: ChamadaDoWebhook = { ...valida, cabecalhos: { ...valida.cabecalhos, [CABECALHO_DO_SEGREDO]: "outro-segredo-qualquer" } };
-      expect(f.provedor.verificarChamada(errada, f.canal)).toBe(false);
-
+      // Sem cabeçalho nenhum, nenhum provedor aceita.
       const ausente: ChamadaDoWebhook = { ...valida, cabecalhos: {} };
       expect(f.provedor.verificarChamada(ausente, f.canal)).toBe(false);
 
-      expect(f.provedor.verificarChamada(valida, semSegredoDoWebhook(f.canal))).toBe(false);
+      const recusadas = f.chamadasRecusadas?.() ?? [
+        {
+          nome: "segredo errado",
+          chamada: { ...valida, cabecalhos: { ...valida.cabecalhos, [CABECALHO_DO_SEGREDO]: "outro-segredo-qualquer" } },
+          canal: f.canal,
+        },
+        { nome: "Canal sem segredo", chamada: valida, canal: semSegredoDoWebhook(f.canal) },
+      ];
+      expect(recusadas.length).toBeGreaterThan(0);
+      for (const { nome, chamada, canal } of recusadas) expect(f.provedor.verificarChamada(chamada, canal), nome).toBe(false);
     });
 
-    it("uma chamada válida de texto vira exatamente um evento mensagem, com idExterno, criadoEm ISO e remetente em E.164", () => {
+    it("uma chamada válida de texto vira exatamente um evento mensagem, com idExterno, criadoEm ISO e o remetente na forma do provedor", () => {
       const eventos = f.provedor.interpretarChamada(f.chamadaDeTexto().corpo, f.canal);
       expect(eventos).toHaveLength(1);
       const evento = eventos[0]!;
@@ -73,7 +98,7 @@ export function descreverContratoDoProvedor(nome: string, fabrica: () => Promise
       if (evento.tipo !== "mensagem") return;
       expect(evento.idExterno).not.toBe("");
       expect(new Date(evento.criadoEm).toISOString()).toBe(evento.criadoEm);
-      expect(evento.remetente.valor).toMatch(E164);
+      expect(evento.remetente.valor).toMatch(f.remetenteValido ?? E164);
     });
 
     it("corpo inválido nunca lança: devolve só ignorado", () => {
@@ -91,7 +116,7 @@ export function descreverContratoDoProvedor(nome: string, fabrica: () => Promise
       await f.prepararEnvioAceito();
       const r = await f.provedor.enviar(f.canal, {
         mensagemId: "msg_contrato_1",
-        destino: { tipo: "whatsapp", valor: "+5511987654321" },
+        destino: f.destinoDoEnvio ?? { tipo: "whatsapp", valor: "+5511987654321" },
         conteudo: "olá",
       });
       if (r.ok) {
@@ -116,7 +141,7 @@ export function descreverContratoDoProvedor(nome: string, fabrica: () => Promise
       await f.prepararEnvioAceito();
       const resultado = await f.provedor.enviar(f.canal, {
         mensagemId: "msg_contrato_2",
-        destino: { tipo: "whatsapp", valor: "+5511987654321" },
+        destino: f.destinoDoEnvio ?? { tipo: "whatsapp", valor: "+5511987654321" },
         conteudo: "olá",
       });
       const teto = 16;
@@ -135,7 +160,7 @@ export function descreverContratoDoProvedor(nome: string, fabrica: () => Promise
         JSON.stringify(resultado),
         ...[erro, desconhecida].map((e) => (e instanceof Error ? `${e.name} ${e.message} ${e.stack ?? ""}` : String(e))),
       ].join("\n");
-      for (const segredo of [f.canal.segredoDoWebhook, f.canal.credencial]) {
+      for (const segredo of [f.canal.segredoDoWebhook, f.canal.credencial, ...(f.segredos ?? [])]) {
         if (segredo !== undefined && segredo !== "") expect(serializado).not.toContain(segredo);
       }
     });

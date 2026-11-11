@@ -16,6 +16,7 @@ import type { ProvedorDeCanal } from "@n1/dominio/crm/capacidades";
 import { lerChavesDoCofre, lerCredencial, type ChavesDoCofre } from "../servicos/cofre";
 import { ErroDeProvedor, TIPO_DO_SEGREDO_DO_WEBHOOK, type CanalParaProvedor, type ProvedorDeMensageria } from "./provedor";
 import { criarProvedorEvolution } from "./provedores/evolution/provedor";
+import { provedorInstagramDoAmbiente } from "./provedores/instagram/do-ambiente";
 import { provedorDeTeste } from "./provedores/teste";
 
 export interface RegistroDeProvedores {
@@ -27,12 +28,19 @@ export interface RegistroDeProvedores {
  * O de teste, mais a Evolution (`whatsapp-nao-oficial`) SÓ quando `EVOLUTION_URL` existe (16-12): sem ela, um Canal
  * real `whatsapp-nao-oficial` continua sem provedor e a Mensagem não é dada como enviada (MSG-05). A URL é o host fixo
  * da Evolution; nenhum corpo de webhook o troca.
+ *
+ * Sessão 8: o Instagram (`instagram-graph`) entra pela mesma regra, SÓ com `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET` e
+ * `INSTAGRAM_REDIRECT_URI` (ver `provedores/instagram/do-ambiente.ts`).
  */
 export function registroPadrao(): RegistroDeProvedores {
   const urlDaEvolution = process.env.EVOLUTION_URL?.trim();
+  const instagram = provedorInstagramDoAmbiente();
   return {
     teste: provedorDeTeste,
-    porProvedor: urlDaEvolution ? { "whatsapp-nao-oficial": criarProvedorEvolution({ url: urlDaEvolution }) } : {},
+    porProvedor: {
+      ...(urlDaEvolution ? { "whatsapp-nao-oficial": criarProvedorEvolution({ url: urlDaEvolution }) } : {}),
+      ...(instagram ? { "instagram-graph": instagram } : {}),
+    },
   };
 }
 

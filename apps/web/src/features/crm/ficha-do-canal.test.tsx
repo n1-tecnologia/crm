@@ -41,6 +41,9 @@ vi.mock("@/dados/crm/cliente-crm", async (original) => {
   return { ...real, invalidarCrm: vi.fn(async () => undefined) };
 });
 
+const { irParaForaDoApp } = vi.hoisted(() => ({ irParaForaDoApp: vi.fn() }));
+vi.mock("@/features/crm/ir-para-fora", () => ({ irParaForaDoApp }));
+
 vi.mock("next/navigation", () => ({
   usePathname: () => "/crm/caixa-de-entrada/configuracoes/canais/uuid-1",
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
@@ -269,5 +272,59 @@ describe("08-09 — a ficha do Canal relacional", () => {
     expect(screen.getByRole("link", { name: "ver a Fila" }).getAttribute("href")).toBe("/crm/caixa-de-entrada/configuracoes/filas/fila_com");
     const seed = buildSeed();
     expect(screen.getByText(seed.members.find((m) => m.id === "mem_rafael")!.displayName)).toBeTruthy();
+  });
+});
+
+describe("Sessão 8 — a ficha do Canal do Instagram conecta de verdade", () => {
+  const instagram = (sobre: Partial<CanalNaFicha> = {}) =>
+    canalRelacional({ nome: "Instagram da loja", tipo: "instagram", provedor: "instagram-graph", identificadorExterno: "loja.n1", ...sobre });
+
+  it("Administrador: \"Conectar com o Instagram\" no lugar de Simular; o clique pede a URL e leva o navegador para lá", async () => {
+    irParaForaDoApp.mockReset();
+    rotas["POST /canais/uuid-1/instagram/autorizar"] = () =>
+      resposta(200, { ok: true, dados: { url: "https://www.instagram.com/oauth/authorize?state=abc" } });
+    await montar("uuid-1", instagram());
+
+    expect(await screen.findByRole("heading", { name: /Instagram da loja/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Simular conexão" })).toBeNull();
+    expect(screen.getByText(/entre com a conta @loja\.n1/)).toBeTruthy();
+    expect(screen.getByText("só o Contato reabre a conversa")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Conectar com o Instagram" }));
+
+    await waitFor(() => expect(irParaForaDoApp).toHaveBeenCalledWith("https://www.instagram.com/oauth/authorize?state=abc"));
+    const posts = chamadasRest().filter(([url]) => url === "http://api/canais/uuid-1/instagram/autorizar");
+    expect(posts).toHaveLength(1);
+    expect(posts[0]![1]?.method).toBe("POST");
+  });
+
+  it("a recusa da api (integração não configurada) aparece na ficha e não sai do app", async () => {
+    irParaForaDoApp.mockReset();
+    rotas["POST /canais/uuid-1/instagram/autorizar"] = () =>
+      resposta(503, { ok: false, error: "A integração com o Instagram não está configurada neste ambiente.", codigo: "INSTAGRAM_NAO_CONFIGURADO" });
+    await montar("uuid-1", instagram());
+
+    fireEvent.click(await screen.findByRole("button", { name: "Conectar com o Instagram" }));
+
+    expect(await screen.findByText("A integração com o Instagram não está configurada neste ambiente.")).toBeTruthy();
+    expect(irParaForaDoApp).not.toHaveBeenCalled();
+  });
+
+  it("conectado de verdade: mostra a conta lida da Meta, sem marca de simulação nem botão de conectar", async () => {
+    rotas["GET /canais/uuid-1/instagram/conta"] = () =>
+      resposta(200, { ok: true, dados: { usuario: "loja.n1", nome: "Loja N1", fotoUrl: "https://cdn.exemplo/loja.jpg" } });
+    await montar("uuid-1", instagram({ conexao: "conectada", conexaoSimulada: false, conectadaEm: "2026-11-09T12:00:00.000Z" }));
+
+    expect(await screen.findByText("Loja N1")).toBeTruthy();
+    expect(screen.getByText("Conectado como")).toBeTruthy();
+    expect(screen.queryByText(AVISO_DA_SIMULACAO)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Conectar com o Instagram" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Desconectar" })).toBeTruthy();
+  });
+
+  it("Membro não vê o botão de conectar", async () => {
+    await montar("uuid-1", instagram(), "mem_julia");
+    expect(await screen.findByRole("heading", { name: /Instagram da loja/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Conectar com o Instagram" })).toBeNull();
   });
 });

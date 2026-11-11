@@ -8,6 +8,8 @@ import { describe, expect, it } from "vitest";
 import {
   DIRECOES_DA_MENSAGEM,
   DIRECOES_DE_ENVIO,
+  FRASE_SO_RESPONDE,
+  fraseDaJanelaBloqueada,
   STATUS_DE_ENTREGA,
   TIPOS_DE_ATOR_DA_MENSAGEM,
   proximoStatusDeEntrega,
@@ -23,8 +25,30 @@ const HORA = 3_600_000;
 const AGORA = Date.parse("2026-10-12T12:00:00.000Z");
 const haHoras = (horas: number): string => new Date(AGORA - horas * HORA).toISOString();
 
-const OFICIAL = { responseWindowHours: 24, requiresTemplateOutsideWindow: true } as const;
-const NAO_OFICIAL = { requiresTemplateOutsideWindow: false } as const;
+const OFICIAL = { responseWindowHours: 24, foraDaJanela: "soModelo" } as const;
+const NAO_OFICIAL = { foraDaJanela: "livre" } as const;
+const INSTAGRAM = { responseWindowHours: 24, foraDaJanela: "bloqueado" } as const;
+
+describe("validarEnvio no Instagram (`bloqueado`, Sessão 8 8.3.4)", () => {
+  it("antes da primeira mensagem do Contato, recusa: só se responde a quem escreveu", () => {
+    expect(validarEnvio({ capacidades: INSTAGRAM, ultimaRecebidaEm: null, agora: AGORA, modelosAprovados: [] })).toEqual({
+      ok: false,
+      error: FRASE_SO_RESPONDE,
+      field: "conteudo",
+    });
+  });
+
+  it("dentro das 24 h, passa; no último instante da janela, ainda passa", () => {
+    expect(validarEnvio({ capacidades: INSTAGRAM, ultimaRecebidaEm: haHoras(3), agora: AGORA, modelosAprovados: [] }).ok).toBe(true);
+    expect(validarEnvio({ capacidades: INSTAGRAM, ultimaRecebidaEm: haHoras(24), agora: AGORA, modelosAprovados: [] }).ok).toBe(true);
+  });
+
+  it("fora das 24 h, recusa falando que só o Contato reabre, nunca em Mensagem de modelo", () => {
+    const resultado = validarEnvio({ capacidades: INSTAGRAM, ultimaRecebidaEm: haHoras(30), agora: AGORA, modelosAprovados: ["m1"], modeloId: "m1" });
+    expect(resultado).toEqual({ ok: false, error: fraseDaJanelaBloqueada(24), field: "conteudo" });
+    if (!resultado.ok) expect(resultado.error).not.toMatch(/modelo/i);
+  });
+});
 
 describe("validarEnvio (RN-CXE-19 por tipo e provedor)", () => {
   it("oficial fora da janela, sem nenhum modelo aprovado: recusa dizendo que o Canal não tem modelo", () => {

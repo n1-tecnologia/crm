@@ -47,6 +47,8 @@ export type AcaoCrm =
   | "reabrir"
   | "definir_padrao"
   | "simular_conexao"
+  /** Sessão 8: conectar pelo login do provedor (OAuth), não pela simulação. */
+  | "conectar"
   | "desconectar"
   | "resolver"
   | "enviar";

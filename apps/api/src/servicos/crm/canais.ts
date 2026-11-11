@@ -47,6 +47,7 @@ import {
 } from "@n1/dominio/crm/canais";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { reenfileirarPendentesDoCanal } from "../../mensageria/fila-de-saida";
+import { esquecerConta } from "../../mensageria/provedores/instagram/repositorio";
 import { criarRepositorioDeCanaisPg, type RepositorioDeCanais } from "../../repositorios/crm/canais";
 import { avancarRevisaoDoEspaco, filaAtiva, origemAtiva } from "../../repositorios/crm/referencias";
 import { exigir, type AcessoAoCrm } from "./acesso";
@@ -177,7 +178,8 @@ export function criarServicoDeCanais(deps: { readonly pool: () => Pool; readonly
 
   /**
    * `simular_conexao` e `desconectar`: o domínio decide a transição, o serviço a grava. `conexao_confirmada` (16-13) não
-   * passa por aqui: quem a confirma é o comando `canal:ligar-evolution`, que fala com o provedor, não um Membro pela rota.
+   * passa por aqui: quem a confirma é o comando `canal:ligar-evolution`, que fala com o provedor, não um Membro pela rota
+   * (no Instagram, o login da Sessão 8, `mensageria/provedores/instagram/conexao.ts`).
    */
   function mudarConexao(membro: MembroDaSessao, id: string, acao: Exclude<AcaoDeConexao, "conexao_confirmada">): Promise<ResultadoCrm<Canal>> {
     return escrita(membro, acao, id, async ({ cliente, repositorio, canal }) => {
@@ -191,6 +193,8 @@ export function criarServicoDeCanais(deps: { readonly pool: () => Pool; readonly
       if (!proxima.ok) return transicaoInvalida(proxima.error);
       const atualizado = await repositorio.definirConexao(membro.workspaceId, id, proxima.value);
       if (!atualizado) return naoEncontrado();
+      // Sessão 8: desconectar o Instagram apaga a conta ligada e o token do cofre, na mesma transação.
+      if (acao === "desconectar" && canal.provedor === "instagram-graph") await esquecerConta(cliente, membro.workspaceId, id);
       await avancarRevisaoDoEspaco(cliente, membro.workspaceId);
       // B69 (16-06): as Mensagens guardadas enquanto o Canal estava fora do ar saem agora, no MESMO commit da
       // conexão: se a fila falhar, o Canal também não muda. Nada é descartado.
@@ -283,6 +287,7 @@ export function criarServicoDeCanais(deps: { readonly pool: () => Pool; readonly
         if (!validacao.ok) return transicaoInvalida(validacao.error);
         const arquivado = await repositorio.arquivar(membro.workspaceId, id);
         if (!arquivado) return naoEncontrado();
+        if (canal.provedor === "instagram-graph") await esquecerConta(cliente, membro.workspaceId, id);
         await avancarRevisaoDoEspaco(cliente, membro.workspaceId);
         return sucesso(arquivado);
       });

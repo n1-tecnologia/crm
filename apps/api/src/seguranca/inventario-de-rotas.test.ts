@@ -54,6 +54,9 @@ const ROTAS_PUBLICAS: readonly (RotaDeclarada & { readonly motivo: string })[] =
   { metodo: "GET", url: "/webhooks/meta/instagram", motivo: "verificação do webhook da Meta; a confiança é o token de verificação" },
   { metodo: "POST", url: "/webhooks/meta/instagram", motivo: "evento do Instagram; a confiança é a assinatura HMAC do corpo" },
   { metodo: "POST", url: "/webhooks/mensageria/:canalId", motivo: "chamada do provedor de mensageria; a confiança é o segredo do Canal no cabeçalho x-n1-webhook-segredo (D-16-03, D-16-06)" },
+  { metodo: "POST", url: "/webhooks/meta/instagram/desautorizar", motivo: "a Meta avisa que a conta tirou o acesso; a confiança é o `signed_request` assinado com o segredo do app" },
+  { metodo: "POST", url: "/webhooks/meta/instagram/exclusao-de-dados", motivo: "pedido de exclusão de dados da Meta; a confiança é o `signed_request` assinado com o segredo do app" },
+  { metodo: "GET", url: "/webhooks/meta/instagram/exclusao-de-dados/:codigo", motivo: "situação da exclusão que a Meta mostra à pessoa; só confirma um código que esta API assinou, sem dado nenhum" },
 ];
 
 /** `/saude` nasce síncrona dentro de `buildApp`, antes de qualquer hook externo poder ouvi-la. */

@@ -21,6 +21,10 @@ saída, mídia, Evolution) é construído contra ela; as Sessões 4, 7, 8 e 9 s�
   `apps/api`, vive o tempo de uma chamada e nunca vai a log, a resposta nem a mensagem de erro.
 - `baixarMidia` de qualquer implementação só fala com o host fixo do provedor (a das Sessões 7 e 8 recebe
   URL da Meta e confere o host). O provedor de teste não faz rede.
+- `resolverRemetente` (opcional, Sessão 8): para o provedor cujo webhook só traz um id opaco de quem escreveu (o
+  IGSID do Instagram). O processador de entrada o chama antes de `receberMensagem`, fora da transação, como a mídia,
+  e ele devolve a recebida com o remetente que o Contato tem (o @). Uma exceção é transitória. Sem ele, o remetente
+  de `interpretarChamada` já é o do Contato (o provedor de teste e a Evolution).
 
 ## O registro (`registro.ts`) e a regra D-16-03
 
@@ -44,8 +48,10 @@ webhook (`donoTipo: "canal"`, `tipo: "webhook_segredo"`) e, para Canal real, a c
 do provedor. `chaves` é opcional: sem ela, a chave mestra é lida do ambiente aqui, e `rotas/` nunca importa
 `servicos/cofre` (a rota só repassa a injeção dos testes).
 
-`registroPadrao()` tem o provedor de teste sempre e a Evolution (`whatsapp-nao-oficial`) **só quando `EVOLUTION_URL`
-existe**: sem ela, um Canal real continua recusando com `PROVEDOR_INDISPONIVEL`. A credencial do Canal é o JSON
+`registroPadrao()` tem o provedor de teste sempre, a Evolution (`whatsapp-nao-oficial`) **só quando `EVOLUTION_URL`
+existe** e o Instagram (`instagram-graph`, Sessão 8) **só com `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET` e
+`INSTAGRAM_REDIRECT_URI`** (`provedores/instagram/do-ambiente.ts`): sem elas, um Canal real continua recusando com
+`PROVEDOR_INDISPONIVEL`. A credencial do Canal é o JSON
 `{ instancia, apikey }` com o token da INSTÂNCIA (nunca a chave global da Evolution), no cofre com
 `tipo = "whatsapp-nao-oficial"`. Nesta fase a Evolution só traduz `MESSAGES_UPSERT`: a mensagem que a pessoa digita
 no celular (`fromMe`), o `status` de entrega e o `connection.update` não são assinados nem traduzidos (Sessão 4).
@@ -69,7 +75,9 @@ depósito em memória.
 `descreverContratoDoProvedor(nome, fabrica)` registra os casos que valem para qualquer implementação (segredo,
 tradução de texto, corpo inválido sem exceção, envio, teto de mídia, nenhum segredo em resultado ou erro).
 `provedor.test.ts` o roda contra o de teste; a Evolution (16-12) e os provedores das Sessões 4, 7, 8 e 9 rodam o
-mesmo contra o seu.
+mesmo contra o seu. Quem não tem segredo por Canal nem telefone (o Instagram: a Meta assina com a chave do app, e quem
+escreve é um IGSID) passa na `fabrica` as chamadas que devem ser recusadas (`chamadasRecusadas`), a forma do remetente
+(`remetenteValido`), o destino do envio e os segredos extras; o cabeçalho ausente continua obrigatório para todos.
 
 ## A entrada (`processador-de-entrada.ts`)
 
@@ -203,6 +211,15 @@ Adaptador mínimo da Evolution v2 para o Canal `whatsapp-nao-oficial` (D-16-04 a
 - O `e2e/mensageria-evolution.test.ts` prova a ida e a volta contra o servidor falso (`../testes/servidor-falso.ts`).
   **Nada rodou contra a Evolution real**: os pressupostos A1 a A4 e A10 são da prova ao vivo (16-15 e 16-16).
 
+## O Instagram (`provedores/instagram/`)
+
+O `ProvedorDeMensageria` do Canal `instagram-graph` (Sessão 8), ligado pelo login do Instagram (OAuth) e não por linha
+de comando. A Meta chama UM endereço para todas as contas do app, então a entrada não é a rota por Canal: a rota da Meta
+(`../rotas/webhook-meta.ts`) confere a assinatura e entrega a chamada a `provedores/instagram/entrada.ts`, que acha o
+Canal de cada conta, confere com `verificarChamada` e grava um item por linha em `webhooks_recebidos`. Dali em diante é
+o caminho de sempre: o processador (com `resolverRemetente` trocando o IGSID pelo @), `receberMensagem`, o outbox e o
+worker de saída. Tudo em [`provedores/instagram/CONTEXT.md`](provedores/instagram/CONTEXT.md).
+
 ## Ligar um Canal real: `canal:ligar-evolution`
 
 `npm run canal:ligar-evolution -w @n1/api -- --canal <id> --instancia <nome> [--seco]`
@@ -232,5 +249,7 @@ código e o id interno, nunca o conteúdo. As únicas linhas de dado são as con
 | `avisar.ts`, `ouvinte-pg.ts`, `hub-de-eventos.ts` | 16-07 | o tempo real: NOTIFY, `LISTEN` fora do pool, hub do SSE |
 | `midia.ts`, `coleta-de-orfaos.ts` | 16-10 | baixar e guardar a mídia recebida; a coleta diária de órfãos |
 | `provedores/evolution/` (`cliente.ts`, `traduzir.ts`, `provedor.ts`, `exemplos/`) | 16-12 | a Evolution |
+| `provedores/instagram/` (`provedor.ts`, `traduzir.ts`, `entrada.ts`, `conexao.ts`, `midia.ts`, `token.ts`, `repositorio.ts`) | Sessão 8 | o Instagram, com a conexão pelo login e a desautorização da Meta |
+| `provedores/meta/assinatura.ts` | Sessão 8 | a assinatura da Meta (`X-Hub-Signature-256`) e o `signed_request` |
 | `../bootstrap/canal-ligar-evolution.ts`, `canal-segredo-de-teste.ts` | 16-13, 16-02 | os dois comandos de linha da mensageria |
 | `provar-tempo-real.ts`, `provar-tempo-real.cli.ts` | 16-15 | `npm run tempo-real:provar`: uma volta de `LISTEN/NOTIFY` pelo pooler, para o dono provar a A9 |

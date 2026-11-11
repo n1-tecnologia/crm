@@ -191,6 +191,18 @@ export function podeSimularConexao(canal: Pick<CanalNaFicha, "conexao" | "estado
 }
 
 /**
+ * A conta que autorizou no provedor é a do Canal? Compara pela forma canônica do
+ * tipo (no Instagram, o usuário sem `@` e em minúsculas), a mesma que o Canal
+ * guardou ao nascer. Trocar a conta de um Canal é arquivar e criar outro (INV-CXE-02).
+ * Quem conecta pelo login do provedor (Sessão 8) usa `proximaConexao(canal, "conexao_confirmada")`.
+ */
+export function contaDoProvedorConfere(canal: Pick<Canal, "tipo" | "identificadorExterno">, contaAutorizada: string): boolean {
+  const autorizada = identificadorCanonico(canal.tipo, contaAutorizada);
+  const doCanal = identificadorCanonico(canal.tipo, canal.identificadorExterno);
+  return autorizada !== undefined && autorizada === doCanal;
+}
+
+/**
  * 11.1: arquivar tira o Canal de uso e o libera para o mesmo número entrar
  * noutro. O Canal arquivado é sempre desconectado — o serviço faz as duas
  * mudanças na mesma escrita.

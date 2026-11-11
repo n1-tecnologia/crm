@@ -51,9 +51,9 @@ describe("capacidadesDoCanal (D-02)", () => {
   it("WhatsApp não oficial perde a janela e a exigência de modelo, e só isso", () => {
     const capacidades = capacidadesDoCanal({ channelType: "whatsapp", provider: "whatsapp-nao-oficial" });
     expect(capacidades.responseWindowHours).toBeUndefined();
-    expect(capacidades.requiresTemplateOutsideWindow).toBe(false);
-    const { responseWindowHours: _janela, requiresTemplateOutsideWindow: _modelo, ...resto } = CHANNEL_CAPABILITIES.whatsapp;
-    const { responseWindowHours: _j2, requiresTemplateOutsideWindow: _m2, ...restoDoNaoOficial } = capacidades;
+    expect(capacidades.foraDaJanela).toBe("livre");
+    const { responseWindowHours: _janela, foraDaJanela: _modelo, ...resto } = CHANNEL_CAPABILITIES.whatsapp;
+    const { responseWindowHours: _j2, foraDaJanela: _m2, ...restoDoNaoOficial } = capacidades;
     expect(restoDoNaoOficial).toEqual(resto);
     expect(capacidades.resolvesIdentifierTypes).toEqual(CHANNEL_CAPABILITIES.whatsapp.resolvesIdentifierTypes);
     expect(capacidades.sendableMediaTypes).toEqual(CHANNEL_CAPABILITIES.whatsapp.sendableMediaTypes);

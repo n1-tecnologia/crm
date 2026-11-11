@@ -26,6 +26,7 @@
  * pelo subcaminho `@n1/dominio/crm/mensagens`.
  */
 
+import type { ForaDaJanela } from "./capacidades";
 import { fail, ok, type OperationResult } from "../state";
 import type { ConexaoDoCanal } from "./canais";
 import { LIMITES_CRM } from "./comum";
@@ -177,7 +178,7 @@ export interface EntradaDeEnvio {
   /** As Capacidades do Canal (`capacidadesDoCanal`): a regra não conhece o provedor. */
   readonly capacidades: {
     readonly responseWindowHours?: number;
-    readonly requiresTemplateOutsideWindow: boolean;
+    readonly foraDaJanela: ForaDaJanela;
   };
   /** O `criadoEm` da última Mensagem `recebida` da Conversa; `null` se nunca recebeu. */
   readonly ultimaRecebidaEm: string | null;
@@ -188,17 +189,36 @@ export interface EntradaDeEnvio {
   readonly modelosAprovados: readonly string[];
 }
 
+/** `bloqueado` antes da primeira recebida: o provedor só deixa responder (Instagram). */
+export const FRASE_SO_RESPONDE =
+  "Neste Canal só se responde a quem escreveu primeiro: a conversa começa quando o Contato manda a primeira mensagem.";
+
+/** `bloqueado` depois da janela: não existe modelo, só o Contato reabre. */
+export function fraseDaJanelaBloqueada(horas: number): string {
+  return `Passaram ${horas} h desde a última mensagem do Contato: só ele pode reabrir a conversa.`;
+}
+
 /**
- * RN-CXE-19: fora da janela de resposta, só uma Mensagem de modelo aprovada
- * sai — e a recusa vem ANTES de gravar, para qualquer ator. A janela só existe
- * depois da primeira recebida, e vale até o instante do fim (a mesma conta de
- * `sendMessage`). Capacidades sem exigência de modelo (WhatsApp não oficial,
- * E-mail, Instagram, Chat do site) liberam texto livre a qualquer hora.
+ * RN-CXE-19: o que sai depois da janela de resposta depende de `foraDaJanela`,
+ * e a recusa vem ANTES de gravar, para qualquer ator. A janela vale até o
+ * instante do fim (a mesma conta de `sendMessage`).
+ *   - `livre` (WhatsApp não oficial, E-mail, LinkedIn, Chat do site): texto a qualquer hora.
+ *   - `soModelo` (WhatsApp oficial): fora da janela, só Mensagem de modelo aprovada; sem
+ *     nenhuma recebida, a janela ainda não existe e o texto passa.
+ *   - `bloqueado` (Instagram, Sessão 8): não existe modelo. Sem recebida ou fora da
+ *     janela, nada sai — só o Contato reabre a conversa.
  */
 export function validarEnvio(entrada: EntradaDeEnvio): OperationResult<void> {
   const { capacidades, ultimaRecebidaEm, agora, modeloId, modelosAprovados } = entrada;
-  if (!capacidades.requiresTemplateOutsideWindow) return ok(undefined);
+  if (capacidades.foraDaJanela === "livre") return ok(undefined);
   const horas = capacidades.responseWindowHours;
+  if (capacidades.foraDaJanela === "bloqueado") {
+    if (ultimaRecebidaEm === null) return fail(FRASE_SO_RESPONDE, "conteudo");
+    if (horas !== undefined && agora > Date.parse(ultimaRecebidaEm) + horas * 3_600_000) {
+      return fail(fraseDaJanelaBloqueada(horas), "conteudo");
+    }
+    return ok(undefined);
+  }
   if (horas === undefined || ultimaRecebidaEm === null) return ok(undefined);
   const fimDaJanela = Date.parse(ultimaRecebidaEm) + horas * 3_600_000;
   if (agora <= fimDaJanela) return ok(undefined);

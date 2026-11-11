@@ -31,6 +31,9 @@ import { Button, CorpoDeTela, Field, PageHeader, Painel, Pilula, Select, TextInp
 
 const DESTINO = "/crm/caixa-de-entrada/configuracoes";
 
+/** Os provedores que já falam com o mundo (Sessão 8): o espaço reservado vira instrução. */
+const PROVEDORES_COM_INTEGRACAO: ReadonlySet<ProvedorDeCanal> = new Set<ProvedorDeCanal>(["instagram-graph"]);
+
 /** O ícone do espaço reservado: o que aquele provedor vai pedir quando a integração chegar. */
 const ICONE_DO_ESPACO_RESERVADO: Readonly<Record<ProvedorDeCanal, (props: { readonly className?: string }) => React.ReactNode>> = {
   "whatsapp-nao-oficial": QrCode,
@@ -139,7 +142,12 @@ export function ConectarProvedor({ provedor }: { readonly provedor: ProvedorDeCa
             <div className="grid gap-1">
               <p className="app-md flex flex-wrap items-center gap-2" style={{ color: "var(--texto)" }}>
                 {orientacao.espacoReservado.titulo}
-                <Pilula tom="neutro">disponível quando a integração chegar</Pilula>
+                {/* Sessão 8: o Instagram já conecta de verdade, pela ficha do Canal. */}
+                {PROVEDORES_COM_INTEGRACAO.has(provedor) ? (
+                  <Pilula tom="sucesso">na ficha do Canal, depois de criar</Pilula>
+                ) : (
+                  <Pilula tom="neutro">disponível quando a integração chegar</Pilula>
+                )}
               </p>
               <p className="app-meta">{orientacao.espacoReservado.texto}</p>
             </div>

@@ -49,6 +49,7 @@ import { criarServicoDeNomes, type ServicoDeNomes } from "../../servicos/crm/nom
 import { criarServicoDeNotas, type ServicoDeNotas } from "../../servicos/crm/notas";
 import { criarServicoDeSucessao, type ServicoDeSucessao } from "../../servicos/crm/sucessao";
 import { criarServicoDeTarefasConversacionais, type ServicoDeTarefasConversacionais } from "../../servicos/crm/tarefas-conversacionais";
+import { criarServicoDeConexaoDoInstagram, type ServicoDeConexaoDoInstagram } from "../../mensageria/provedores/instagram/conexao";
 import { rotasDeAtividades } from "./atividades";
 import { rotasDeCanais } from "./canais";
 import { rotasDeConsentimentos } from "./consentimentos";
@@ -64,6 +65,7 @@ import { rotasDeNomes } from "./nomes";
 import { rotasDeNotas } from "./notas";
 import { rotasDeSucessao } from "./sucessao";
 import { rotasDeTarefasConversacionais } from "./tarefas-conversacionais";
+import { rotasDoInstagram } from "./instagram";
 
 export interface OpcoesDeCrm {
   /** Padrão: o `pool()` do processo. Só é chamado quando uma requisição chega, nunca na montagem. */
@@ -100,6 +102,8 @@ export interface OpcoesDeCrm {
   readonly inicio?: ServicoDoInicio;
   /** Padrão: lê Papel e Membro de `plataforma.registros`. Injeção para teste sem banco. */
   readonly acesso?: AcessoAoCrm;
+  /** Injeção só para teste: troca a conexão do Instagram (Sessão 8) por uma falsa, sem a Meta. */
+  readonly instagram?: ServicoDeConexaoDoInstagram;
 }
 
 export async function rotasDeCrm(app: FastifyInstance, opcoes: OpcoesDeCrm = {}): Promise<void> {
@@ -138,4 +142,6 @@ export async function rotasDeCrm(app: FastifyInstance, opcoes: OpcoesDeCrm = {})
   await app.register(rotasDeNomes, { servico: nomes });
   const inicio = opcoes.inicio ?? criarServicoDoInicio({ pool: obterPool, acesso });
   await app.register(rotasDoInicio, { servico: inicio });
+  const instagram = opcoes.instagram ?? criarServicoDeConexaoDoInstagram({ pool: obterPool, acesso });
+  await app.register(rotasDoInstagram, { servico: instagram });
 }
