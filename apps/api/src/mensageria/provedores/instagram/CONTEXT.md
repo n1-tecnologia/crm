@@ -129,9 +129,9 @@ Em Instagram › Configuração da API com login do Instagram:
 
 ## O que ainda não faz
 
-- **O que a conta manda pelo aplicativo do Instagram** (o eco, `is_echo`) é `ignorado:eco`, como o `fromMe` da
-  Evolution: a resposta dada pelo celular não aparece no fio. Gravar a enviada que vem do provedor é uma porta nova
-  da mensageria, da Sessão 4.
+- **O que a conta manda pelo aplicativo do Instagram** (o eco, `is_echo`) é `ignorado:eco`: a resposta dada pelo
+  celular não aparece no fio. A porta existe desde a Sessão 4 (`digitadaNoAparelho` no `RecebidaDoProvedor`, que a
+  Evolution já usa para o `fromMe`), mas o tradutor do Instagram ainda não a usa.
 - **Reações, edições, postback e referral** chegam e ficam `ignorado:<motivo>` na fila.
 - **Perfil que a Meta não entrega** (sem @): a linha tenta até a 8ª vez e fica `falhou`; a Mensagem não entra.
 - **Renovação do token por rotina.** É preguiçosa (ver acima).

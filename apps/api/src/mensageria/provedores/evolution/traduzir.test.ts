@@ -10,6 +10,7 @@ import documento from "./exemplos/documento.json";
 import figurinha from "./exemplos/figurinha.json";
 import ignorados from "./exemplos/ignorados.json";
 import imagem from "./exemplos/imagem.json";
+import textoDoCelular from "./exemplos/texto-do-celular.json";
 import texto from "./exemplos/texto.json";
 import video from "./exemplos/video.json";
 import { semApikey, traduzirChamadaDaEvolution } from "./traduzir";
@@ -159,6 +160,48 @@ describe("traduzirChamadaDaEvolution: o que vira Mensagem", () => {
     expect(JSON.stringify(evento.cargaBruta)).not.toContain("apikey");
     expect(JSON.stringify(evento)).not.toContain("tok-da-instancia-9f3a");
     expect(JSON.stringify(evento)).not.toContain("outra-chave-7c1d");
+  });
+});
+
+describe("traduzirChamadaDaEvolution: a Mensagem digitada no celular (fromMe, 4.4.2)", () => {
+  it("entra como digitadaNoAparelho: o remetente é o Contato (o remoteJid) e o pushName do dono do número nunca vira o nome dele", () => {
+    const evento = umaMensagem(textoDoCelular);
+    expect(textoDoCelular.data.pushName).toBe("Dono do Numero");
+    expect(evento).toMatchObject({
+      digitadaNoAparelho: true,
+      idExterno: "3EB0A1B2C3D4E5F60010",
+      conteudo: "enviada pelo celular",
+      remetente: { tipo: "whatsapp", valor: "+5511987654321" },
+      criadoEm: "2024-11-09T11:00:00.000Z",
+    });
+    expect(evento.remetente).not.toHaveProperty("nomeExibido");
+  });
+
+  it("a mídia digitada no celular entra com o anexo, e a referência leva o fromMe verdadeiro (a Evolution acha a mídia pela chave)", () => {
+    const corpo = { ...imagem, data: { ...imagem.data, key: { ...imagem.data.key, fromMe: true } } };
+    const evento = umaMensagem(corpo);
+    expect(evento).toMatchObject({ digitadaNoAparelho: true, conteudo: "olha esta foto" });
+    expect(evento.anexos).toHaveLength(1);
+    expect(JSON.parse(evento.anexos![0]!.referenciaNoProvedor).key).toMatchObject({ fromMe: true });
+  });
+
+  it("a Mensagem do Contato (fromMe falso ou ausente) não leva a marca", () => {
+    expect(umaMensagem(texto)).not.toHaveProperty("digitadaNoAparelho");
+    const falso = { ...texto, data: { ...texto.data, key: { ...texto.data.key, fromMe: false } } };
+    expect(umaMensagem(falso)).not.toHaveProperty("digitadaNoAparelho");
+  });
+
+  it("o que o dono mandou em grupo, no status, como reação, edição ou sem id continua ignorado (só a conversa 1:1 entra)", () => {
+    const deCelular = (key: object, message?: object) => ({ ...textoDoCelular, data: { ...textoDoCelular.data, key: { ...textoDoCelular.data.key, ...key }, ...(message ? { message } : {}) } });
+    expect(traduzirChamadaDaEvolution(deCelular({ remoteJid: "120363000000000000@g.us" }), INSTANCIA)).toMatchObject([{ tipo: "ignorado", motivo: "grupo" }]);
+    expect(traduzirChamadaDaEvolution(deCelular({ remoteJid: "status@broadcast" }), INSTANCIA)).toMatchObject([{ tipo: "ignorado", motivo: "status" }]);
+    expect(traduzirChamadaDaEvolution(deCelular({}, { reactionMessage: { text: "👍" } }), INSTANCIA)).toMatchObject([{ tipo: "ignorado", motivo: "reacao" }]);
+    expect(traduzirChamadaDaEvolution(deCelular({}, { protocolMessage: { type: 14 } }), INSTANCIA)).toMatchObject([{ tipo: "ignorado", motivo: "edicao" }]);
+    expect(traduzirChamadaDaEvolution(deCelular({ id: "" }), INSTANCIA)).toEqual([{ tipo: "ignorado", motivo: "sem_id" }]);
+  });
+
+  it("o fromMe de um corpo de outra instância continua sem evento nenhum", () => {
+    expect(traduzirChamadaDaEvolution({ ...textoDoCelular, instance: "outra" }, INSTANCIA)).toEqual([]);
   });
 });
 

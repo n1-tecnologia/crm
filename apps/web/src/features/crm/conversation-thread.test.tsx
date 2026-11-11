@@ -442,6 +442,17 @@ describe("ConversationThread — responder numa Conversa aberta grava em platafo
     expect(document.querySelector("[data-fio='mensagens'] img")).toBeNull();
   });
 
+  it("(5b) 4.4.2: a Mensagem que a pessoa digitou no celular (enviada pelo Canal como Integração) sai à direita e o avatar diz Celular, não Sistema", async () => {
+    const doCelular: Mensagem = { ...novaMensagem("cnv_suporte", "chn_suporte", 1, "enviada", "2026-10-11T09:00:00.000Z", "respondi pelo celular"), ator: { tipo: "integration", id: "chn_suporte" }, idExterno: "3EB0A1" };
+    mensagensDaApi.cnv_suporte = [novaMensagem("cnv_suporte", "chn_suporte", 2, "recebida", "2026-10-11T08:59:00.000Z", "oi"), doCelular];
+    montar({ conversaId: "cnv_suporte" });
+    await waitFor(() => expect(screen.getByText("respondi pelo celular")).toBeTruthy());
+    expect(screen.getByTitle("Celular · Integração")).toBeTruthy();
+    expect(screen.queryByTitle(/^Sistema/)).toBeNull();
+    expect(screen.getByText("respondi pelo celular").closest(".justify-end")).not.toBeNull();
+    expect(screen.getByText("oi").closest(".justify-start")).not.toBeNull();
+  });
+
   it("(6) a Conversa que o fio segue vem de GET /conversas/:id: o Canal dela decide a aba mesmo sem a lista", async () => {
     // A Conversa pedida não está na lista do Contato (por exemplo, é de um Canal que o Contato não alcança agora).
     conversasDaApi = conversasDaApi.filter((c) => c.id !== "cnv_comercial").concat(novaConversa("cnv_so_por_id", "chn_comercial", { estado: "ativo" }));

@@ -17,6 +17,10 @@
  *      `plataforma.registros`;
  *   6. a Mensagem entra pelo `inserirRecebida` de sempre.
  *
+ * A Mensagem digitada no celular do Canal (`digitadaNoAparelho`, 4.4.2) passa pelo mesmo caminho, com três diferenças: entra
+ * `enviada` (Ator: o Canal), não reativa o Contato arquivado ou na lixeira (a pessoa não escreveu: o Contato não voltou) e a
+ * Conversa vem de `destinoDaDigitadaNoAparelho`, que nunca reabre uma resolvida nem acorda uma pendente.
+ *
  * A corrida (Pitfall 11): dois eventos do mesmo número novo disputam `contato_identificadores_unico`
  * (ou `conversas_nao_resolvida_uq`); quem perde leva `23505`, e a transação inteira é refeita uma vez
  * (agora o detentor ou a aberta já existem). A segunda falha, ou qualquer outro erro, sobe.
@@ -37,7 +41,10 @@ import { normalizarIdentificadorDeContato } from "@n1/dominio/crm/normalizacao";
 import {
   JANELA_DE_REABERTURA_PADRAO_HORAS,
   contatoDaRecebida,
+  destinoDaDigitadaNoAparelho,
   destinoDaRecebida,
+  type DestinoDaRecebida,
+  type EntradaDoDestino,
   type RecebidaDoProvedor,
 } from "@n1/dominio/crm/recebimento";
 import { avisarCrm } from "../../mensageria/avisar";
@@ -142,6 +149,13 @@ async function ultimaResolvidaDoPar(cliente: PoolClient, workspaceId: string, co
   return linha ? { id: linha.id, resolvidaEm: linha.resolvida_em.toISOString(), naLixeira: linha.estado === "na_lixeira" } : null;
 }
 
+/** O destino da Mensagem: a regra da `recebida`, ou a da digitada no celular (que só usa a Conversa que já existe, sem mudar o estado dela). */
+function destinoDoEvento(evento: RecebidaDoProvedor, entrada: EntradaDoDestino): DestinoDaRecebida {
+  if (evento.digitadaNoAparelho !== true) return destinoDaRecebida(entrada);
+  const destino = destinoDaDigitadaNoAparelho(entrada);
+  return destino.acao === "usar" ? { acao: "usar", conversaId: destino.conversaId, voltaParaAberta: false } : destino;
+}
+
 async function processar(
   cliente: PoolClient,
   workspaceId: string,
@@ -207,8 +221,8 @@ async function processar(
     if (decisao.acao === "recusar") {
       return recusa<never>(409, "Este Contato foi mesclado e agora é somente leitura.", { codigo: "CONTATO_MESCLADO" });
     }
-    // RN-CON-13: quem escreve volta à ativa.
-    if (decisao.acao === "reativar") await contatos.definirEstado(workspaceId, contato.id, "ativo");
+    // RN-CON-13: quem escreve volta à ativa. A Mensagem digitada no celular é nossa, não do Contato: não o reativa.
+    if (decisao.acao === "reativar" && evento.digitadaNoAparelho !== true) await contatos.definirEstado(workspaceId, contato.id, "ativo");
     const doBanco = (await contatos.listarIdentificadores(workspaceId, contato.id)).find((i) => i.tipo === evento.remetente.tipo && i.valor === valor);
     if (!doBanco) return recusa<never>(404, "Identificador não encontrado.", { codigo: "IDENTIFICADOR_NAO_ENCONTRADO" });
     contatoId = contato.id;
@@ -235,7 +249,7 @@ async function processar(
   // A Conversa (RN-CXE-09): reaproveita a aberta/pendente, reabre a resolvida na janela, ou abre outra.
   const aberta = await conversas.abertaDoPar(workspaceId, contatoId, canal.id);
   const ultimaResolvida = aberta ? null : await ultimaResolvidaDoPar(cliente, workspaceId, contatoId, canal.id);
-  const destino = destinoDaRecebida({
+  const destino = destinoDoEvento(evento, {
     aberta: aberta ? { id: aberta.id, situacao: aberta.situacao === "pendente" ? "pendente" : "aberta" } : null,
     ultimaResolvida,
     janelaDeReaberturaHoras: await janelaDeReaberturaHoras(cliente, workspaceId),
@@ -292,6 +306,7 @@ async function processar(
     remetenteExterno: evento.remetente.valor,
     identificadorId,
     cargaBruta: evento.cargaBruta,
+    ...(evento.digitadaNoAparelho === true ? { digitadaNoAparelho: true } : {}),
   });
   // Outra transação gravou este `idExterno` depois da checagem: desfaz o que esta criou e relê a repetida.
   if (!gravada) return recusa<never>(409, "Mensagem já recebida.", { codigo: REPETIDA_NA_CORRIDA });

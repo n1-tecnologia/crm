@@ -2,10 +2,13 @@
  * O tradutor do `MESSAGES_UPSERT` da Evolution v2.3.7 (16-12, D-16-04, MSG-06): o corpo do webhook vira os eventos
  * do provedor (`EventoDoProvedor`). Função pura: sem rede, sem banco, sem relógio.
  *
- * Só o que é mensagem de uma pessoa entra. O mesmo evento traz grupos, `status@broadcast`, reações, edições e o que o
- * próprio número enviou (`fromMe`): tudo isso vira `ignorado` com o motivo, nunca Contato nem Conversa fantasma
- * (Pitfall 7). `fromMe` é ignorado nesta fase: o socket da Evolution tem `emitOwnEvents: false`, então o que a
- * plataforma envia não volta, e o que foi digitado no celular só entra na Sessão 4.
+ * Só o que é mensagem de uma pessoa entra. O mesmo evento traz grupos, `status@broadcast`, reações e edições: tudo isso
+ * vira `ignorado` com o motivo, nunca Contato nem Conversa fantasma (Pitfall 7).
+ *
+ * `fromMe` (Sessão 4, 4.4.2): a Mensagem que a pessoa digitou no celular entra como `digitadaNoAparelho`, com o Contato (o
+ * `remoteJid`) como `remetente`. O `pushName` dela é o do DONO do número e nunca vira o nome do Contato. O socket da Evolution
+ * tem `emitOwnEvents: false`, então o que a plataforma envia não volta por aqui (e, se um dia voltar, o id externo já gravado
+ * descarta a repetida e `gravarEnvio` desfaz a cópia que chegou antes do aceite).
  *
  * O instante vem só de `messageTimestamp` (segundos Unix). O `date_time` do corpo é hora local com sufixo `Z` e nunca
  * é lido (Pitfall 16). O corpo nunca leva `url` de mídia seguida: a mídia sai de `getBase64FromMediaMessage`.
@@ -156,7 +159,7 @@ export function traduzirChamadaDaEvolution(corpo: unknown, instancia: string): r
   const chave = dados.key;
   const idExterno = typeof chave.id === "string" && chave.id !== "" ? chave.id : undefined;
 
-  if (chave.fromMe === true) return ignorado("fromMe", idExterno);
+  const digitadaNoAparelho = chave.fromMe === true;
   const jid = typeof chave.remoteJid === "string" ? chave.remoteJid : "";
   if (jid === "status@broadcast") return ignorado("status", idExterno);
   if (jid.endsWith("@g.us")) return ignorado("grupo", idExterno);
@@ -171,13 +174,15 @@ export function traduzirChamadaDaEvolution(corpo: unknown, instancia: string): r
   if (ehObjeto(mensagem.reactionMessage)) return ignorado("reacao", idExterno);
   if (ehObjeto(mensagem.protocolMessage) || ehObjeto(mensagem.editedMessage)) return ignorado("edicao", idExterno);
 
-  const nome = typeof dados.pushName === "string" ? dados.pushName.trim() : "";
+  // O `pushName` de uma Mensagem `fromMe` é o nome de quem digitou (o dono do número), não o do Contato.
+  const nome = !digitadaNoAparelho && typeof dados.pushName === "string" ? dados.pushName.trim() : "";
   const base = {
     tipo: "mensagem" as const,
     idExterno,
     criadoEm: instanteDoProvedor(dados.messageTimestamp) ?? new Date().toISOString(),
     remetente: { tipo: "whatsapp" as const, valor: `+${digitos}`, ...(nome === "" ? {} : { nomeExibido: nome }) },
     cargaBruta: semApikey(corpo),
+    ...(digitadaNoAparelho ? { digitadaNoAparelho: true } : {}),
   };
 
   const estendida = ehObjeto(mensagem.extendedTextMessage) ? mensagem.extendedTextMessage : undefined;

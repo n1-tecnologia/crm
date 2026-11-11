@@ -41,6 +41,12 @@ export interface RecebidaDoProvedor {
   readonly assunto?: string;
   /** O payload cru; dado pessoal, só o banco o guarda. */
   readonly cargaBruta: unknown;
+  /**
+   * Sessão 4 (4.4.2): a Mensagem foi digitada no próprio aparelho do Canal (o WhatsApp no celular da pessoa), não pelo CRM. Nesse
+   * caso `remetente` continua sendo o Contato, o OUTRO lado da conversa (nunca o dono do número), e a Mensagem entra como
+   * `enviada` pelo Canal (`destinoDaDigitadaNoAparelho` decide a Conversa). Ausente = a Mensagem veio do Contato.
+   */
+  readonly digitadaNoAparelho?: boolean;
 }
 
 export type DestinoDaRecebida =
@@ -69,6 +75,26 @@ export function destinoDaRecebida(entrada: EntradaDoDestino): DestinoDaRecebida 
     const resolvidaEm = Date.parse(ultimaResolvida.resolvidaEm);
     if (!Number.isNaN(resolvidaEm) && agora - resolvidaEm <= janelaDeReaberturaHoras * 3_600_000) {
       return { acao: "reabrir", conversaId: ultimaResolvida.id };
+    }
+  }
+  return { acao: "abrir" };
+}
+
+export type DestinoDaDigitadaNoAparelho = { readonly acao: "usar"; readonly conversaId: string } | { readonly acao: "abrir" };
+
+/**
+ * A Mensagem que a pessoa digitou no celular (4.4.2) só entra no fio: nunca reabre uma Conversa resolvida, nunca tira uma pendente
+ * do Adiamento e nunca mexe na lixeira (a resposta de "obrigado, até logo" depois de resolver não pode reabrir o atendimento).
+ * Usa a aberta ou pendente do par; sem ela, a última resolvida (fora da lixeira) que ainda cabe na janela de `inbox` do Espaço, no
+ * estado em que está; senão abre-se uma Conversa nova (a pessoa puxou assunto pelo celular).
+ */
+export function destinoDaDigitadaNoAparelho(entrada: EntradaDoDestino): DestinoDaDigitadaNoAparelho {
+  const { aberta, ultimaResolvida, janelaDeReaberturaHoras, agora } = entrada;
+  if (aberta) return { acao: "usar", conversaId: aberta.id };
+  if (ultimaResolvida && !ultimaResolvida.naLixeira) {
+    const resolvidaEm = Date.parse(ultimaResolvida.resolvidaEm);
+    if (!Number.isNaN(resolvidaEm) && agora - resolvidaEm <= janelaDeReaberturaHoras * 3_600_000) {
+      return { acao: "usar", conversaId: ultimaResolvida.id };
     }
   }
   return { acao: "abrir" };

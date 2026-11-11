@@ -64,6 +64,11 @@ export interface LinhaDeMensagemRecebida {
   readonly remetenteExterno: string | null;
   readonly identificadorId: string | null;
   readonly cargaBruta: unknown;
+  /**
+   * 4.4.2: a Mensagem foi digitada no celular do Canal. Entra `enviada` (status `enviada`, no instante do provedor) e o Ator
+   * continua sendo o Canal como Integração; `remetente_externo` e `identificador_id` ficam nulos, como numa `enviada` do CRM.
+   */
+  readonly digitadaNoAparelho?: boolean;
 }
 
 export interface FiltroDeMensagens {
@@ -84,7 +89,7 @@ export interface RepositorioDeMensagens {
    * de Identificadores do Contato da Conversa.
    */
   identificadorDaUltimaRecebida(workspaceId: string, conversaId: string): Promise<string | null>;
-  /** Grava a `recebida`; `undefined` quando o id externo já existe no Canal (INV-CXE-08). */
+  /** Grava a `recebida` (ou a `enviada` digitada no celular); `undefined` quando o id externo já existe no Canal (INV-CXE-08). */
   inserirRecebida(workspaceId: string, linha: LinhaDeMensagemRecebida): Promise<Mensagem | undefined>;
   obterPorIdExterno(workspaceId: string, canalId: string, idExterno: string): Promise<Mensagem | undefined>;
   /** A Mensagem por id, no Espaço, ou `undefined`. Nunca a carga bruta. */
@@ -273,12 +278,15 @@ export function criarRepositorioDeMensagensPg(cliente: Pool | PoolClient): Repos
     },
 
     async inserirRecebida(workspaceId, linha) {
+      const doAparelho = linha.digitadaNoAparelho === true;
       const { rows } = await cliente.query<LinhaDoBancoDeMensagem>(
         `insert into plataforma.mensagens
            (workspace_id, conversa_id, canal_id, direcao, ator_tipo, ator_id, id_externo, criado_em,
-            conteudo, anexos, assunto, enderecos_adicionais, remetente_externo, identificador_id, carga_bruta)
-         values ($1, $2, $3, 'recebida', 'integration', $3, $4, $5::timestamptz,
-                 $6, $7::jsonb, $8, $9::jsonb, $10, $11, $12::jsonb)
+            conteudo, anexos, assunto, enderecos_adicionais, remetente_externo, identificador_id, carga_bruta,
+            status_entrega, status_entrega_em)
+         values ($1, $2, $3, $13::text, 'integration', $3, $4, $5::timestamptz,
+                 $6, $7::jsonb, $8, $9::jsonb, $10, $11, $12::jsonb,
+                 $14::text, case when $14::text is null then null else $5::timestamptz end)
          on conflict (workspace_id, canal_id, id_externo) where id_externo is not null do nothing
          returning ${COLUNAS_DE_MENSAGEM}`,
         [
@@ -291,9 +299,11 @@ export function criarRepositorioDeMensagensPg(cliente: Pool | PoolClient): Repos
           JSON.stringify(linha.anexos),
           linha.assunto,
           JSON.stringify(linha.enderecosAdicionais),
-          linha.remetenteExterno,
-          linha.identificadorId,
+          doAparelho ? null : linha.remetenteExterno,
+          doAparelho ? null : linha.identificadorId,
           JSON.stringify(linha.cargaBruta ?? null),
+          doAparelho ? "enviada" : "recebida",
+          doAparelho ? "enviada" : null,
         ],
       );
       return rows[0] ? linhaParaMensagem(rows[0]) : undefined;
@@ -318,6 +328,19 @@ export function criarRepositorioDeMensagensPg(cliente: Pool | PoolClient): Repos
     },
 
     async gravarEnvio(workspaceId, id, resultado) {
+      // 4.4.2: se a Evolution devolveu esta mesma Mensagem como "digitada no celular" ANTES de o aceite chegar aqui, a cópia
+      // ficou com o `id_externo` e o índice único recusaria este `update` (o aceite falharia e a Mensagem viraria `falhou`
+      // sem ter falhado). A cópia é a mesma Mensagem sem o autor: sai, e a do CRM (que tem o Membro) fica com o id. Só a
+      // `enviada` do Canal como Integração, no mesmo Canal; só quando esta ainda está `pendente`. Chamar com o cliente de uma
+      // transação (o `gravarOAceite` chama), para o `delete` e o `update` valerem juntos.
+      await cliente.query(
+        `delete from plataforma.mensagens copia
+          using plataforma.mensagens propria
+          where propria.workspace_id = $1 and propria.id = $2 and propria.direcao = 'enviada' and propria.status_entrega = 'pendente'
+            and copia.workspace_id = propria.workspace_id and copia.canal_id = propria.canal_id and copia.id_externo = $3
+            and copia.id <> propria.id and copia.direcao = 'enviada' and copia.ator_tipo = 'integration'`,
+        [workspaceId, id, resultado.idExterno],
+      );
       const { rows } = await cliente.query<LinhaDoBancoDeMensagem>(
         `update plataforma.mensagens
             set id_externo = $3, status_entrega = 'enviada', status_entrega_em = $4::timestamptz, motivo_falha = null

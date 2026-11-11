@@ -9,7 +9,7 @@
  * provedor e a carga bruta guardada fora de toda leitura.
  */
 
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { encerrar, pool } from "../../persistencia/conexao";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearCanal } from "../../testes/banco-crm";
 import { criarRepositorioDeContatosPg } from "./contatos";
@@ -168,6 +168,73 @@ describeComBanco("RepositorioDeMensagens — Postgres local", () => {
     await mensagens.inserirRecebida(ws, recebida(comercial.conversaId, comercial.canalId, { idExterno: "i.3", criadoEm: "2026-10-12T12:00:00.000Z", identificadorId: null }));
     expect(await mensagens.identificadorDaUltimaRecebida(ws, comercial.conversaId)).toBe("ident_b");
     expect(await mensagens.identificadorDaUltimaRecebida(ws, suporte.conversaId)).toBeNull();
+  });
+
+  describe("a Mensagem digitada no celular do Canal (4.4.2)", () => {
+    const doAparelho = (conversaId: string, canalId: string, extras: Partial<LinhaDeMensagemRecebida> = {}) =>
+      recebida(conversaId, canalId, { idExterno: "cel.1", conteudo: "respondi pelo celular", remetenteExterno: "+5511987654321", identificadorId: "ident_x", digitadaNoAparelho: true, ...extras });
+
+    const pendenteDoCrm = (ws: string, conversaId: string, canalId: string, conteudo = "oi") =>
+      mensagens.inserir(ws, { conversaId, canalId, direcao: "enviada", ator: { tipo: "member", id: "mem_ana" }, conteudo, statusEntrega: "pendente" });
+
+    it("entra `enviada` pelo Canal como Integração, com o status `enviada` no instante do provedor e sem remetente nem Identificador", async () => {
+      const { ws, suporte } = await cenario("cel-entra");
+      const gravada = await mensagens.inserirRecebida(ws, doAparelho(suporte.conversaId, suporte.canalId));
+      expect(gravada).toMatchObject({
+        direcao: "enviada",
+        ator: { tipo: "integration", id: suporte.canalId },
+        idExterno: "cel.1",
+        conteudo: "respondi pelo celular",
+        statusEntrega: "enviada",
+        statusEntregaEm: "2026-10-12T10:00:00.000Z",
+        remetenteExterno: null,
+        identificadorId: null,
+        criadoEm: "2026-10-12T10:00:00.000Z",
+      });
+      // Idempotente como a recebida: a segunda entrega do mesmo id externo não grava de novo.
+      expect(await mensagens.inserirRecebida(ws, doAparelho(suporte.conversaId, suporte.canalId))).toBeUndefined();
+      expect((await mensagens.listar(ws, { conversaId: suporte.conversaId, limite: 50, deslocamento: 0 })).total).toBe(1);
+      // Não conta como `recebida`: não abre a janela de 24 h nem escolhe o destino da resposta.
+      expect(await mensagens.ultimaRecebidaEm(ws, suporte.conversaId)).toBeNull();
+      expect(await mensagens.identificadorDaUltimaRecebida(ws, suporte.conversaId)).toBeNull();
+    });
+
+    it("gravarEnvio: se a Evolution devolveu a Mensagem do CRM como 'digitada no celular' antes do aceite, a cópia sai e a do CRM fica com o id", async () => {
+      const { ws, suporte } = await cenario("cel-corrida");
+      const copia = await mensagens.inserirRecebida(ws, doAparelho(suporte.conversaId, suporte.canalId, { idExterno: "3EB0AA", conteudo: "oi" }));
+      const propria = await pendenteDoCrm(ws, suporte.conversaId, suporte.canalId);
+      expect(copia).toBeDefined();
+
+      const gravada = await mensagens.gravarEnvio(ws, propria.id, { idExterno: "3EB0AA", em: "2026-10-12T10:00:05.000Z" });
+      expect(gravada).toMatchObject({ id: propria.id, idExterno: "3EB0AA", statusEntrega: "enviada", ator: { tipo: "member", id: "mem_ana" } });
+      const fio = await mensagens.listar(ws, { conversaId: suporte.conversaId, limite: 50, deslocamento: 0 });
+      expect(fio.itens.map((m) => m.id)).toEqual([propria.id]);
+      expect(await mensagens.obter(ws, copia!.id)).toBeUndefined();
+    });
+
+    it("gravarEnvio sem cópia continua igual: só grava o id e o status", async () => {
+      const { ws, suporte } = await cenario("cel-sem-copia");
+      const propria = await pendenteDoCrm(ws, suporte.conversaId, suporte.canalId);
+      expect(await mensagens.gravarEnvio(ws, propria.id, { idExterno: "3EB0BB", em: "2026-10-12T10:00:05.000Z" })).toMatchObject({ idExterno: "3EB0BB", statusEntrega: "enviada" });
+    });
+
+    it("gravarEnvio só desfaz a cópia quando a Mensagem do CRM ainda está `pendente` e a cópia é do Canal como Integração", async () => {
+      const { ws, suporte } = await cenario("cel-guardas");
+      const copia = await mensagens.inserirRecebida(ws, doAparelho(suporte.conversaId, suporte.canalId, { idExterno: "3EB0CC" }));
+      const propria = await pendenteDoCrm(ws, suporte.conversaId, suporte.canalId);
+      await mensagens.marcarFalha(ws, propria.id, "falhou antes");
+      // Já não é `pendente` (o `update` não vale), então a cópia fica: nada é apagado por uma chamada que não grava nada.
+      expect(await mensagens.gravarEnvio(ws, propria.id, { idExterno: "3EB0CC", em: "2026-10-12T10:00:05.000Z" })).toBeUndefined();
+      expect(await mensagens.obter(ws, copia!.id)).toBeDefined();
+    });
+
+    it("gravarEnvio não apaga a Mensagem de outro Canal com o mesmo id externo", async () => {
+      const { ws, comercial, suporte } = await cenario("cel-canais");
+      const deOutroCanal = await mensagens.inserirRecebida(ws, doAparelho(comercial.conversaId, comercial.canalId, { idExterno: "3EB0DD" }));
+      const propria = await pendenteDoCrm(ws, suporte.conversaId, suporte.canalId);
+      expect(await mensagens.gravarEnvio(ws, propria.id, { idExterno: "3EB0DD", em: "2026-10-12T10:00:05.000Z" })).toMatchObject({ idExterno: "3EB0DD" });
+      expect(await mensagens.obter(ws, deOutroCanal!.id)).toBeDefined();
+    });
   });
 
   it("não enxerga Mensagens de outro Espaço", async () => {
