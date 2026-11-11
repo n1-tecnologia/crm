@@ -230,10 +230,14 @@ o aparelho da sessão antes da transação, e a Evolution fora do ar deixa tudo 
 estava (502). Uma conferência de 5 min (`EVOLUTION_CONFERENCIA_ATIVA`) corrige o
 banco quando um webhook se perdeu. A api passa a ter a chave global da Evolution
 (`EVOLUTION_API_KEY`, só no `api.env`), que cria e apaga qualquer instância: o CRM
-só mexe em instância `n1-...` e nunca na `numeropvmarcos` do Financeiro. **Nada
-disto rodou contra a Evolution real**: os testes usam o servidor falso, e o
-primeiro "Conectar" de verdade é do dono. A Evolution 2.4.0 já está instalada na VM
-(4.1.2); falta `EVOLUTION_API_KEY` no `api.env` (ver `apps/api/deploy/CONTEXT.md`).
+só mexe em instância `n1-...` e nunca na `numeropvmarcos` do Financeiro. A
+Evolution 2.4.0 já está instalada na VM (4.1.2) e, em 2026-11-11, a fumaça
+(`npm run evolution:fumaca`, `apps/api/deploy/CONTEXT.md`) confirmou contra ela, com
+a `EVOLUTION_API_KEY` já no `api.env`, o formato do `create` (com QR), do
+`fetchInstances` (com `token`), do `connectionState`, do `connect`, do logout e do
+delete. **Ainda não rodou com um celular**: o `connection.update` depois de escanear
+o QR, o `ownerJid` de uma instância aberta e o `statusReason` são do primeiro
+"Conectar" de verdade, que é do dono.
 
 ## Comandos
 

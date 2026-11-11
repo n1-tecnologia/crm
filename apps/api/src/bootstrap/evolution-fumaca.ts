@@ -7,7 +7,8 @@
  * vizinha, não da instalada. Este comando é a prova: cria UMA instância descartável, passa por todos os passos e a apaga.
  *
  * Passos: versão › criar (QR no `create`) › buscar (o `token` e o `ownerJid` aparecem?) › estado › pedir QR › sair da sessão ›
- * apagar › conferir que sumiu. Cada passo é independente (um que falha não pula os outros) e a limpeza roda SEMPRE.
+ * apagar › conferir que sumiu (por alguns segundos: a Evolution 2.4.0 ainda lista, como `close`, a instância que acabou de abrir
+ * um QR por cerca de 1 s depois do `DELETE`). Cada passo é independente (um que falha não pula os outros) e a limpeza roda SEMPRE.
  *
  * SEGURANÇA: a instância se chama `n1-fumaca-<aleatório>` (o cliente só cria e apaga `n1-...`, nunca a `numeropvmarcos` do
  * Financeiro), não leva número (nenhum WhatsApp é tocado), e o webhook aponta para um Canal que não existe (a api o recusa).
@@ -44,8 +45,16 @@ export interface DependenciasDaFumaca {
 
 const TENTATIVAS_DO_QR = 4;
 
-/** O que um erro diz sem vazar nada: o tipo e o status HTTP, nunca a mensagem nem o corpo. */
+/** Depois do `DELETE`, a Evolution leva ~1 s para tirar a instância da lista (medido na 2.4.0 real); confere até 6 vezes, de 2 em 2 s. */
+const CONFERENCIAS_DA_EXCLUSAO = 6;
+const PAUSA_DA_EXCLUSAO_MS = 2_000;
+
+/** Uma falha que a própria fumaça lança, com uma frase escrita aqui (sem corpo, chave nem token): aparece na saída como está. */
+class FalhaDaFumaca extends Error {}
+
+/** O que um erro diz sem vazar nada: o tipo e o status HTTP, nunca a mensagem nem o corpo (a de `FalhaDaFumaca` é nossa e aparece). */
 function resumoDoErro(erro: unknown): string {
+  if (erro instanceof FalhaDaFumaca) return erro.message;
   if (erro instanceof ErroDaEvolution) return erro.tipo === "http" ? `a Evolution respondeu HTTP ${erro.status}` : `falha de transporte (${erro.tipo})`;
   return "erro inesperado";
 }
@@ -70,7 +79,7 @@ export async function rodarFumacaDaEvolution(deps: DependenciasDaFumaca): Promis
 
   await tentar("versão da Evolution", async () => {
     const versao = await cliente.versao(global);
-    if (!/^2\./.test(versao)) throw new Error("versão fora da 2.x");
+    if (!/^2\./.test(versao)) throw new FalhaDaFumaca("versão fora da 2.x");
     return `versão ${versao}`;
   });
 
@@ -88,7 +97,7 @@ export async function rodarFumacaDaEvolution(deps: DependenciasDaFumaca): Promis
   if (criada) {
     await tentar("achar a instância (GET /instance/fetchInstances)", async () => {
       const achada = await cliente.buscarInstancia(global, nome);
-      if (!achada) throw new Error("não achou");
+      if (!achada) throw new FalhaDaFumaca("não achou");
       return `achada; o token aparece: ${achada.token !== null ? "sim" : "NÃO (então um resto de tentativa não poderia ser retomado)"}; o dono do número aparece: ${achada.ownerJid !== null ? "sim" : "não (esperado: ninguém conectou)"}; estado: ${achada.connectionStatus}`;
     });
 
@@ -98,10 +107,10 @@ export async function rodarFumacaDaEvolution(deps: DependenciasDaFumaca): Promis
       for (let tentativa = 1; tentativa <= TENTATIVAS_DO_QR; tentativa += 1) {
         const resposta = await cliente.pedirQrCode(token, nome);
         if (resposta.tipo === "qrcode") return `QR válido na ${tentativa}ª tentativa; código de pareamento: ${resposta.qrcode.codigoDePareamento ? "sim" : "não (esperado sem número)"}`;
-        if (resposta.tipo === "conectada") throw new Error("a instância apareceu aberta");
+        if (resposta.tipo === "conectada") throw new FalhaDaFumaca("a instância apareceu aberta");
         if (tentativa < TENTATIVAS_DO_QR) await esperar(2_000);
       }
-      throw new Error("sem QR");
+      throw new FalhaDaFumaca("sem QR");
     });
 
     await tentar("sair da sessão (DELETE /instance/logout, instância nunca conectada)", async () => {
@@ -116,8 +125,13 @@ export async function rodarFumacaDaEvolution(deps: DependenciasDaFumaca): Promis
     return "apagada";
   });
   await tentar("conferir que a instância sumiu", async () => {
-    if (await cliente.buscarInstancia(global, nome)) throw new Error("ainda existe");
-    return "não existe mais";
+    for (let conferencia = 1; conferencia <= CONFERENCIAS_DA_EXCLUSAO; conferencia += 1) {
+      if (!(await cliente.buscarInstancia(global, nome))) {
+        return conferencia === 1 ? "não existe mais" : `não existe mais (a Evolution a tirou da lista na ${conferencia}ª conferência)`;
+      }
+      if (conferencia < CONFERENCIAS_DA_EXCLUSAO) await esperar(PAUSA_DA_EXCLUSAO_MS);
+    }
+    throw new FalhaDaFumaca(`a instância continua na lista depois de ${CONFERENCIAS_DA_EXCLUSAO} conferências`);
   });
 
   return { instancia: nome, passos, ok: passos.every((p) => p.ok) };

@@ -382,6 +382,10 @@ Ela cria UMA instância descartável `n1-fumaca-<aleatório>` (sem número: nenh
 "Conectar" faz (criar, achar, estado, QR, sair da sessão) contra a Evolution REAL, apaga a instância e confere que sumiu. A
 saída só diz passou ou falhou e fatos sem segredo; sai 0 se tudo respondeu como o CRM espera, 1 se algum passo falhou e 2 se
 faltou configuração. É a única prova do formato real das respostas da Evolution 2.4.0 (os testes usam um servidor falso).
+Rodada na VM em 2026-11-11, confirmou todos os passos; o último ("conferir que a instância sumiu") falhou na primeira vez
+porque, depois de um `connect`, a Evolution 2.4.0 ainda lista a instância (`close`) por ~1 s depois do `DELETE`: por isso
+o passo confere por até ~10 s antes de reprovar. Para rodá-la na VM carregue o `api.env` antes
+(`set -a; . /opt/n1-crm/shared/api.env; set +a`): o comando lê `EVOLUTION_URL`, `EVOLUTION_API_KEY` e `API_URL_PUBLICA` do ambiente.
 
 `EVOLUTION_URL`, `API_URL_PUBLICA` e `COFRE_CHAVE` já são exigidos desde a Fase 16. Sem `EVOLUTION_API_KEY`
 o botão responde 503 dizendo o que falta, e `npm run canal:ligar-evolution` continua ligando uma instância
