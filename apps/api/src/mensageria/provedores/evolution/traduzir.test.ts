@@ -25,6 +25,57 @@ function umaMensagem(corpo: unknown): Extract<EventoDoProvedor, { tipo: "mensage
   return evento;
 }
 
+/** O corpo de um `connection.update` da Evolution: `data.state` e, no `close`, o `statusReason` numérico. */
+const conexao = (data: unknown, evento = "connection.update") => ({ event: evento, instance: INSTANCIA, data });
+
+describe("traduzirChamadaDaEvolution: connection.update (Sessão 4, 4.3.1)", () => {
+  it("open: avisa que conectou (quem GRAVA conectada é a conferência na fonte, não o aviso)", () => {
+    expect(traduzirChamadaDaEvolution(conexao({ instance: INSTANCIA, state: "open", statusReason: 200 }), INSTANCIA)).toEqual([
+      { tipo: "conexao", conexao: "conectada", motivo: "open" },
+    ]);
+  });
+
+  it("close com a razão 401 (aparelho removido no celular) é desconectada", () => {
+    expect(traduzirChamadaDaEvolution(conexao({ state: "close", statusReason: 401 }), INSTANCIA)).toEqual([
+      { tipo: "conexao", conexao: "desconectada", motivo: "aparelho_removido" },
+    ]);
+  });
+
+  it.each([408, 428, 440, 500, 515])("close com a razão %s (queda, não remoção) é com_erro, com a razão no motivo", (razao) => {
+    expect(traduzirChamadaDaEvolution(conexao({ state: "close", statusReason: razao }), INSTANCIA)).toEqual([
+      { tipo: "conexao", conexao: "com_erro", motivo: `close:${razao}` },
+    ]);
+  });
+
+  it("close sem razão (ou com razão que não é número) é queda: com_erro", () => {
+    expect(traduzirChamadaDaEvolution(conexao({ state: "close" }), INSTANCIA)).toEqual([{ tipo: "conexao", conexao: "com_erro", motivo: "close" }]);
+    expect(traduzirChamadaDaEvolution(conexao({ state: "close", statusReason: "401" }), INSTANCIA)).toEqual([
+      { tipo: "conexao", conexao: "com_erro", motivo: "close" },
+    ]);
+  });
+
+  it("connecting não muda nada, e estado desconhecido ou corpo sem data vira ignorado, nunca exceção", () => {
+    expect(traduzirChamadaDaEvolution(conexao({ state: "connecting" }), INSTANCIA)).toEqual([{ tipo: "ignorado", motivo: "conectando" }]);
+    for (const data of [{ state: "refused" }, { state: 7 }, {}, null, undefined, "open", []]) {
+      expect(traduzirChamadaDaEvolution(conexao(data), INSTANCIA)).toEqual([{ tipo: "ignorado", motivo: "conexao_sem_estado" }]);
+    }
+  });
+
+  it("o nome do evento vale em minúsculas com ponto e em maiúsculas com sublinhado (a grafia do webhook assinado)", () => {
+    for (const nome of ["connection.update", "CONNECTION_UPDATE", "connection_update", " Connection.Update "]) {
+      expect(traduzirChamadaDaEvolution(conexao({ state: "open" }, nome), INSTANCIA)).toEqual([{ tipo: "conexao", conexao: "conectada", motivo: "open" }]);
+    }
+  });
+
+  it("nada do corpo além do estado e da razão numérica passa adiante (o payload traz sender, apikey e o resto)", () => {
+    const [evento] = traduzirChamadaDaEvolution(
+      { event: "connection.update", instance: INSTANCIA, sender: "5511987654321@s.whatsapp.net", apikey: "SEGREDO-DA-INSTANCIA", data: { state: "open", statusReason: 200 } },
+      INSTANCIA,
+    );
+    expect(JSON.stringify(evento)).not.toMatch(/SEGREDO-DA-INSTANCIA|5511987654321/);
+  });
+});
+
 describe("traduzirChamadaDaEvolution: o que vira Mensagem", () => {
   it("texto: o número em E.164, o nome do pushName, o id da Evolution e o instante de messageTimestamp em ISO", () => {
     const evento = umaMensagem(texto);
@@ -125,9 +176,11 @@ describe("traduzirChamadaDaEvolution: o que é ignorado, com o motivo", () => {
     });
   }
 
-  it("event diferente de messages.upsert, ou instance de outro Canal, não vira evento nenhum", () => {
-    expect(traduzirChamadaDaEvolution({ ...texto, event: "connection.update" }, INSTANCIA)).toEqual([]);
+  it("event que não é messages.upsert nem connection.update, ou instance de outro Canal, não vira evento nenhum", () => {
+    expect(traduzirChamadaDaEvolution({ ...texto, event: "qrcode.updated" }, INSTANCIA)).toEqual([]);
+    expect(traduzirChamadaDaEvolution({ ...texto, event: "messages.update" }, INSTANCIA)).toEqual([]);
     expect(traduzirChamadaDaEvolution({ ...texto, instance: "outra" }, INSTANCIA)).toEqual([]);
+    expect(traduzirChamadaDaEvolution({ event: "connection.update", instance: "outra", data: { state: "open" } }, INSTANCIA)).toEqual([]);
   });
 
   it("corpo que não é objeto ou sem data.key nunca lança", () => {

@@ -55,6 +55,39 @@ function ignorado(motivo: string, idExterno?: string): readonly EventoDoProvedor
 }
 
 /** Os dígitos do número de um JID `<dígitos>@s.whatsapp.net`; `undefined` se não for (ex.: `@lid`). */
+/**
+ * `connection.update` (4.3.1). A Evolution emite o nome em minúsculas com ponto (`connection.update`); o nome do evento
+ * ASSINADO no webhook é `CONNECTION_UPDATE`. As duas grafias valem aqui: a conferência na fonte (`conferirConexao`) é que
+ * decide o que se grava, então tolerar a grafia não abre nada.
+ */
+function ehEventoDeConexao(evento: unknown): boolean {
+  return typeof evento === "string" && evento.trim().toLowerCase().replace(/_/g, ".") === "connection.update";
+}
+
+/**
+ * O `statusReason` do `close` de um aparelho REMOVIDO no celular ("Aparelhos conectados" › sair): o Baileys fecha com 401
+ * (`DisconnectReason.loggedOut`). É a única razão que quer dizer "a pessoa desligou de propósito". Qualquer outra razão
+ * (428 conexão fechada, 408 tempo esgotado, 440 substituída, 515 reinício, 500) é queda.
+ */
+const RAZAO_DE_APARELHO_REMOVIDO = 401;
+
+/**
+ * `data.state` de `connection.update`: `open` avisa que conectou (o `conferirConexao` do provedor confirma antes de gravar);
+ * `close` com a razão 401 é o aparelho removido (`desconectada`) e com qualquer outra, uma queda (`com_erro`); `connecting`
+ * não muda nada. O corpo nunca é guardado nem logado: só o estado e a razão numérica passam adiante.
+ */
+function traduzirConexao(dados: unknown): readonly EventoDoProvedor[] {
+  const estado = ehObjeto(dados) && typeof dados.state === "string" ? dados.state : undefined;
+  const razao = ehObjeto(dados) && typeof dados.statusReason === "number" && Number.isFinite(dados.statusReason) ? dados.statusReason : undefined;
+  if (estado === "open") return [{ tipo: "conexao", conexao: "conectada", motivo: "open" }];
+  if (estado === "close") {
+    if (razao === RAZAO_DE_APARELHO_REMOVIDO) return [{ tipo: "conexao", conexao: "desconectada", motivo: "aparelho_removido" }];
+    return [{ tipo: "conexao", conexao: "com_erro", motivo: razao === undefined ? "close" : `close:${razao}` }];
+  }
+  if (estado === "connecting") return ignorado("conectando");
+  return ignorado("conexao_sem_estado");
+}
+
 function numeroDoJid(jid: unknown): string | undefined {
   if (typeof jid !== "string" || !jid.endsWith(SUFIXO_DE_NUMERO)) return undefined;
   const digitos = jid.slice(0, -SUFIXO_DE_NUMERO.length);
@@ -115,7 +148,9 @@ function nomeDoAnexo(campo: string, midia: Record<string, unknown>, idExterno: s
  * evento nenhum (`[]`), assim como um `event` que não é `messages.upsert`.
  */
 export function traduzirChamadaDaEvolution(corpo: unknown, instancia: string): readonly EventoDoProvedor[] {
-  if (!ehObjeto(corpo) || corpo.event !== EVENTO_DE_MENSAGEM || corpo.instance !== instancia) return [];
+  if (!ehObjeto(corpo) || corpo.instance !== instancia) return [];
+  if (ehEventoDeConexao(corpo.event)) return traduzirConexao(corpo.data);
+  if (corpo.event !== EVENTO_DE_MENSAGEM) return [];
   const dados = corpo.data;
   if (!ehObjeto(dados) || !ehObjeto(dados.key)) return ignorado("formato_invalido");
   const chave = dados.key;

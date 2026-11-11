@@ -16,6 +16,7 @@
 
 import { normalizarTipoDeMidia } from "@n1/dominio/crm/midia";
 import { ErroDeProvedor } from "../../provedor";
+import { EVENTOS_DO_WEBHOOK, ehInstanciaDoCrm } from "./ambiente";
 
 export type TipoDeErroDaEvolution = "rede" | "tempo_esgotado" | "resposta_perdida" | "http";
 
@@ -91,7 +92,7 @@ function classificarFalhaDeTransporte(erro: unknown): ErroDaEvolution {
   return new ErroDaEvolution("resposta_perdida");
 }
 
-type Metodo = "GET" | "POST";
+type Metodo = "GET" | "POST" | "DELETE";
 
 /** A mídia de `getBase64FromMediaMessage`, já em bytes. */
 export interface MidiaDaEvolution {
@@ -109,11 +110,48 @@ export interface InstanciaDaEvolution {
 
 export type EstadoDaConexaoDaEvolution = "open" | "close" | "connecting";
 
+/** O QR code já validado: `imagem` é sempre um `data:image/...;base64,...` de base64 bem formado, pronto para um `<img>`. */
+export interface QrCodeDaEvolution {
+  readonly imagem: string;
+  readonly codigoDePareamento?: string;
+}
+
+/**
+ * O que `GET /instance/connect/{instancia}` pode dizer: um QR code para ler; a instância JÁ conectada (`open`); ou nada
+ * ainda (a Evolution leva uns segundos para gerar o primeiro QR, e a resposta sem `base64` não é erro).
+ */
+export type RespostaDoQrCode =
+  | { readonly tipo: "qrcode"; readonly qrcode: QrCodeDaEvolution }
+  | { readonly tipo: "conectada" }
+  | { readonly tipo: "aguardando" };
+
+/** A instância recém-criada: o token é o que NÓS escolhemos (a Evolution o usa como a `apikey` da instância). */
+export interface InstanciaCriada {
+  readonly qrcode?: QrCodeDaEvolution;
+}
+
+export interface PedidoDeInstancia {
+  readonly nome: string;
+  /** O token da instância (`apikey` dela). Gerado pelo CRM, para não depender do formato da resposta da Evolution. */
+  readonly token: string;
+  /** O número do Canal, só dígitos: com ele a Evolution devolve também o código de pareamento. */
+  readonly numero?: string;
+  readonly webhook: { readonly url: string; readonly segredo: string };
+}
+
 export interface ClienteDaEvolution {
   versao(apikeyGlobal: string): Promise<string>;
   buscarInstancia(apikeyGlobal: string, nome: string): Promise<InstanciaDaEvolution | undefined>;
   estadoDaConexao(apikey: string, instancia: string): Promise<EstadoDaConexaoDaEvolution>;
   configurarWebhook(apikey: string, instancia: string, webhook: { readonly url: string; readonly segredo: string }): Promise<void>;
+  /** `POST /instance/create` com a chave GLOBAL. Só cria instância do CRM (`n1-...`); qualquer outro nome é recusado aqui. */
+  criarInstancia(apikeyGlobal: string, pedido: PedidoDeInstancia): Promise<InstanciaCriada>;
+  /** `GET /instance/connect/{instancia}` com o token da instância: o QR code vigente (4.2.2). */
+  pedirQrCode(apikey: string, instancia: string, numero?: string): Promise<RespostaDoQrCode>;
+  /** `DELETE /instance/logout/{instancia}`: o aparelho some de "Aparelhos conectados". Já desconectada ou inexistente é sucesso (idempotente). */
+  sairDaSessao(apikey: string, instancia: string): Promise<void>;
+  /** `DELETE /instance/delete/{instancia}` com a chave GLOBAL. Só apaga instância do CRM (`n1-...`); inexistente é sucesso. */
+  apagarInstancia(apikeyGlobal: string, instancia: string): Promise<void>;
   enviarTexto(apikey: string, instancia: string, envio: { readonly numero: string; readonly texto: string }): Promise<RespostaDaEvolution>;
   enviarMidia(
     apikey: string,
@@ -149,6 +187,41 @@ export function idDaRespostaDeEnvio(corpo: unknown): string | undefined {
   if (!ehObjeto(corpo) || !ehObjeto(corpo.key)) return undefined;
   const id = corpo.key.id;
   return typeof id === "string" && id !== "" ? id : undefined;
+}
+
+/** Um QR code em PNG tem poucos KB; um base64 deste tamanho já não é QR code. */
+const TETO_DA_IMAGEM_DO_QRCODE = 300_000;
+
+/**
+ * O `base64` do QR code como uma data URL de imagem, ou `undefined` se não for base64 bem formado. A Evolution pode mandar
+ * a data URL inteira (`data:image/png;base64,...`) ou só o base64; as duas formas viram `data:image/png;base64,...`. Só
+ * imagem entra (png, jpeg ou webp): nada que o navegador execute, e nenhum texto livre vai ao `src` da tela (T-S4-qr).
+ */
+export function imagemDoQrCode(bruto: unknown): string | undefined {
+  if (typeof bruto !== "string") return undefined;
+  const texto = bruto.replace(/\s+/g, "");
+  if (texto === "" || texto.length > TETO_DA_IMAGEM_DO_QRCODE) return undefined;
+  const dataUrl = /^data:image\/(png|jpeg|webp);base64,(.+)$/.exec(texto);
+  const tipo = dataUrl ? dataUrl[1]! : "png";
+  const dados = dataUrl ? dataUrl[2]! : texto;
+  if (dados.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(dados)) return undefined;
+  return `data:image/${tipo};base64,${dados}`;
+}
+
+/** O código de pareamento (8 letras e dígitos, às vezes com hífen): o que a pessoa digita no celular. */
+function codigoDePareamento(bruto: unknown): string | undefined {
+  if (typeof bruto !== "string") return undefined;
+  const texto = bruto.trim();
+  return /^[A-Za-z0-9-]{6,12}$/.test(texto) ? texto : undefined;
+}
+
+/** O QR code de um objeto `{ base64, pairingCode }` (o de `connect` e o `qrcode` de `create`), ou `undefined`. */
+function qrCodeDe(corpo: unknown): QrCodeDaEvolution | undefined {
+  if (!ehObjeto(corpo)) return undefined;
+  const imagem = imagemDoQrCode(corpo.base64);
+  if (imagem === undefined) return undefined;
+  const codigo = codigoDePareamento(corpo.pairingCode);
+  return { imagem, ...(codigo === undefined ? {} : { codigoDePareamento: codigo }) };
 }
 
 export function criarClienteDaEvolution(opcoes: OpcoesDoClienteDaEvolution): ClienteDaEvolution {
@@ -249,9 +322,58 @@ export function criarClienteDaEvolution(opcoes: OpcoesDoClienteDaEvolution): Cli
           headers: { "x-n1-webhook-segredo": segredo },
           byEvents: false,
           base64: false,
-          events: ["MESSAGES_UPSERT"],
+          events: [...EVENTOS_DO_WEBHOOK],
         },
       });
+    },
+
+    async criarInstancia(apikeyGlobal, { nome, token, numero, webhook }) {
+      // A chave global também APAGA instâncias, inclusive a do Financeiro: o cliente só cria as do CRM.
+      if (!ehInstanciaDoCrm(nome)) throw new Error("Recusado: o CRM só cria instância com nome n1-<espaço>-<canal>.");
+      const corpo = await lerJson("POST", "/instance/create", apikeyGlobal, {
+        instanceName: nome,
+        token,
+        integration: "WHATSAPP-BAILEYS",
+        qrcode: true,
+        ...(numero === undefined || numero === "" ? {} : { number: numero }),
+        webhook: {
+          enabled: true,
+          url: webhook.url,
+          headers: { "x-n1-webhook-segredo": webhook.segredo },
+          byEvents: false,
+          base64: false,
+          events: [...EVENTOS_DO_WEBHOOK],
+        },
+      });
+      const qrcode = ehObjeto(corpo) ? qrCodeDe(corpo.qrcode) : undefined;
+      return qrcode === undefined ? {} : { qrcode };
+    },
+
+    async pedirQrCode(apikey, instancia, numero) {
+      const consulta = numero === undefined || numero === "" ? "" : `?number=${encodeURIComponent(numero)}`;
+      const corpo = await lerJson("GET", `/instance/connect/${encodeURIComponent(instancia)}${consulta}`, apikey);
+      // A Evolution responde 200 com `{ error: true }` quando a instância não existe em memória: para quem chama é 404.
+      if (ehObjeto(corpo) && corpo.error === true) throw new ErroDaEvolution("http", 404);
+      const qrcode = qrCodeDe(corpo);
+      if (qrcode !== undefined) return { tipo: "qrcode", qrcode };
+      const estado = ehObjeto(corpo) && ehObjeto(corpo.instance) ? corpo.instance.state : undefined;
+      return estado === "open" ? { tipo: "conectada" } : { tipo: "aguardando" };
+    },
+
+    async sairDaSessao(apikey, instancia) {
+      const resposta = await chamar("DELETE", `/instance/logout/${encodeURIComponent(instancia)}`, apikey);
+      await descartar(resposta);
+      // 400: "a instância não está conectada"; 404: a instância não existe. Nos dois a sessão já não existe (idempotente).
+      if ((resposta.status >= 200 && resposta.status < 300) || resposta.status === 400 || resposta.status === 404) return;
+      throw new ErroDaEvolution("http", resposta.status);
+    },
+
+    async apagarInstancia(apikeyGlobal, instancia) {
+      if (!ehInstanciaDoCrm(instancia)) throw new Error("Recusado: o CRM só apaga instância com nome n1-<espaço>-<canal>.");
+      const resposta = await chamar("DELETE", `/instance/delete/${encodeURIComponent(instancia)}`, apikeyGlobal);
+      await descartar(resposta);
+      if ((resposta.status >= 200 && resposta.status < 300) || resposta.status === 404) return;
+      throw new ErroDaEvolution("http", resposta.status);
     },
 
     enviarTexto(apikey, instancia, { numero, texto }) {

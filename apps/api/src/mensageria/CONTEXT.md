@@ -39,9 +39,10 @@ credencial ATIVA do próprio provedor no cofre (`tipo` = o provedor do Canal, `r
 ficha do Canal (`GET /canais/:id` devolve `ligadoAoProvedor`) esconde o botão "Simular conexão" e diz como
 reconectar. Sem isso, "Desconectar" e "Simular conexão" levariam o Canal real ao provedor de teste: a saída
 responderia "Enviada" sem sair e a entrada da Evolution seria descartada. O fato é lido por existência, depois do
-`for update` do Canal e na mesma transação (o repositório não decifra nada). Reconectar o Canal real é
-`canal:ligar-evolution` até a Sessão 4 trazer o "Conectar" com QR. O Canal de demonstração, sem essa credencial
-(só com o segredo de teste do webhook, ou sem nada no cofre), simula como antes (D-16-03).
+`for update` do Canal e na mesma transação (o repositório não decifra nada). Reconectar o Canal real é o
+"Conectar" com QR (Sessão 4) ou `canal:ligar-evolution`. O Canal de demonstração, sem essa credencial (só com o
+segredo de teste do webhook, ou sem nada no cofre), simula como antes (D-16-03). Desde a Sessão 4 a simulação só
+existe onde `PERMITIR_CONEXAO_SIMULADA=true` (4.3.4): em produção a rota nem é registrada.
 
 `canalParaProvedor(cliente, chaves, workspaceId, canal)` lê do cofre (`servicos/cofre.ts`) o segredo do
 webhook (`donoTipo: "canal"`, `tipo: "webhook_segredo"`) e, para Canal real, a credencial cujo `tipo` é o nome
@@ -53,8 +54,8 @@ existe** e o Instagram (`instagram-graph`, Sessão 8) **só com `INSTAGRAM_APP_I
 `INSTAGRAM_REDIRECT_URI`** (`provedores/instagram/do-ambiente.ts`): sem elas, um Canal real continua recusando com
 `PROVEDOR_INDISPONIVEL`. A credencial do Canal é o JSON
 `{ instancia, apikey }` com o token da INSTÂNCIA (nunca a chave global da Evolution), no cofre com
-`tipo = "whatsapp-nao-oficial"`. Nesta fase a Evolution só traduz `MESSAGES_UPSERT`: a mensagem que a pessoa digita
-no celular (`fromMe`), o `status` de entrega e o `connection.update` não são assinados nem traduzidos (Sessão 4).
+`tipo = "whatsapp-nao-oficial"`. A Evolution traduz `MESSAGES_UPSERT` e, desde a Sessão 4, `connection.update`: a
+mensagem que a pessoa digita no celular (`fromMe`) e o `status` de entrega continuam sem tradução (4.4.5).
 
 ## O segredo do webhook
 
@@ -197,7 +198,10 @@ Adaptador mínimo da Evolution v2 para o Canal `whatsapp-nao-oficial` (D-16-04 a
 - `cliente.ts` (`criarClienteDaEvolution`): `versao`, `buscarInstancia` (devolve `ownerJid` e `token`, nulos se a
   Evolution não os trouxer), `estadoDaConexao`, `configurarWebhook`, `enviarTexto`, `enviarMidia`, `enviarAudio` e
   `baixarMidia` (leitura em fluxo, corte em `ceil(teto × 4/3) + 64 KiB`, base64 conferido). Tempo limite de 15 s.
-  Falta, para a Sessão 4: criar instância, QR code, sair e apagar.
+  Sessão 4: `criarInstancia` (a chave GLOBAL; o token da instância é escolhido pelo CRM e vai no `create`, para não
+  depender do formato da resposta), `pedirQrCode` (o QR só chega à tela se for base64 bem formado, `imagemDoQrCode`),
+  `sairDaSessao` e `apagarInstancia` (idempotentes). `criarInstancia` e `apagarInstancia` RECUSAM qualquer nome que não
+  seja `n1-...` (`ambiente.ts`): a chave global apaga a `numeropvmarcos` do Financeiro, e esta é a trava.
 - `traduzir.ts`: texto, imagem, áudio, vídeo, documento (inclusive com legenda) e figurinha (`image/webp`) viram
   mensagem; `fromMe`, grupo, `status@broadcast`, `@lid` sem número, reação, edição e localização, contato e enquete
   viram `ignorado` com motivo. O instante vem só de `messageTimestamp`; a chave da instância é retirada da carga bruta
@@ -229,8 +233,54 @@ só na linha de comando, o cofre nunca a guarda), guarda no cofre o token da ins
 aponta o webhook da instância para `<API_URL_PUBLICA>/webhooks/mensageria/<canalId>` com o segredo no cabeçalho e,
 numa transação, marca o Canal `conectada` (`conexao_confirmada`, `conexao_simulada = false`) e reenfileira as
 `pendente`. Recusa a instância `numeropvmarcos` (é do `automation/`). `--seco` é um ensaio que recusa como o comando
-real e não escreve. Rodar de novo troca o segredo e revoga o anterior. A Sessão 4 troca o comando pelo botão
-"Conectar" com QR.
+real e não escreve. Rodar de novo troca o segredo e revoga o anterior. Desde a Sessão 4 o "Conectar" com QR é o
+caminho pela tela; o comando segue valendo para ligar uma instância que o dono criou à mão.
+
+## Conectar pelo CRM (Sessão 4)
+
+`provedores/evolution/conexao.ts` (`criarConectorDaEvolution`) é o que o serviço de Canais chama. Quatro regras:
+
+1. **Nada ali grava `conectada`.** Quem diz que conectou é a Evolution, pelo webhook `connection.update`; o processador de
+   entrada, ao ver `open`, chama `conferirConexao` do provedor (`provedor.ts`): pergunta à Evolution se a instância está
+   aberta e QUEM é o dono do número (`fetchInstances`, com a chave global quando há) e só então grava. Número de outro
+   celular: o aparelho sai da sessão e o Canal vira `com_erro`; sem o número a linha volta à fila, nunca `conectada` às
+   cegas. A única exceção é a instância que já estava aberta quando alguém clicou em "Conectar": a mesma conferência roda
+   na hora.
+2. **A Evolution é chamada FORA da transação.** As escritas de Canal seguram a linha do Espaço e a do Canal; segurá-las
+   durante 15 s de rede travaria o Espaço. Desconectar e arquivar saem da sessão ANTES de abrir a transação (a permissão
+   vem antes de tudo, então um Membro sem ela nunca dispara rede); se a Evolution falha, 502 e nada é gravado. Credencial
+   recusada (401/403) ou instância que já não existe (404) NÃO travam o Canal.
+3. **É idempotente.** O painel pede um QR novo a cada ~25 s chamando `conectar` de novo: instância e credencial
+   existentes são reaproveitadas, e o segredo do webhook só se refaz se sumiu do cofre (um evento em voo com o segredo
+   antigo levaria 401). Um resto de tentativa que parou no meio (a instância existe e o cofre não a conhece) é apagado e
+   recriado, só se for do CRM. Duas abas criando juntas: o `create` que perde (403) responde "aguardando".
+4. **A chave global só vive no ambiente** (`EVOLUTION_API_KEY`) e o CRM só cria/apaga `n1-<espaço>-<canal>`. Uma instância
+   que o dono ligou à mão só ganha "sair da sessão" e nunca é apagada. O arquivamento apaga do cofre a credencial e o
+   segredo do webhook (`repositorio.ts`); desconectar os mantém (reconectar só pede outro QR).
+
+**O `connection.update`** (`traduzir.ts`): `open` é um aviso; `close` com a razão 401 (`DisconnectReason.loggedOut`, o
+aparelho removido no celular) é `desconectada`; qualquer outra razão é queda (`com_erro`); `connecting` não muda nada. Um
+`close` por queda num Canal já `desconectada` é ignorado (`conexao_perdida` do domínio); uma tentativa de conexão que
+FALHOU (número errado, credencial recusada) leva até um Canal `desconectada` a `com_erro` (`tentativaFalhada` em
+`aplicar-conexao.ts`, que o processador e a conferência compartilham). O significado dos `statusReason` (401 =
+`DisconnectReason.loggedOut` do Baileys) e o formato exato do corpo do webhook **não foram confirmados contra a Evolution 2.4.0
+instalada**: a documentação oficial não abriu e o tratador de `connection.update` do 2.3.7 não foi localizado. Por isso o
+evento é só o gatilho e a verdade é a consulta à Evolution.
+
+**A conferência de 5 min** (`conferencia.ts`, `EVOLUTION_CONFERENCIA_ATIVA=true`): para cada Canal real e ativo com
+credencial, pergunta o estado da instância e corrige o banco quando diverge (celular desligado e o banco diz `conectada`:
+`com_erro`; instância aberta e o banco diz `com_erro`: confere o número e volta a `conectada`). Evolution sem resposta:
+NADA muda. Trava consultiva (`pg_try_advisory_lock`), uma rodada por vez, primeira rodada 30 s depois do boot, só
+contagens no log.
+
+**A fumaça** (`bootstrap/evolution-fumaca.ts`, `npm run evolution:fumaca -w @n1/api`): contra a Evolution REAL, cria uma
+instância `n1-fumaca-<aleatório>` sem número, confere cada chamada do "Conectar" e a apaga. É o que fecha a dúvida do
+formato real das respostas, que os testes (servidor falso) não fecham. Cada passo é independente e a limpeza roda sempre;
+a saída nunca leva chave, token, QR nem corpo de resposta.
+
+**Limite conhecido do painel:** um Canal que já está `com_erro` e falha de novo para `com_erro` não muda de estado, então a
+tela não tem o que observar e continua mostrando o QR (renovado). A frase de "QR lido por outro número" só aparece quando o
+estado muda depois de o painel pedir o QR.
 
 ## Regra de log
 

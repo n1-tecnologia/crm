@@ -1039,8 +1039,11 @@ funções antigas saíram de `derive-conversacional.ts` no 15-42.
 - `crm/canais.ts`: `AcaoDeConexao` ganhou `conexao_confirmada` (leva a `conectada` com `conexaoSimulada: false`,
   aceita o Canal que já está conectado e recusa o arquivado) e `conferirNumeroConectado(canal, numeroDoProvedor)`
   (o número que o provedor informa é o do Canal, tolerando o nono dígito brasileiro; recusa outro número mostrando só
-  os finais). `conectar` (QR) e `conexao_perdida` ficam para a Sessão 4; juntar Contatos com e sem o nono dígito é a
-  4.4.3. O status de entrega só avança: `proximoStatusDeEntrega` (em `crm/mensagens.ts`) nunca deixa `lida` voltar a
+  os finais). Sessão 4 (4.2.1): `conectar` (a pessoa pede o QR; NÃO muda a conexão, recusa o arquivado e o já conectado) e
+  `conexao_perdida` (o provedor avisou que a sessão caiu: leva a `com_erro`, e num Canal já `desconectada` não há conexão a
+  perder); `conectaPorQrCode`/`podeConectarPorQrCode` decidem o botão da ficha, `CanalNaFicha.simulacaoPermitida` e
+  `podeSimularConexao` o da simulação, e `ConexaoPorQrCode` é o contrato de `POST /canais/:id/conectar`. Juntar Contatos
+  com e sem o nono dígito é a 4.4.3. O status de entrega só avança: `proximoStatusDeEntrega` (em `crm/mensagens.ts`) nunca deixa `lida` voltar a
   `entregue`.
   `proximaConexao` ganhou o terceiro argumento `FatosDaConexao` (CR-01, 16-17): `simular_conexao` recusa o Canal
   ligado a um provedor real (`ligadoAoProvedor`, `FRASE_DO_CANAL_REAL`) e recusa quando o fato não vem (falha

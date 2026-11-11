@@ -66,8 +66,10 @@ oficial, Instagram, E-mail — a tabela está em
 24 h, modelo, envio livre) é lido por (tipo, provedor) em `capacidadesDoCanal`,
 não só pelo tipo. O Canal criado pela página nova de conexão
 (`/crm/caixa-de-entrada/configuracoes/canais/conectar`) nasce `desconectada`
-e só conecta por "Simular conexão", sempre marcada, enquanto não há provedor
-real; o popup de adicionar Canal das Listas deixou de criar Canal (Fase 15,
+e conecta pelo provedor real (QR code no WhatsApp não oficial, login no
+Instagram); "Simular conexão", sempre marcada, só existe onde
+`PERMITIR_CONEXAO_SIMULADA=true` (Sessão 4: desenvolvimento, testes e
+homologação, nunca produção); o popup de adicionar Canal das Listas deixou de criar Canal (Fase 15,
 D-15-12): só escolhe entre os Canais de `plataforma.canais` e leva à página de
 conectar, o único caminho que cria Canal. A projeção que levava os Canais da tabela ao modelo
 antigo — em `GET /estado` e em `executar()` — saiu na Fase 15 (plano 15-33): o
@@ -184,9 +186,9 @@ provedor de teste só vale para Canal simulado, com segredo próprio no cofre
 com `EVOLUTION_URL`) recebe e envia texto e mídia de um Canal real, e quem liga o
 Canal a uma instância é `npm run canal:ligar-evolution -w @n1/api -- --canal <id>
 --instancia <nome>`, que recusa a instância `numeropvmarcos` (é do `automation/`).
-Ficam para a Sessão 4 o QR code e o botão "Conectar", a mensagem que a pessoa
-digita no celular, o status de entrega e a conexão vindos da Evolution, e o nono
-dígito. Ver `apps/api/src/mensageria/CONTEXT.md`.
+Ficaram para a Sessão 4 o QR code e o botão "Conectar" (feitos, ver abaixo), a
+mensagem que a pessoa digita no celular, o status de entrega e o nono dígito
+(abertos, 4.4). Ver `apps/api/src/mensageria/CONTEXT.md`.
 
 Depois da verificação da fase (`16-VERIFICATION.md`), um plano de lacunas (16-17
 a 16-22) fechou o que ela achou: "Simular conexão" recusa o Canal já ligado a um
@@ -217,6 +219,21 @@ passo opcional, `resolverRemetente`, porque o webhook do Instagram só traz o
 IGSID, nunca o @. A regra da janela virou `foraDaJanela` (`livre`, `soModelo`,
 `bloqueado`) em `@n1/dominio/crm/capacidades`. Sem `MENSAGERIA_WORKER_ATIVO=true`
 nada entra nem sai, como para a Evolution.
+
+A Sessão 4 (4.2 e 4.3) liga o "Conectar" do WhatsApp não
+oficial pelo CRM. `POST /canais/:id/conectar` cria a instância na Evolution
+(`n1-<espaço>-<canal>`), guarda o token dela e o segredo do webhook no cofre e
+devolve o QR code; ele nunca grava `conectada`: quem diz que conectou é o
+`connection.update` da Evolution, e o processador de entrada **confere na fonte**
+(instância aberta e número do Canal) antes de gravar. Desconectar e arquivar tiram
+o aparelho da sessão antes da transação, e a Evolution fora do ar deixa tudo como
+estava (502). Uma conferência de 5 min (`EVOLUTION_CONFERENCIA_ATIVA`) corrige o
+banco quando um webhook se perdeu. A api passa a ter a chave global da Evolution
+(`EVOLUTION_API_KEY`, só no `api.env`), que cria e apaga qualquer instância: o CRM
+só mexe em instância `n1-...` e nunca na `numeropvmarcos` do Financeiro. **Nada
+disto rodou contra a Evolution real**: os testes usam o servidor falso, e o
+primeiro "Conectar" de verdade é do dono. A Evolution 2.4.0 já está instalada na VM
+(4.1.2); falta `EVOLUTION_API_KEY` no `api.env` (ver `apps/api/deploy/CONTEXT.md`).
 
 ## Comandos
 

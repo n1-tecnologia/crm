@@ -3,6 +3,8 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
+    // Liga o que o ambiente de teste precisa e produção não tem (a simulação de conexão, 4.3.4).
+    setupFiles: ["./src/testes/ambiente-de-teste.ts"],
     include: ["src/**/*.test.ts"],
     // O spike fala com Postgres de verdade; o padrão de 5 s não cobre o
     // semear de 900 registros mais as medições em 10x.

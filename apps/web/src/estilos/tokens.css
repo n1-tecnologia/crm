@@ -71,6 +71,8 @@
   /* O botão sólido carrega o gradiente do manual, que é roxo ESCURO — a tinta
      sobre ele é branca. É a única divergência do CRM, e é a marca que manda. */
   --sobre-degrade: #ffffff;
+  /* O QR code é lido pela câmera do celular: precisa de fundo CLARO e margem, mesmo no tema escuro. */
+  --papel-do-qrcode: #ffffff;
   --secundaria: #5eead4;                /* aparece UMA vez no sistema                 */
 
   --degrade-acento: linear-gradient(135deg, var(--roxo-700), var(--roxo-500));

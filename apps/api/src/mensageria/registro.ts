@@ -34,11 +34,15 @@ export interface RegistroDeProvedores {
  */
 export function registroPadrao(): RegistroDeProvedores {
   const urlDaEvolution = process.env.EVOLUTION_URL?.trim();
+  // Sessão 4: a chave global (`EVOLUTION_API_KEY`) só serve para o provedor ler o dono do número ao conferir a conexão.
+  const apikeyGlobal = process.env.EVOLUTION_API_KEY?.trim();
   const instagram = provedorInstagramDoAmbiente();
   return {
     teste: provedorDeTeste,
     porProvedor: {
-      ...(urlDaEvolution ? { "whatsapp-nao-oficial": criarProvedorEvolution({ url: urlDaEvolution }) } : {}),
+      ...(urlDaEvolution
+        ? { "whatsapp-nao-oficial": criarProvedorEvolution({ url: urlDaEvolution, ...(apikeyGlobal ? { apikeyGlobal } : {}) }) }
+        : {}),
       ...(instagram ? { "instagram-graph": instagram } : {}),
     },
   };

@@ -20,6 +20,7 @@ import { TIPO_DO_SEGREDO_DO_WEBHOOK } from "../../mensageria/provedor";
 import { guardarCredencial, type ChavesDoCofre } from "../../servicos/cofre";
 import { sucesso } from "../../servicos/crm/resultado";
 import type { ServicoDeCanais } from "../../servicos/crm/canais";
+import type { ConectorDaEvolution } from "../../mensageria/provedores/evolution/conexao";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearCanal, semearMembro } from "../../testes/banco-crm";
 
 const MARYANE = usuarioDoSeed("mem_maryane");
@@ -54,6 +55,10 @@ describe("rotas de Canais — serviço falso, sem banco", () => {
       editar: (...a) => {
         chamadas.push(["editar", ...a]);
         return Promise.resolve(sucesso({} as Canal));
+      },
+      conectar: (...a) => {
+        chamadas.push(["conectar", ...a]);
+        return Promise.resolve(sucesso({ situacao: "aguardando" as const }));
       },
       simularConexao: (...a) => {
         chamadas.push(["simularConexao", ...a]);
@@ -133,6 +138,8 @@ describe("rotas de Canais (08-03) — serviço falso, sem banco", () => {
         return Promise.resolve(sucesso({ id: "c1" } as CanalNaFicha));
       },
       editar: registrar("editar"),
+      // O envelope é o mesmo; só o tipo do valor muda (a resposta programada devolve um Canal ou uma recusa).
+      conectar: registrar("conectar") as unknown as ServicoDeCanais["conectar"],
       simularConexao: registrar("simularConexao"),
       desconectar: registrar("desconectar"),
       arquivar: registrar("arquivar"),
@@ -243,11 +250,22 @@ const SESSOES = {
   "token-membro": { sub: "usuario-membro", membroId: "mem_ana" },
 } as const;
 
+/**
+ * O conector da Evolution do serviço REAL de Canais, trocado por um que não fala com ninguém: estes testes são do REST e da
+ * regra de Canal, não da Evolution (o conector tem os seus em `mensageria/provedores/evolution/conexao.test.ts`). Sem isto,
+ * desconectar um Canal ligado a um provedor real tentaria a rede.
+ */
+const CONECTOR_FALSO: ConectorDaEvolution = {
+  conectar: async () => sucesso({ situacao: "aguardando" as const }),
+  desligar: async () => undefined,
+};
+
 function opcoesComPapeis(workspaceId: string) {
   const base = membros.find((m) => m.id === "mem_maryane");
   return {
     logger: false,
     workspaceId,
+    crm: { conectoresDeCanal: { whatsappNaoOficial: CONECTOR_FALSO } },
     verificarToken: async (token: string) => {
       const sessao = SESSOES[token as keyof typeof SESSOES];
       return sessao ? { sub: sessao.sub } : null;

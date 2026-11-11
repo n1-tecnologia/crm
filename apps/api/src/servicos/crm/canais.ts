@@ -28,12 +28,18 @@
  *     no cofre, antes de qualquer escrita; o fato é lido depois do `for update` do Canal, na mesma transação.
  * Toda escrita trava a linha do Espaço e, só depois, carrega o Canal travado (`for update`) NESTE Espaço: id de
  * outro Espaço é 404, nunca 403 (T-08-13).
+ *
+ * Sessão 4 (WhatsApp não oficial): `conectar` pede o QR code à Evolution (`ConectorDaEvolution`) e NUNCA grava `conectada`.
+ * `desconectar` e `arquivar` tiram o aparelho da sessão ANTES de abrir a transação: a Evolution é rede, e a transação segura
+ * a linha do Espaço e a do Canal. Se ela não responde, nada é gravado (502). A simulação de conexão só vale onde
+ * `PERMITIR_CONEXAO_SIMULADA=true` (4.3.4: desenvolvimento, testes e homologação, nunca produção).
  */
 
 import type { Pool, PoolClient } from "pg";
 import type { Pagina } from "@n1/dominio/crm/comum";
 import type { AcaoCrm } from "@n1/dominio/crm/permissoes";
 import {
+  conectaPorQrCode,
   proximaConexao,
   validarArquivamento,
   validarEdicaoDeCanal,
@@ -41,12 +47,15 @@ import {
   type AcaoDeConexao,
   type Canal,
   type CanalNaFicha,
+  type ConexaoPorQrCode,
   type EdicaoDeCanal,
   type FiltroDeCanais,
   type NovoCanal,
 } from "@n1/dominio/crm/canais";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { reenfileirarPendentesDoCanal } from "../../mensageria/fila-de-saida";
+import { FalhaDoProvedor, FRASE_DE_FALHA_DO_WHATSAPP, type ConectorDaEvolution } from "../../mensageria/provedores/evolution/conexao";
+import { esquecerCredenciaisDaEvolution } from "../../mensageria/provedores/evolution/repositorio";
 import { esquecerConta } from "../../mensageria/provedores/instagram/repositorio";
 import { criarRepositorioDeCanaisPg, type RepositorioDeCanais } from "../../repositorios/crm/canais";
 import { avancarRevisaoDoEspaco, filaAtiva, origemAtiva } from "../../repositorios/crm/referencias";
@@ -60,9 +69,28 @@ export interface ServicoDeCanais {
   obter(membro: MembroDaSessao, id: string): Promise<ResultadoCrm<CanalNaFicha>>;
   criar(membro: MembroDaSessao, entrada: NovoCanal): Promise<ResultadoCrm<Canal>>;
   editar(membro: MembroDaSessao, id: string, edicao: EdicaoDeCanal): Promise<ResultadoCrm<Canal>>;
+  /**
+   * Sessão 4 (4.2.3): põe o Canal para conectar lendo um QR code. Devolve o QR (ou "aguardando"), nunca `conectada`: quem
+   * confirma é o provedor, pelo webhook. Só o WhatsApp não oficial conecta assim.
+   */
+  conectar(membro: MembroDaSessao, id: string): Promise<ResultadoCrm<ConexaoPorQrCode>>;
   simularConexao(membro: MembroDaSessao, id: string): Promise<ResultadoCrm<Canal>>;
   desconectar(membro: MembroDaSessao, id: string): Promise<ResultadoCrm<Canal>>;
   arquivar(membro: MembroDaSessao, id: string): Promise<ResultadoCrm<Canal>>;
+}
+
+/**
+ * 4.3.4: a simulação de conexão só existe onde o ambiente a liga. Lida a cada chamada (não no import), para o teste ligar e
+ * desligar. Produção NÃO define a variável: a rota `simular-conexao` nem é registrada e a ficha esconde o botão.
+ */
+export function simulacaoDeConexaoPermitida(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
+  return env.PERMITIR_CONEXAO_SIMULADA === "true";
+}
+
+/** Os provedores que se conectam falando com um servidor de fora, e que por isso precisam sair da sessão ao desconectar. */
+export interface ConectoresDeCanal {
+  /** A Evolution (`whatsapp-nao-oficial`). Ausente nos testes que não a exercitam: então "Conectar" responde 503. */
+  readonly whatsappNaoOficial?: ConectorDaEvolution;
 }
 
 /** Rede contra corrida: o constraint que segurou vira esta frase, sem o nome dele (T-08-04). */
@@ -138,7 +166,14 @@ async function conflitoDeCanal(
   return novo ? emUso(novo) : undefined;
 }
 
-export function criarServicoDeCanais(deps: { readonly pool: () => Pool; readonly acesso: AcessoAoCrm }): ServicoDeCanais {
+export function criarServicoDeCanais(deps: {
+  readonly pool: () => Pool;
+  readonly acesso: AcessoAoCrm;
+  readonly conectores?: ConectoresDeCanal;
+  /** Padrão: `simulacaoDeConexaoPermitida()` (a variável de ambiente, lida a cada chamada). */
+  readonly simulacaoPermitida?: () => boolean;
+}): ServicoDeCanais {
+  const simulacaoPermitida = deps.simulacaoPermitida ?? (() => simulacaoDeConexaoPermitida());
   interface Contexto {
     readonly cliente: PoolClient;
     readonly repositorio: RepositorioDeCanais;
@@ -177,11 +212,11 @@ export function criarServicoDeCanais(deps: { readonly pool: () => Pool; readonly
   }
 
   /**
-   * `simular_conexao` e `desconectar`: o domínio decide a transição, o serviço a grava. `conexao_confirmada` (16-13) não
-   * passa por aqui: quem a confirma é o comando `canal:ligar-evolution`, que fala com o provedor, não um Membro pela rota
-   * (no Instagram, o login da Sessão 8, `mensageria/provedores/instagram/conexao.ts`).
+   * `simular_conexao` e `desconectar`: o domínio decide a transição, o serviço a grava. `conexao_confirmada` (16-13) e
+   * `conexao_perdida` não passam por aqui: quem as confirma é o provedor, pelo webhook (e a conferência periódica), nunca um
+   * Membro pela rota; `conectar` pede o QR (`conectar` abaixo) e não muda a conexão.
    */
-  function mudarConexao(membro: MembroDaSessao, id: string, acao: Exclude<AcaoDeConexao, "conexao_confirmada">): Promise<ResultadoCrm<Canal>> {
+  function mudarConexao(membro: MembroDaSessao, id: string, acao: Extract<AcaoDeConexao, "simular_conexao" | "desconectar">): Promise<ResultadoCrm<Canal>> {
     return escrita(membro, acao, id, async ({ cliente, repositorio, canal }) => {
       // CR-01 (16-17): o fato "o Canal é real" é lido AQUI, depois do `for update` do Canal (o `canal:ligar-evolution` grava a
       // credencial e a conexão com o mesmo Canal travado: sem corrida). `desconectar` não precisa dele.
@@ -203,6 +238,30 @@ export function criarServicoDeCanais(deps: { readonly pool: () => Pool; readonly
     });
   }
 
+  /**
+   * 4.3.3: tira o aparelho da sessão ANTES de abrir a transação (a Evolution é rede; a transação segura a linha do Espaço e a
+   * do Canal). Só age onde há o que tirar: Canal `whatsapp-nao-oficial` real, ativo e cuja transição o domínio aceita (o
+   * resto é recusado dentro da transação, sem chamar ninguém). Se a Evolution não responde, devolve 502 e nada é gravado.
+   * `undefined` é "siga para a escrita". A permissão vem primeiro: um Membro sem ela nunca dispara chamada de rede.
+   */
+  async function desligarDoProvedor(membro: MembroDaSessao, id: string, acao: "desconectar" | "arquivar"): Promise<ResultadoCrm<never> | undefined> {
+    const negado = await exigir(deps.acesso, membro, acao, "canal");
+    if (negado) return { ok: false, ...negado };
+    const conector = deps.conectores?.whatsappNaoOficial;
+    if (!conector) return undefined;
+    const canal = await criarRepositorioDeCanaisPg(deps.pool()).obter(membro.workspaceId, id);
+    if (!canal || canal.provedor !== "whatsapp-nao-oficial" || canal.conexaoSimulada || canal.estado === "arquivado") return undefined;
+    if (acao === "desconectar" && !proximaConexao(canal, "desconectar").ok) return undefined;
+    if (acao === "arquivar" && !validarArquivamento(canal).ok) return undefined;
+    try {
+      await conector.desligar(membro.workspaceId, canal, acao);
+    } catch (erro) {
+      if (erro instanceof FalhaDoProvedor) return recusa(502, FRASE_DE_FALHA_DO_WHATSAPP, { codigo: "EVOLUTION_INDISPONIVEL" });
+      throw erro;
+    }
+    return undefined;
+  }
+
   return {
     async listar(membro, filtro) {
       const negado = await exigir(deps.acesso, membro, "ler", "canal");
@@ -216,7 +275,11 @@ export function criarServicoDeCanais(deps: { readonly pool: () => Pool; readonly
       const repositorio = criarRepositorioDeCanaisPg(deps.pool());
       const canal = await repositorio.obter(membro.workspaceId, id);
       if (!canal) return naoEncontrado();
-      return sucesso({ ...canal, ligadoAoProvedor: await repositorio.ligadoAoProvedor(membro.workspaceId, canal) });
+      return sucesso({
+        ...canal,
+        ligadoAoProvedor: await repositorio.ligadoAoProvedor(membro.workspaceId, canal),
+        simulacaoPermitida: simulacaoPermitida(),
+      });
     },
 
     async criar(membro, entrada) {
@@ -277,17 +340,45 @@ export function criarServicoDeCanais(deps: { readonly pool: () => Pool; readonly
       );
     },
 
-    simularConexao: (membro, id) => mudarConexao(membro, id, "simular_conexao"),
-
-    desconectar: (membro, id) => mudarConexao(membro, id, "desconectar"),
-
-    arquivar(membro, id) {
+    async conectar(membro, id) {
+      const negado = await exigir(deps.acesso, membro, "conectar", "canal");
+      if (negado) return { ok: false, ...negado };
+      const canal = await criarRepositorioDeCanaisPg(deps.pool()).obter(membro.workspaceId, id);
+      if (!canal) return naoEncontrado();
+      if (!conectaPorQrCode(canal.provedor)) {
+        return recusa(409, "Este Canal não se conecta lendo um QR code.", { codigo: "PROVEDOR_ERRADO" });
+      }
+      const proxima = proximaConexao(canal, "conectar");
+      if (!proxima.ok) return transicaoInvalida(proxima.error);
+      const conector = deps.conectores?.whatsappNaoOficial;
+      if (!conector) {
+        return recusa(503, "A integração com o WhatsApp não está configurada neste ambiente.", { codigo: "EVOLUTION_NAO_CONFIGURADA" });
+      }
+      return conector.conectar(membro.workspaceId, canal);
+    },
+    async simularConexao(membro, id) {
+      // Defesa em profundidade da 4.3.4: a rota nem existe sem a variável, e o serviço também recusa.
+      if (!simulacaoPermitida()) {
+        return recusa(409, "A simulação de conexão está desligada neste ambiente.", { codigo: "SIMULACAO_DESLIGADA" });
+      }
+      return mudarConexao(membro, id, "simular_conexao");
+    },
+    async desconectar(membro, id) {
+      const recusado = await desligarDoProvedor(membro, id, "desconectar");
+      if (recusado) return recusado;
+      return mudarConexao(membro, id, "desconectar");
+    },
+    async arquivar(membro, id) {
+      const recusado = await desligarDoProvedor(membro, id, "arquivar");
+      if (recusado) return recusado;
       return escrita(membro, "arquivar", id, async ({ cliente, repositorio, canal }) => {
         const validacao = validarArquivamento(canal);
         if (!validacao.ok) return transicaoInvalida(validacao.error);
         const arquivado = await repositorio.arquivar(membro.workspaceId, id);
         if (!arquivado) return naoEncontrado();
         if (canal.provedor === "instagram-graph") await esquecerConta(cliente, membro.workspaceId, id);
+        // 4.3.3: arquivar o WhatsApp não oficial apaga a credencial da instância e o segredo do webhook do cofre.
+        if (canal.provedor === "whatsapp-nao-oficial") await esquecerCredenciaisDaEvolution(cliente, membro.workspaceId, id);
         await avancarRevisaoDoEspaco(cliente, membro.workspaceId);
         return sucesso(arquivado);
       });

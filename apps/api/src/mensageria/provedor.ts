@@ -106,6 +106,21 @@ export interface ProvedorDeMensageria {
   enviar(canal: CanalParaProvedor, envio: EnvioAoProvedor): Promise<ResultadoDoEnvio>;
   baixarMidia(canal: CanalParaProvedor, referenciaNoProvedor: string, opcoes: { tetoBytes: number }): Promise<MidiaBaixada>;
   estadoDaConexao(canal: CanalParaProvedor): Promise<ConexaoDoCanal>;
+  /**
+   * Sessão 4 (4.3.1): para o provedor cujo evento de conexão é só um AVISO que não basta para gravar `conectada` (a
+   * Evolution: o payload de `connection.update` não traz o número, e a pessoa pode ter lido o QR code com outro celular).
+   * O processador de entrada o chama quando o evento diz `conectada`, fora da transação, e grava o que ele devolver:
+   * `conexao: "conectada"` (a instância está mesmo aberta e o número é o do Canal), `"com_erro"` (o número é outro, a
+   * credencial foi recusada ou a instância sumiu) ou nenhuma conexão (o provedor não confirma agora: nada muda, e `motivo`
+   * vai ao `resultado` da linha). Uma exceção é transitória: a linha volta à fila na escada de `backoff()`.
+   */
+  conferirConexao?(canal: CanalParaProvedor): Promise<ConexaoConferida>;
+}
+
+/** O que `conferirConexao` leu na fonte. `motivo` é uma palavra curta (vai ao `resultado` da linha), nunca texto do provedor. */
+export interface ConexaoConferida {
+  readonly conexao?: ConexaoDoCanal;
+  readonly motivo: string;
 }
 
 export type CodigoDeErroDeProvedor =

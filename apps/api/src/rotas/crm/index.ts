@@ -35,7 +35,8 @@ import { pool } from "../../persistencia/conexao";
 import { recusarSuspensoNaEscrita } from "../../plugins/autenticacao";
 import { criarAcessoAoCrmPg, type AcessoAoCrm } from "../../servicos/crm/acesso";
 import { criarServicoDeAtividades, type ServicoDeAtividades } from "../../servicos/crm/atividades";
-import { criarServicoDeCanais, type ServicoDeCanais } from "../../servicos/crm/canais";
+import { criarServicoDeCanais, type ConectoresDeCanal, type ServicoDeCanais } from "../../servicos/crm/canais";
+import { criarConectorDaEvolution } from "../../mensageria/provedores/evolution/conexao";
 import { criarServicoDeContatos, type ServicoDeContatos } from "../../servicos/crm/contatos";
 import { criarServicoDeConsentimentos, type ServicoDeConsentimentos } from "../../servicos/crm/consentimentos";
 import { criarServicoDeConversas, type ServicoDeConversas } from "../../servicos/crm/conversas";
@@ -104,6 +105,11 @@ export interface OpcoesDeCrm {
   readonly acesso?: AcessoAoCrm;
   /** Injeção só para teste: troca a conexão do Instagram (Sessão 8) por uma falsa, sem a Meta. */
   readonly instagram?: ServicoDeConexaoDoInstagram;
+  /**
+   * Injeção só para teste (Sessão 4): troca o conector da Evolution do serviço REAL de Canais por um falso. Sem isto, "Conectar" e
+   * o "sair da sessão" de desconectar e arquivar falam com a Evolution do ambiente (`EVOLUTION_URL`), que o teste não tem.
+   */
+  readonly conectoresDeCanal?: ConectoresDeCanal;
 }
 
 export async function rotasDeCrm(app: FastifyInstance, opcoes: OpcoesDeCrm = {}): Promise<void> {
@@ -120,7 +126,15 @@ export async function rotasDeCrm(app: FastifyInstance, opcoes: OpcoesDeCrm = {})
   await app.register(rotasDeEmpresas, { servico: empresas });
   const negocios = opcoes.negocios ?? criarServicoDeNegocios({ pool: obterPool, acesso });
   await app.register(rotasDeNegocios, { servico: negocios });
-  const canais = opcoes.canais ?? criarServicoDeCanais({ pool: obterPool, acesso });
+  // Sessão 4: o "Conectar" por QR code e o "sair da sessão" ao desconectar falam com a Evolution pelo conector, que lê o
+  // ambiente (EVOLUTION_URL, EVOLUTION_API_KEY, API_URL_PUBLICA) a cada chamada: sem ele, "Conectar" responde 503.
+  const canais =
+    opcoes.canais ??
+    criarServicoDeCanais({
+      pool: obterPool,
+      acesso,
+      conectores: opcoes.conectoresDeCanal ?? { whatsappNaoOficial: criarConectorDaEvolution({ pool: obterPool }) },
+    });
   await app.register(rotasDeCanais, { servico: canais });
   const conversas = opcoes.conversas ?? criarServicoDeConversas({ pool: obterPool, acesso });
   await app.register(rotasDeConversas, { servico: conversas });

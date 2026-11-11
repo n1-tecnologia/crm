@@ -62,9 +62,17 @@ describe(".env.example documenta a mensageria só com valores seguros", () => {
     expect(valorAtivo(exemplo, "API_URL_PUBLICA")).toBe("");
   });
 
-  it("a chave global da Evolution não é variável do runtime e não aparece como atribuição", () => {
+  it("a chave global da Evolution é variável do runtime desde a Sessão 4 (o \"Conectar\" cria a instância), mas o exemplo NUNCA traz valor: só comentada", () => {
     expect(valorAtivo(exemplo, "EVOLUTION_API_KEY")).toBeUndefined();
     expect(valorAtivo(exemplo, "AUTHENTICATION_API_KEY")).toBeUndefined();
+    expect(exemplo).toMatch(/^# EVOLUTION_API_KEY=\s*$/m);
+  });
+
+  it("4.3.2 e 4.3.4: a conferência da Evolution e a simulação de conexão nascem desligadas, e a unidade de produção não as liga", () => {
+    expect(valorAtivo(exemplo, "EVOLUTION_CONFERENCIA_ATIVA")).toBe("false");
+    expect(valorAtivo(exemplo, "PERMITIR_CONEXAO_SIMULADA")).toBe("false");
+    expect(valorAtivo(unidade, "PERMITIR_CONEXAO_SIMULADA")).toBeUndefined();
+    expect(valorAtivo(unidade, "EVOLUTION_CONFERENCIA_ATIVA")).not.toBe("true");
   });
 
   it("toda variável da mensageria que o código lê está no exemplo (ativa ou comentada)", () => {

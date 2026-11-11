@@ -17,13 +17,14 @@
  */
 
 import { createHash, timingSafeEqual } from "node:crypto";
-import type { ConexaoDoCanal } from "@n1/dominio/crm/canais";
+import { conferirNumeroConectado, type ConexaoDoCanal } from "@n1/dominio/crm/canais";
 import { categoriaDaMidia, normalizarTipoDeMidia } from "@n1/dominio/crm/midia";
 import {
   CABECALHO_DO_SEGREDO,
   ErroDeProvedor,
   type CanalParaProvedor,
   type ChamadaDoWebhook,
+  type ConexaoConferida,
   type EnvioAoProvedor,
   type EventoDoProvedor,
   type MidiaBaixada,
@@ -35,6 +36,12 @@ import { traduzirChamadaDaEvolution } from "./traduzir";
 
 export interface OpcoesDoProvedorEvolution {
   readonly url: string;
+  /**
+   * Sessão 4: a chave GLOBAL (`EVOLUTION_API_KEY`). Opcional: com ela, `conferirConexao` lê o número dono da instância
+   * (`fetchInstances`, que o CRM sempre leu com a global); sem ela cai no token da instância. Fica só na memória do
+   * processo: nunca vai ao cofre, a log nem a mensagem de erro.
+   */
+  readonly apikeyGlobal?: string;
   readonly fetchImpl?: typeof fetch;
   readonly timeoutMs?: number;
 }
@@ -57,6 +64,9 @@ function lerCredencial(canal: CanalParaProvedor): CredencialDaEvolution | undefi
     return undefined;
   }
 }
+
+/** O conector de conexão (`conexao.ts`) lê a mesma credencial `{ instancia, apikey }`: um parser só. */
+export { lerCredencial as lerCredencialDaEvolution };
 
 function iguais(a: string, b: string): boolean {
   return timingSafeEqual(createHash("sha256").update(a).digest(), createHash("sha256").update(b).digest());
@@ -227,6 +237,36 @@ export function criarProvedorEvolution(opcoes: OpcoesDoProvedorEvolution): Prove
         return estado === "open" ? "conectada" : "desconectada";
       } catch (erro) {
         if (erro instanceof ErroDaEvolution && erro.tipo === "http") return "com_erro";
+        throw new ErroDeProvedor("PROVEDOR_INDISPONIVEL", "A Evolution não respondeu.");
+      }
+    },
+
+    /**
+     * 4.3.1: o `open` do webhook é só um aviso. Aqui se pergunta à Evolution, na fonte, se a instância está mesmo aberta e
+     * DE QUEM é o número: quem leu o QR code pode ter usado outro celular (INV: o Canal é o número dele, e "conectada"
+     * nunca é gravada por um número que não é o do Canal). Outro número tira esse aparelho da sessão e deixa o Canal
+     * `com_erro`. Não confirmar agora (a instância já não está aberta) não muda nada. Falha de rede é transitória.
+     */
+    async conferirConexao(canal: CanalParaProvedor): Promise<ConexaoConferida> {
+      const credencial = lerCredencial(canal);
+      if (!credencial) return { conexao: "com_erro", motivo: "sem_credencial" };
+      try {
+        const estado = await cliente.estadoDaConexao(credencial.apikey, credencial.instancia);
+        if (estado !== "open") return { motivo: "instancia_nao_aberta" };
+        const instancia = await cliente.buscarInstancia(opcoes.apikeyGlobal ?? credencial.apikey, credencial.instancia);
+        if (instancia === undefined) return { conexao: "com_erro", motivo: "instancia_inexistente" };
+        // Sem o número não há como conferir: nunca se grava `conectada` às cegas. Volta à fila (ou espera a conferência periódica).
+        if (instancia.ownerJid === null) throw new ErroDeProvedor("PROVEDOR_INDISPONIVEL", "A Evolution não informou o número conectado.");
+        if (conferirNumeroConectado(canal.canal, instancia.ownerJid).ok) return { conexao: "conectada", motivo: "confirmada" };
+        // Outro celular leu o QR code: tira esse aparelho da sessão, para o QR do Canal não ficar em mãos erradas.
+        await cliente.sairDaSessao(credencial.apikey, credencial.instancia).catch(() => undefined);
+        return { conexao: "com_erro", motivo: "outro_numero" };
+      } catch (erro) {
+        if (erro instanceof ErroDeProvedor) throw erro;
+        if (erro instanceof ErroDaEvolution && erro.tipo === "http") {
+          if (erro.status === 401 || erro.status === 403) return { conexao: "com_erro", motivo: "credencial_recusada" };
+          if (erro.status === 404) return { conexao: "com_erro", motivo: "instancia_inexistente" };
+        }
         throw new ErroDeProvedor("PROVEDOR_INDISPONIVEL", "A Evolution não respondeu.");
       }
     },

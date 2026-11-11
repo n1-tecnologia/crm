@@ -5,7 +5,10 @@
  *   POST  /canais                       cria um Canal `desconectada` (201); só Administrador/Proprietário (B35)
  *   GET   /canais/:id                   a ficha; todo Papel ativo lê
  *   PATCH /canais/:id                   configura: só `nome`, `filaPadraoId` e `origemPadraoId` (INV-CXE-02)
- *   POST  /canais/:id/simular-conexao   conecta sem provedor, marcando como simulada (D-08)
+ *   POST  /canais/:id/conectar          Sessão 4: pede o QR code (WhatsApp não oficial); NUNCA grava `conectada` (4.2.3)
+ *   POST  /canais/:id/simular-conexao   conecta sem provedor, marcando como simulada (D-08). SÓ é registrada com
+ *                                       `PERMITIR_CONEXAO_SIMULADA=true` (4.3.4: desenvolvimento, testes e homologação;
+ *                                       em produção a rota não existe e responde 404)
  *   POST  /canais/:id/desconectar       volta a `desconectada`
  *   POST  /canais/:id/arquivar          arquiva e desconecta na mesma escrita (11.1)
  *
@@ -29,7 +32,7 @@ import { z } from "zod";
 import { LIMITES_CRM } from "@n1/dominio/crm/comum";
 import { CONEXOES_DO_CANAL, ESTADOS_DO_CANAL } from "@n1/dominio/crm/canais";
 import { PROVEDORES_DE_CANAL, TIPOS_COM_PROVEDOR } from "@n1/dominio/provedores-de-canal";
-import type { ServicoDeCanais } from "../../servicos/crm/canais";
+import { simulacaoDeConexaoPermitida, type ServicoDeCanais } from "../../servicos/crm/canais";
 import { PARAMS_ID, responder, responderLista, TEXTO_CURTO } from "./comum";
 
 const ID = z.string().min(1).max(64);
@@ -70,9 +73,13 @@ const EDICAO_DE_CANAL = z
   .strict()
   .refine((corpo) => Object.keys(corpo).length > 0, { message: "Informe ao menos um campo para editar." });
 
-export async function rotasDeCanais(app: FastifyInstance, opcoes: { readonly servico: ServicoDeCanais }): Promise<void> {
+export async function rotasDeCanais(
+  app: FastifyInstance,
+  opcoes: { readonly servico: ServicoDeCanais; /** Padrão: a variável `PERMITIR_CONEXAO_SIMULADA`, lida AO REGISTRAR (a rota existe ou não). */ readonly simulacaoPermitida?: boolean },
+): Promise<void> {
   const rotas = app.withTypeProvider<ZodTypeProvider>();
   const { servico } = opcoes;
+  const simulacaoPermitida = opcoes.simulacaoPermitida ?? simulacaoDeConexaoPermitida();
 
   rotas.get("/canais", { schema: { querystring: QUERY_LISTA_DE_CANAIS } }, async (request, reply) =>
     responderLista(reply, await servico.listar(request.membro, request.query)),
@@ -90,9 +97,15 @@ export async function rotasDeCanais(app: FastifyInstance, opcoes: { readonly ser
     responder(reply, await servico.editar(request.membro, request.params.id, request.body)),
   );
 
-  rotas.post("/canais/:id/simular-conexao", { schema: { params: PARAMS_ID } }, async (request, reply) =>
-    responder(reply, await servico.simularConexao(request.membro, request.params.id)),
+  rotas.post("/canais/:id/conectar", { schema: { params: PARAMS_ID } }, async (request, reply) =>
+    responder(reply, await servico.conectar(request.membro, request.params.id)),
   );
+  // 4.3.4: em produção a simulação não existe: nem a rota é registrada (404), e a ficha esconde o botão.
+  if (simulacaoPermitida) {
+    rotas.post("/canais/:id/simular-conexao", { schema: { params: PARAMS_ID } }, async (request, reply) =>
+      responder(reply, await servico.simularConexao(request.membro, request.params.id)),
+    );
+  }
 
   rotas.post("/canais/:id/desconectar", { schema: { params: PARAMS_ID } }, async (request, reply) =>
     responder(reply, await servico.desconectar(request.membro, request.params.id)),

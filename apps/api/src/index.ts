@@ -80,6 +80,7 @@ import { criarEncerramento } from "./encerramento";
 import { carregarEnv, encerrar, pool } from "./persistencia/conexao";
 import { criarOutboxWorker } from "./persistencia/outbox-worker";
 import { criarColetaDeOrfaos } from "./mensageria/coleta-de-orfaos";
+import { criarConferenciaDaEvolution } from "./mensageria/provedores/evolution/conferencia";
 import { criarWorkerDeSaida } from "./mensageria/entregar-mensagem";
 import { criarHubDeEventos } from "./mensageria/hub-de-eventos";
 import { criarOuvinteDoCrm } from "./mensageria/ouvinte-pg";
@@ -334,6 +335,22 @@ if (process.env.COLETA_DE_ORFAOS_ATIVA === "true") {
   coleta.iniciar();
   aoEncerrar(() => coleta.parar());
   app.log.info("coleta de órfãos ativa");
+}
+
+// A conferência da conexão da Evolution (Sessão 4, 4.3.2): a cada 5 min pergunta à Evolution o estado de cada Canal
+// `whatsapp-nao-oficial` real e corrige o banco quando um webhook se perdeu. Desligada por padrão: só com
+// `EVOLUTION_CONFERENCIA_ATIVA=true` (e, para ter provedor, `EVOLUTION_URL`). A trava consultiva garante que duas instâncias
+// nunca conferem juntas; o registro leva só contagens.
+if (process.env.EVOLUTION_CONFERENCIA_ATIVA === "true") {
+  const conferencia = criarConferenciaDaEvolution({
+    acordarSaida: () => acordadores.saida(),
+    registrar: (nivel, mensagem, dados) => {
+      app.log[nivel](dados ?? {}, mensagem);
+    },
+  });
+  conferencia.iniciar();
+  aoEncerrar(() => conferencia.parar());
+  app.log.info("conferência da Evolution ativa");
 }
 
 // Registrada ANTES do `listen`: se ele falhar (porta ocupada), a próxima
