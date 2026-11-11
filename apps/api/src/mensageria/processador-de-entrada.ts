@@ -48,15 +48,14 @@ import { pool as poolPadrao } from "../persistencia/conexao";
 import { backoff, sanitizarErro } from "../persistencia/outbox-worker";
 import { criarRepositorioDeCanaisPg } from "../repositorios/crm/canais";
 import { criarRepositorioDeMensagensPg } from "../repositorios/crm/mensagens";
-import { avancarRevisaoDoEspaco } from "../repositorios/crm/referencias";
 import { lerChavesDoCofre, type ChavesDoCofre } from "../servicos/cofre";
 import { criarServicoDeRecebimento, type ServicoDeRecebimento } from "../servicos/crm/recebimento";
 import type { Relogio } from "../testes/relogio";
 import { relogioDoSistema } from "../testes/relogio";
 import type { ArmazenamentoDeAnexos } from "../servicos/armazenamento-de-anexos";
+import { aplicarConexaoAoCanal, type OpcoesDaConexao } from "./aplicar-conexao";
 import { avisarCrm } from "./avisar";
 import { FRASES_DA_SAIDA } from "./entregar-mensagem";
-import { reenfileirarPendentesDoCanal } from "./fila-de-saida";
 import { criarGuardaDeMidia } from "./midia";
 import { canalParaProvedor, provedorDoCanal, registroPadrao, type RegistroDeProvedores } from "./registro";
 
@@ -225,46 +224,14 @@ export function criarProcessadorDeEntrada(opcoes: OpcoesDoProcessadorDeEntrada):
   }
 
   /**
-   * 3.7.1 item 5 / B69: o provedor diz que a conexão do Canal mudou. Só vale para Canal REAL; o evento chega por
-   * webhook verificado (16-03), mas um Canal simulado continua sendo dos botões da ficha. A mesma ordem de travas de
-   * `servicos/crm/canais.ts` (WR-02): a linha do Espaço ANTES da do Canal. Um evento que repete a conexão atual não
-   * sobe a revisão (a tela não recarrega à toa), mas ainda reenfileira as pendentes de um Canal `conectada`: é a rede
-   * para a Mensagem que ficou guardada, e a linha que já está `pending` ou `delivering` não é tocada.
+   * 3.7.1 item 5 / B69: o provedor diz que a conexão do Canal mudou. A regra (só Canal real, travas na ordem do Espaço e
+   * depois do Canal, reenfileirar as pendentes ao conectar) mora em `aplicar-conexao.ts`, que a conferência periódica da
+   * Sessão 4 também usa; aqui só se acorda o worker de saída depois do commit.
    */
-  async function aplicarConexao(linha: LinhaReivindicada, conexao: ConexaoDoCanal): Promise<string | undefined> {
-    const cliente = await pool().connect();
-    try {
-      await cliente.query("begin");
-      await cliente.query("select 1 from plataforma.workspaces where workspace_id = $1 for update", [linha.workspace_id]);
-      const canais = criarRepositorioDeCanaisPg(cliente);
-      const canal = await canais.obter(linha.workspace_id, linha.canal_id, { travar: true });
-      let resultado: string | undefined;
-      let reenfileirou = false;
-      if (!canal) {
-        resultado = "ignorado:canal_nao_encontrado";
-      } else if (canal.estado === "arquivado") {
-        resultado = "ignorado:canal_arquivado";
-      } else if (canal.conexaoSimulada) {
-        resultado = "ignorado:conexao_simulada";
-      } else {
-        if (canal.conexao !== conexao) {
-          await canais.definirConexao(linha.workspace_id, linha.canal_id, { conexao, conexaoSimulada: false });
-          await avancarRevisaoDoEspaco(cliente, linha.workspace_id);
-        }
-        if (conexao === "conectada") {
-          await reenfileirarPendentesDoCanal(cliente, linha.workspace_id, linha.canal_id);
-          reenfileirou = true;
-        }
-      }
-      await cliente.query("commit");
-      if (reenfileirou) opcoes.acordarSaida?.();
-      return resultado;
-    } catch (erro) {
-      await cliente.query("rollback").catch(() => undefined);
-      throw erro;
-    } finally {
-      cliente.release();
-    }
+  async function aplicarConexao(linha: LinhaReivindicada, conexao: ConexaoDoCanal, opcoesDaConexao: OpcoesDaConexao = {}): Promise<string | undefined> {
+    const desfecho = await aplicarConexaoAoCanal(pool, { workspaceId: linha.workspace_id, canalId: linha.canal_id }, conexao, opcoesDaConexao);
+    if (desfecho.reenfileirou) opcoes.acordarSaida?.();
+    return desfecho.resultado;
   }
 
   async function processar(linha: LinhaReivindicada, etapas: Etapas): Promise<Desfecho> {
@@ -311,8 +278,24 @@ export function criarProcessadorDeEntrada(opcoes: OpcoesDoProcessadorDeEntrada):
         const resultado = await aplicarStatus(linha, evento);
         if (resultado !== undefined) resultados.add(resultado);
       } else if (evento.tipo === "conexao") {
-        const resultado = await aplicarConexao(linha, evento.conexao);
-        if (resultado !== undefined) resultados.add(resultado);
+        // Sessão 4 (4.3.1): o evento `open` da Evolution é só um aviso. Antes de gravar `conectada`, o provedor que sabe
+        // conferir na fonte (`conferirConexao`) pergunta à Evolution se a instância está mesmo aberta e se o número é o do
+        // Canal; um QR lido por OUTRO número vira `com_erro`, e o que a Evolution não confirma não muda nada. Fora da
+        // transação (é rede); uma exceção sobe e a linha volta à fila (`marcarTransitoria`).
+        let conexao: ConexaoDoCanal | undefined = evento.conexao;
+        let tentativaFalhada = false;
+        if (conexao === "conectada" && provedor.conferirConexao) {
+          const conferida = await provedor.conferirConexao(paraOProvedor);
+          conexao = conferida.conexao;
+          // O `open` foi um aviso e a conferência disse que NÃO deu certo (outro número, credencial recusada): a tentativa
+          // de conectar falhou, o que leva até um Canal `desconectada` a `com_erro`.
+          tentativaFalhada = conexao === "com_erro";
+          if (conexao !== "conectada") resultados.add(`conexao:${conferida.motivo}`);
+        }
+        if (conexao !== undefined) {
+          const resultado = await aplicarConexao(linha, conexao, { tentativaFalhada });
+          if (resultado !== undefined) resultados.add(resultado);
+        }
       } else {
         // Todos os tipos de `EventoDoProvedor` têm ramo: um tipo novo quebra a compilação aqui e obriga a tratá-lo.
         // Em tempo de execução, um tipo que o provedor inventou fica registrado e a linha segue processada.

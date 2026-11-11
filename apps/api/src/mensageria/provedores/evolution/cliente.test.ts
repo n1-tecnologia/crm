@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Canal } from "@n1/dominio/crm/canais";
 import { ErroDeProvedor, type CanalParaProvedor, type EnvioAoProvedor } from "../../provedor";
 import { criarServidorFalso, type ServidorFalso } from "../../../testes/servidor-falso";
-import { criarClienteDaEvolution, ErroDaEvolution } from "./cliente";
+import { criarClienteDaEvolution, ErroDaEvolution, imagemDoQrCode } from "./cliente";
 import { criarProvedorEvolution } from "./provedor";
 
 const APIKEY = "tok-inst-segredo-9f3a";
@@ -64,7 +64,7 @@ describe("cliente da Evolution: uma chamada por função, com apikey e o corpo e
     expect(await cliente().estadoDaConexao(APIKEY, INSTANCIA)).toBe("connecting");
   });
 
-  it("configurarWebhook: POST /webhook/set/<instancia> com enabled, url, headers com o segredo, byEvents false, base64 false e só MESSAGES_UPSERT", async () => {
+  it("configurarWebhook: POST /webhook/set/<instancia> com enabled, url, headers com o segredo, byEvents false, base64 false e os eventos MESSAGES_UPSERT e CONNECTION_UPDATE (4.3.1)", async () => {
     falso.enfileirar({ kind: "ok", status: 201, corpo: { enabled: true } });
     await cliente().configurarWebhook(APIKEY, INSTANCIA, { url: "https://api.exemplo.test/webhooks/mensageria/canal_1", segredo: SEGREDO_DO_WEBHOOK });
     expect(falso.recebidas[0]).toMatchObject({ metodo: "POST", caminho: `/webhook/set/${INSTANCIA}`, cabecalhos: { apikey: APIKEY } });
@@ -75,7 +75,7 @@ describe("cliente da Evolution: uma chamada por função, com apikey e o corpo e
         headers: { "x-n1-webhook-segredo": SEGREDO_DO_WEBHOOK },
         byEvents: false,
         base64: false,
-        events: ["MESSAGES_UPSERT"],
+        events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE"],
       },
     });
   });
@@ -167,6 +167,148 @@ describe("cliente da Evolution: uma chamada por função, com apikey e o corpo e
     await expect(c.baixarMidia(APIKEY, INSTANCIA, { message: {}, tetoBytes: 100 })).rejects.toMatchObject({ name: "ErroDeProvedor", codigo: "MIDIA_GRANDE_DEMAIS" });
     // teto 100 => corte em 134 + 65.536 bytes: dois blocos de 64 KiB bastam, e o fluxo nunca é esvaziado.
     expect(lidos).toBeLessThanOrEqual(4);
+  });
+});
+
+/** Um base64 válido (os bytes importam pouco: o cliente só confere o formato). */
+const QR_BASE64 = Buffer.from("fake-png-bytes-do-qr-code-1234567890").toString("base64");
+const QR_DATA_URL = `data:image/png;base64,${QR_BASE64}`;
+const INSTANCIA_DO_CRM = "n1-ws_n1-can_abc123";
+const TOKEN_DA_INSTANCIA = "tok-gerado-pelo-crm-0123456789abcdef";
+
+describe("cliente da Evolution: conectar pelo CRM (Sessão 4, 4.2.2)", () => {
+  const pedido = {
+    nome: INSTANCIA_DO_CRM,
+    token: TOKEN_DA_INSTANCIA,
+    numero: "5511987654321",
+    webhook: { url: "https://api.exemplo.test/webhooks/mensageria/can_abc123", segredo: SEGREDO_DO_WEBHOOK },
+  };
+
+  it("criarInstancia: POST /instance/create com a chave GLOBAL, o token escolhido, WHATSAPP-BAILEYS, qrcode, o número e o webhook", async () => {
+    falso.enfileirar({ kind: "ok", status: 201, corpo: { instance: { instanceName: INSTANCIA_DO_CRM, status: "connecting" }, hash: TOKEN_DA_INSTANCIA, qrcode: { count: 1, base64: QR_DATA_URL, code: "2@abc", pairingCode: "WZYEH1YY" } } });
+    const criada = await cliente().criarInstancia(GLOBAL, pedido);
+    expect(falso.recebidas[0]).toMatchObject({ metodo: "POST", caminho: "/instance/create", cabecalhos: { apikey: GLOBAL } });
+    expect(falso.recebidas[0]!.corpo).toEqual({
+      instanceName: INSTANCIA_DO_CRM,
+      token: TOKEN_DA_INSTANCIA,
+      integration: "WHATSAPP-BAILEYS",
+      qrcode: true,
+      number: "5511987654321",
+      webhook: {
+        enabled: true,
+        url: "https://api.exemplo.test/webhooks/mensageria/can_abc123",
+        headers: { "x-n1-webhook-segredo": SEGREDO_DO_WEBHOOK },
+        byEvents: false,
+        base64: false,
+        events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE"],
+      },
+    });
+    expect(criada).toEqual({ qrcode: { imagem: QR_DATA_URL, codigoDePareamento: "WZYEH1YY" } });
+  });
+
+  it("criarInstancia: o base64 sem o prefixo vira data URL de PNG, e a resposta sem QR (a Evolution ainda não o gerou) é só {}", async () => {
+    falso.enfileirar({ kind: "ok", status: 201, corpo: { hash: TOKEN_DA_INSTANCIA, qrcode: { count: 1, base64: QR_BASE64 } } });
+    expect(await cliente().criarInstancia(GLOBAL, pedido)).toEqual({ qrcode: { imagem: QR_DATA_URL } });
+    falso.enfileirar({ kind: "ok", status: 201, corpo: { hash: TOKEN_DA_INSTANCIA, qrcode: { count: 0 } } });
+    expect(await cliente().criarInstancia(GLOBAL, { ...pedido, numero: undefined })).toEqual({});
+    expect(falso.recebidas[1]!.corpo).not.toHaveProperty("number");
+  });
+
+  it("criarInstancia: só cria instância do CRM (n1-...): a do Financeiro e qualquer outro nome são recusados SEM chamar a rede", async () => {
+    for (const nome of ["numeropvmarcos", "NumeroPVMarcos", "comercial", "n1", "x-n1-ws"]) {
+      await expect(cliente().criarInstancia(GLOBAL, { ...pedido, nome })).rejects.toThrow("Recusado");
+    }
+    expect(falso.recebidas).toHaveLength(0);
+  });
+
+  it("criarInstancia que a Evolution recusa lança http sem repetir o corpo (ele ecoa o token e o segredo do webhook)", async () => {
+    falso.enfileirar({ kind: "ok", status: 403, corpo: { status: 403, error: "Forbidden", response: { message: [`This name "${INSTANCIA_DO_CRM}" is already in use. ${TOKEN_DA_INSTANCIA} ${SEGREDO_DO_WEBHOOK}`] } } });
+    const erro = await cliente().criarInstancia(GLOBAL, pedido).then(() => undefined, (e: unknown) => e);
+    expect(erro).toMatchObject({ tipo: "http", status: 403 });
+    expect(JSON.stringify([(erro as Error).message, (erro as Error).stack])).not.toMatch(new RegExp(`${TOKEN_DA_INSTANCIA}|${SEGREDO_DO_WEBHOOK}`));
+  });
+
+  it("pedirQrCode: GET /instance/connect/<instancia> com o token da instância devolve o QR e o código de pareamento", async () => {
+    falso.enfileirar({ kind: "ok", status: 200, corpo: { pairingCode: "ABCD1234", code: "2@x", base64: QR_DATA_URL, count: 3 } });
+    expect(await cliente().pedirQrCode(TOKEN_DA_INSTANCIA, INSTANCIA_DO_CRM, "5511987654321")).toEqual({
+      tipo: "qrcode",
+      qrcode: { imagem: QR_DATA_URL, codigoDePareamento: "ABCD1234" },
+    });
+    expect(falso.recebidas[0]).toMatchObject({ metodo: "GET", caminho: `/instance/connect/${INSTANCIA_DO_CRM}?number=5511987654321`, cabecalhos: { apikey: TOKEN_DA_INSTANCIA } });
+  });
+
+  it("pedirQrCode: sem número a consulta não leva ?number; instância já aberta é conectada; sem QR ainda é aguardando", async () => {
+    falso.enfileirar({ kind: "ok", status: 200, corpo: { instance: { instanceName: INSTANCIA_DO_CRM, state: "open" } } });
+    expect(await cliente().pedirQrCode(TOKEN_DA_INSTANCIA, INSTANCIA_DO_CRM)).toEqual({ tipo: "conectada" });
+    expect(falso.recebidas[0]!.caminho).toBe(`/instance/connect/${INSTANCIA_DO_CRM}`);
+    falso.enfileirar({ kind: "ok", status: 200, corpo: { count: 0 } });
+    expect(await cliente().pedirQrCode(TOKEN_DA_INSTANCIA, INSTANCIA_DO_CRM)).toEqual({ tipo: "aguardando" });
+  });
+
+  it("pedirQrCode: o 200 com { error: true } (instância inexistente) é http 404, e um base64 que não é base64 NUNCA vira QR", async () => {
+    falso.enfileirar({ kind: "ok", status: 200, corpo: { error: true, message: "BadRequestException" } });
+    await expect(cliente().pedirQrCode(TOKEN_DA_INSTANCIA, INSTANCIA_DO_CRM)).rejects.toMatchObject({ tipo: "http", status: 404 });
+    for (const base64 of ["<script>alert(1)</script>", "data:text/html;base64,PGgxPg==", "aaa", `${"A".repeat(300_004)}`, 12345]) {
+      falso.enfileirar({ kind: "ok", status: 200, corpo: { base64 } });
+      expect(await cliente().pedirQrCode(TOKEN_DA_INSTANCIA, INSTANCIA_DO_CRM)).toEqual({ tipo: "aguardando" });
+    }
+  });
+
+  it("sairDaSessao: DELETE /instance/logout/<instancia>; já desconectada (400) ou inexistente (404) é sucesso; credencial recusada lança", async () => {
+    falso.enfileirar({ kind: "ok", status: 200, corpo: { status: "SUCCESS", error: false, response: { message: "Instance logged out" } } });
+    await cliente().sairDaSessao(TOKEN_DA_INSTANCIA, INSTANCIA_DO_CRM);
+    expect(falso.recebidas[0]).toMatchObject({ metodo: "DELETE", caminho: `/instance/logout/${INSTANCIA_DO_CRM}`, cabecalhos: { apikey: TOKEN_DA_INSTANCIA } });
+    expect(falso.recebidas[0]!.cabecalhos["content-type"]).toBeUndefined();
+    for (const status of [400, 404]) {
+      falso.enfileirar({ kind: "ok", status, corpo: { status, error: "Bad Request", response: { message: ["The instance is not connected"] } } });
+      await expect(cliente().sairDaSessao(TOKEN_DA_INSTANCIA, INSTANCIA_DO_CRM)).resolves.toBeUndefined();
+    }
+    for (const status of [401, 500]) {
+      falso.enfileirar({ kind: "ok", status, corpo: { error: "x" } });
+      await expect(cliente().sairDaSessao(TOKEN_DA_INSTANCIA, INSTANCIA_DO_CRM)).rejects.toMatchObject({ tipo: "http", status });
+    }
+  });
+
+  it("apagarInstancia: DELETE /instance/delete/<instancia> com a chave GLOBAL; inexistente (404) é sucesso; 5xx lança", async () => {
+    falso.enfileirar({ kind: "ok", status: 200, corpo: { status: "SUCCESS", error: false, response: { message: "Instance deleted" } } });
+    await cliente().apagarInstancia(GLOBAL, INSTANCIA_DO_CRM);
+    expect(falso.recebidas[0]).toMatchObject({ metodo: "DELETE", caminho: `/instance/delete/${INSTANCIA_DO_CRM}`, cabecalhos: { apikey: GLOBAL } });
+    falso.enfileirar({ kind: "ok", status: 404, corpo: { error: "Not Found" } });
+    await expect(cliente().apagarInstancia(GLOBAL, INSTANCIA_DO_CRM)).resolves.toBeUndefined();
+    falso.enfileirar({ kind: "ok", status: 500, corpo: { error: "x" } });
+    await expect(cliente().apagarInstancia(GLOBAL, INSTANCIA_DO_CRM)).rejects.toMatchObject({ tipo: "http", status: 500 });
+  });
+
+  it("apagarInstancia NUNCA apaga a instância do Financeiro nem uma que o CRM não criou: recusa sem chamar a rede", async () => {
+    for (const nome of ["numeropvmarcos", "NUMEROPVMARCOS", " numeropvmarcos ", "comercial", "instancia-do-dono", ""]) {
+      await expect(cliente().apagarInstancia(GLOBAL, nome)).rejects.toThrow("Recusado");
+    }
+    expect(falso.recebidas).toHaveLength(0);
+  });
+
+  it("falhas de transporte nas chamadas novas: rede, tempo esgotado e resposta perdida, sem vazar a chave", async () => {
+    const semNinguem = criarClienteDaEvolution({ url: `http://127.0.0.1:${await portaSemNinguem()}`, timeoutMs: 1_000 });
+    await expect(semNinguem.sairDaSessao(TOKEN_DA_INSTANCIA, INSTANCIA_DO_CRM)).rejects.toMatchObject({ tipo: "rede" });
+    await expect(semNinguem.pedirQrCode(TOKEN_DA_INSTANCIA, INSTANCIA_DO_CRM)).rejects.toMatchObject({ tipo: "rede" });
+    falso.enfileirar({ kind: "timeout" });
+    await expect(cliente(200).pedirQrCode(TOKEN_DA_INSTANCIA, INSTANCIA_DO_CRM)).rejects.toMatchObject({ tipo: "tempo_esgotado" });
+    falso.enfileirar({ kind: "respostaPerdida" });
+    await expect(cliente().apagarInstancia(GLOBAL, INSTANCIA_DO_CRM)).rejects.toMatchObject({ tipo: "resposta_perdida" });
+  });
+});
+
+describe("imagemDoQrCode: só imagem de base64 bem formado chega à tela", () => {
+  it("aceita o base64 puro e a data URL de png, jpeg e webp, devolvendo sempre a data URL", () => {
+    expect(imagemDoQrCode(QR_BASE64)).toBe(QR_DATA_URL);
+    expect(imagemDoQrCode(QR_DATA_URL)).toBe(QR_DATA_URL);
+    expect(imagemDoQrCode(`data:image/jpeg;base64,${QR_BASE64}`)).toBe(`data:image/jpeg;base64,${QR_BASE64}`);
+    expect(imagemDoQrCode(`  ${QR_BASE64.slice(0, 8)}\n${QR_BASE64.slice(8)}  `)).toBe(QR_DATA_URL);
+  });
+
+  it("recusa o que não é imagem em base64: texto, SVG, HTML, vazio, tamanho de base64 quebrado, grande demais, e o que não é string", () => {
+    for (const ruim of ["", "   ", "texto livre com espaço!", "data:image/svg+xml;base64,PHN2Zz4=", "data:text/html;base64,PGgxPg==", "javascript:alert(1)", "abc", QR_BASE64.slice(0, -1), "A".repeat(300_004), null, undefined, 7, {}]) {
+      expect(imagemDoQrCode(ruim)).toBeUndefined();
+    }
   });
 });
 

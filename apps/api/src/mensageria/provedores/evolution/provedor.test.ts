@@ -92,7 +92,7 @@ describe("provedor da Evolution: o que só ele tem", () => {
 
   it("interpretarChamada devolve ignorado (nunca lista vazia) para outro evento e para outra instância", () => {
     const canal = canalDaEvolution();
-    expect(provedor.interpretarChamada({ ...texto, event: "connection.update" }, canal)).toEqual([{ tipo: "ignorado", motivo: "evento_nao_tratado" }]);
+    expect(provedor.interpretarChamada({ ...texto, event: "qrcode.updated" }, canal)).toEqual([{ tipo: "ignorado", motivo: "evento_nao_tratado" }]);
     expect(provedor.interpretarChamada({ ...texto, instance: "outra" }, canal)).toEqual([{ tipo: "ignorado", motivo: "evento_nao_tratado" }]);
   });
 
@@ -104,5 +104,134 @@ describe("provedor da Evolution: o que só ele tem", () => {
 
   it("o provedor se chama whatsapp-nao-oficial", () => {
     expect(provedor.provedor).toBe("whatsapp-nao-oficial");
+  });
+});
+
+describe("provedor da Evolution: conferirConexao (Sessão 4, 4.3.1) — o 'open' do webhook é só um aviso", () => {
+  const TOKEN_DA_INSTANCIA = "tok-da-instancia-9z";
+  const GLOBAL = "chave-global-9z";
+  const canalDoNumero = (): CanalParaProvedor => {
+    const base = canalDaEvolution();
+    return {
+      ...base,
+      canal: { ...base.canal, identificadorExterno: "+5511987654321" },
+      credencial: JSON.stringify({ instancia: INSTANCIA, apikey: TOKEN_DA_INSTANCIA }),
+    };
+  };
+  const dono = (ownerJid: string | null) => [{ name: INSTANCIA, ownerJid, token: TOKEN_DA_INSTANCIA, connectionStatus: "open" }];
+
+  async function montar(opcoes: { apikeyGlobal?: string } = {}) {
+    const falso = await criarServidorFalso();
+    const provedor = criarProvedorEvolution({ url: falso.url, timeoutMs: 800, ...(opcoes.apikeyGlobal ? { apikeyGlobal: opcoes.apikeyGlobal } : {}) });
+    return { falso, provedor };
+  }
+  const aberta = (falso: Awaited<ReturnType<typeof criarServidorFalso>>) =>
+    falso.enfileirar({ kind: "ok", status: 200, corpo: { instance: { instanceName: INSTANCIA, state: "open" } } });
+
+  it("instância aberta e número do Canal: conectada, 'confirmada'; o dono do número é lido com a chave GLOBAL quando há", async () => {
+    const { falso, provedor } = await montar({ apikeyGlobal: GLOBAL });
+    aberta(falso);
+    falso.enfileirar({ kind: "ok", status: 200, corpo: dono("5511987654321@s.whatsapp.net") });
+    expect(await provedor.conferirConexao!(canalDoNumero())).toEqual({ conexao: "conectada", motivo: "confirmada" });
+    expect(falso.recebidas[0]!.cabecalhos.apikey).toBe(TOKEN_DA_INSTANCIA);
+    expect(falso.recebidas[1]).toMatchObject({ metodo: "GET", cabecalhos: { apikey: GLOBAL } });
+    await falso.fechar();
+  });
+
+  it("sem a chave global, o dono do número é lido com o token da instância", async () => {
+    const { falso, provedor } = await montar();
+    aberta(falso);
+    falso.enfileirar({ kind: "ok", status: 200, corpo: dono("5511987654321@s.whatsapp.net") });
+    expect(await provedor.conferirConexao!(canalDoNumero())).toMatchObject({ conexao: "conectada" });
+    expect(falso.recebidas[1]!.cabecalhos.apikey).toBe(TOKEN_DA_INSTANCIA);
+    await falso.fechar();
+  });
+
+  it("o nono dígito do cadastro e o do WhatsApp podem diferir: ainda é o mesmo número", async () => {
+    const { falso, provedor } = await montar({ apikeyGlobal: GLOBAL });
+    aberta(falso);
+    falso.enfileirar({ kind: "ok", status: 200, corpo: dono("551187654321@s.whatsapp.net") });
+    expect(await provedor.conferirConexao!(canalDoNumero())).toMatchObject({ conexao: "conectada" });
+    await falso.fechar();
+  });
+
+  it("outro número: com_erro 'outro_numero' e o aparelho é tirado da sessão (logout com o token da instância)", async () => {
+    const { falso, provedor } = await montar({ apikeyGlobal: GLOBAL });
+    aberta(falso);
+    falso.enfileirar({ kind: "ok", status: 200, corpo: dono("5521999990000@s.whatsapp.net") });
+    falso.enfileirar({ kind: "ok", status: 200, corpo: { status: "SUCCESS" } });
+    expect(await provedor.conferirConexao!(canalDoNumero())).toEqual({ conexao: "com_erro", motivo: "outro_numero" });
+    expect(falso.recebidas[2]).toMatchObject({ metodo: "DELETE", caminho: `/instance/logout/${INSTANCIA}`, cabecalhos: { apikey: TOKEN_DA_INSTANCIA } });
+    await falso.fechar();
+  });
+
+  it("outro número e o logout também falha: ainda é com_erro (a falha do logout não esconde o número errado)", async () => {
+    const { falso, provedor } = await montar({ apikeyGlobal: GLOBAL });
+    aberta(falso);
+    falso.enfileirar({ kind: "ok", status: 200, corpo: dono("5521999990000@s.whatsapp.net") });
+    falso.enfileirar({ kind: "timeout" });
+    expect(await provedor.conferirConexao!(canalDoNumero())).toEqual({ conexao: "com_erro", motivo: "outro_numero" });
+    await falso.fechar();
+  });
+
+  it("a instância já não está aberta (fechou entre o aviso e a conferência): nada é confirmado e nada é gravado (sem conexao)", async () => {
+    const { falso, provedor } = await montar();
+    falso.enfileirar({ kind: "ok", status: 200, corpo: { instance: { instanceName: INSTANCIA, state: "close" } } });
+    expect(await provedor.conferirConexao!(canalDoNumero())).toEqual({ motivo: "instancia_nao_aberta" });
+    await falso.fechar();
+  });
+
+  it("a Evolution não informa o dono do número: lança PROVEDOR_INDISPONIVEL (a linha volta à fila), NUNCA devolve conectada", async () => {
+    const { falso, provedor } = await montar();
+    aberta(falso);
+    falso.enfileirar({ kind: "ok", status: 200, corpo: dono(null) });
+    await expect(provedor.conferirConexao!(canalDoNumero())).rejects.toMatchObject({ name: "ErroDeProvedor", codigo: "PROVEDOR_INDISPONIVEL" });
+    await falso.fechar();
+  });
+
+  it("a instância sumiu (fetchInstances sem a instância, ou 404): com_erro 'instancia_inexistente'", async () => {
+    const { falso, provedor } = await montar();
+    aberta(falso);
+    falso.enfileirar({ kind: "ok", status: 200, corpo: [] });
+    expect(await provedor.conferirConexao!(canalDoNumero())).toEqual({ conexao: "com_erro", motivo: "instancia_inexistente" });
+    falso.enfileirar({ kind: "ok", status: 404, corpo: { error: "Not Found" } });
+    expect(await provedor.conferirConexao!(canalDoNumero())).toEqual({ conexao: "com_erro", motivo: "instancia_inexistente" });
+    await falso.fechar();
+  });
+
+  it("a Evolution recusou a credencial do Canal (401 ou 403): com_erro 'credencial_recusada'", async () => {
+    for (const status of [401, 403]) {
+      const { falso, provedor } = await montar();
+      falso.enfileirar({ kind: "ok", status, corpo: { error: "Unauthorized" } });
+      expect(await provedor.conferirConexao!(canalDoNumero())).toEqual({ conexao: "com_erro", motivo: "credencial_recusada" });
+      await falso.fechar();
+    }
+  });
+
+  it("a Evolution fora do ar (5xx, tempo esgotado, conexão recusada): lança PROVEDOR_INDISPONIVEL, nunca decide por ela", async () => {
+    const { falso, provedor } = await montar();
+    falso.enfileirar({ kind: "ok", status: 500, corpo: { error: "x" } });
+    await expect(provedor.conferirConexao!(canalDoNumero())).rejects.toMatchObject({ codigo: "PROVEDOR_INDISPONIVEL" });
+    falso.enfileirar({ kind: "timeout" });
+    await expect(provedor.conferirConexao!(canalDoNumero())).rejects.toMatchObject({ codigo: "PROVEDOR_INDISPONIVEL" });
+    await falso.fechar();
+    await expect(provedor.conferirConexao!(canalDoNumero())).rejects.toMatchObject({ codigo: "PROVEDOR_INDISPONIVEL" });
+  });
+
+  it("Canal sem credencial: com_erro 'sem_credencial', sem tocar a rede", async () => {
+    const { falso, provedor } = await montar();
+    expect(await provedor.conferirConexao!({ ...canalDoNumero(), credencial: undefined })).toEqual({ conexao: "com_erro", motivo: "sem_credencial" });
+    expect(falso.recebidas).toHaveLength(0);
+    await falso.fechar();
+  });
+
+  it("nada do resultado carrega a chave global, o token da instância nem o número", async () => {
+    const { falso, provedor } = await montar({ apikeyGlobal: GLOBAL });
+    aberta(falso);
+    falso.enfileirar({ kind: "ok", status: 200, corpo: dono("5521999990000@s.whatsapp.net") });
+    falso.enfileirar({ kind: "ok", status: 200, corpo: { status: "SUCCESS" } });
+    const resultado = await provedor.conferirConexao!(canalDoNumero());
+    expect(JSON.stringify(resultado)).not.toMatch(new RegExp(`${GLOBAL}|${TOKEN_DA_INSTANCIA}|5521999990000|5511987654321`));
+    await falso.fechar();
   });
 });
