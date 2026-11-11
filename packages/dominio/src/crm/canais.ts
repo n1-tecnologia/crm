@@ -130,16 +130,21 @@ export function validarEdicaoDeCanal(edicao: EdicaoDeCanal): OperationResult<Edi
  * confirmou a instância aberta e o número conferiu. Leva a `conectada` com
  * `conexaoSimulada: false` e, ao contrário de `simular_conexao`, aceita o Canal
  * que já está `conectada` (rodar o comando de novo troca o segredo do webhook e
- * tira a marca de simulada). `conectar` (QR) e `conexao_perdida`
- * (`CONNECTION_UPDATE`) ficam para a Sessão 4.
+ * tira a marca de simulada).
+ *
+ * Sessão 4 (4.2.1): `conectar` é a pessoa pedindo o QR code. NÃO muda a conexão (só o provedor, ao confirmar, leva o
+ * Canal a `conectada`): o domínio apenas diz se o pedido cabe, e recusa o Canal arquivado e o já conectado.
+ * `conexao_perdida` é o provedor avisando que a sessão caiu (`CONNECTION_UPDATE` com `close` por outro motivo que não
+ * o aparelho removido): leva a `com_erro`. Num Canal já `desconectada` não há conexão a perder (um `close` depois de
+ * "Desconectar" não vira erro), e o arquivado não tem conexão.
  *
  * `simular_conexao` (CR-01, 16-17) só vale para o Canal que NUNCA foi ligado a um
  * provedor real (D-16-03: a demonstração da Caixa em Canal simulado). O Canal
  * ligado (`FatosDaConexao.ligadoAoProvedor`) não volta a simulado: a saída dele
  * cairia no provedor de teste e a entrada da Evolution seria descartada. Reconectar
- * o Canal real é `canal:ligar-evolution` (a Sessão 4 troca pelo "Conectar" com QR).
+ * o Canal real é o "Conectar" com QR (Sessão 4).
  */
-export type AcaoDeConexao = "simular_conexao" | "desconectar" | "conexao_confirmada";
+export type AcaoDeConexao = "simular_conexao" | "desconectar" | "conexao_confirmada" | "conectar" | "conexao_perdida";
 
 /**
  * O que o domínio não sabe sozinho e quem decide a transição precisa trazer
@@ -157,7 +162,35 @@ export interface FatosDaConexao {
 export interface CanalNaFicha extends Canal {
   /** O Canal tem credencial ativa do próprio provedor no cofre; vem só na leitura da ficha, `GET /canais/:id`, e não é coluna de `plataforma.canais`. */
   readonly ligadoAoProvedor: boolean;
+  /**
+   * Sessão 4 (4.3.4): este ambiente deixa simular a conexão (`PERMITIR_CONEXAO_SIMULADA=true`: desenvolvimento, testes e
+   * homologação; nunca produção). É do servidor, não do Canal: a ficha só oferece "Simular conexão" quando é `true`.
+   */
+  readonly simulacaoPermitida: boolean;
 }
+
+/**
+ * O QR code que a pessoa lê com o celular (Sessão 4, 4.2.3). `imagem` é um `data:image/png;base64,...` pronto para o
+ * `src` de um `<img>` (a api confere o formato antes de devolver); `codigoDePareamento` é o código de 8 caracteres do
+ * "Conectar com número de telefone", para quem está no próprio celular. O QR vale poucos segundos: quem mostra o painel
+ * pede outro (chamando `conectar` de novo) enquanto o Canal não conectar.
+ */
+export interface QrCodeDoCanal {
+  readonly imagem: string;
+  readonly codigoDePareamento?: string;
+}
+
+/**
+ * A resposta de `POST /canais/:id/conectar` (Sessão 4, 4.2.3), em `dados`:
+ *   - `qrcode`: o provedor gerou um QR code para ler;
+ *   - `aguardando`: o provedor ainda não gerou (a Evolution leva uns segundos): pedir de novo em ~2 s;
+ *   - `conectada`: o aparelho JÁ estava conectado ao provedor e o número conferiu; o Canal foi confirmado agora.
+ * Nunca é a rota que diz `conectada` por QR lido: isso é do provedor, pelo webhook (4.3), e a tela o vê relendo o Canal.
+ */
+export type ConexaoPorQrCode =
+  | { readonly situacao: "qrcode"; readonly qrcode: QrCodeDoCanal }
+  | { readonly situacao: "aguardando" }
+  | { readonly situacao: "conectada"; readonly canal: Canal };
 
 export const FRASE_DO_CANAL_REAL =
   "Este Canal já foi ligado a um provedor real e não volta a ser simulado. Para reconectá-lo, ligue-o de novo ao provedor.";
@@ -174,6 +207,17 @@ export function proximaConexao(
     if (canal.estado === "arquivado") return fail("Um Canal arquivado não se conecta.");
     return ok({ conexao: "conectada", conexaoSimulada: false });
   }
+  if (acao === "conectar") {
+    if (canal.estado === "arquivado") return fail("Um Canal arquivado não se conecta.");
+    if (canal.conexao === "conectada") return fail("O Canal já está conectado.");
+    // Pedir o QR code não muda a conexão: `desconectada` e `com_erro` seguem como estão até o provedor confirmar.
+    return ok({ conexao: canal.conexao, conexaoSimulada: false });
+  }
+  if (acao === "conexao_perdida") {
+    if (canal.estado === "arquivado") return fail("Um Canal arquivado não tem conexão a perder.");
+    if (canal.conexao === "desconectada") return fail("O Canal já está desconectado.");
+    return ok({ conexao: "com_erro", conexaoSimulada: false });
+  }
   if (acao === "simular_conexao") {
     if (canal.estado === "arquivado") return fail("Um Canal arquivado não se conecta.");
     if (canal.conexao === "conectada") return fail("O Canal já está conectado.");
@@ -185,9 +229,22 @@ export function proximaConexao(
   return ok({ conexao: "desconectada", conexaoSimulada: false });
 }
 
-/** A mesma regra de `simular_conexao`, para a tela decidir se oferece o botão. */
-export function podeSimularConexao(canal: Pick<CanalNaFicha, "conexao" | "estado" | "ligadoAoProvedor">): boolean {
-  return proximaConexao(canal, "simular_conexao", { ligadoAoProvedor: canal.ligadoAoProvedor }).ok;
+/**
+ * A mesma regra de `simular_conexao`, para a tela decidir se oferece o botão: o servidor tem de permitir a simulação
+ * (4.3.4) e a transição tem de caber.
+ */
+export function podeSimularConexao(canal: Pick<CanalNaFicha, "conexao" | "estado" | "ligadoAoProvedor" | "simulacaoPermitida">): boolean {
+  return canal.simulacaoPermitida && proximaConexao(canal, "simular_conexao", { ligadoAoProvedor: canal.ligadoAoProvedor }).ok;
+}
+
+/** Os provedores que conectam lendo um QR code (Sessão 4): hoje só o WhatsApp não oficial, pela Evolution. */
+export function conectaPorQrCode(provedor: Canal["provedor"]): boolean {
+  return provedor === "whatsapp-nao-oficial";
+}
+
+/** A mesma regra de `conectar`, para a tela decidir se oferece o botão "Conectar" (e o painel do QR code). */
+export function podeConectarPorQrCode(canal: Pick<Canal, "provedor" | "conexao" | "estado">): boolean {
+  return conectaPorQrCode(canal.provedor) && proximaConexao(canal, "conectar").ok;
 }
 
 /**

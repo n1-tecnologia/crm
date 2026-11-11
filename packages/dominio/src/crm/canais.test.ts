@@ -14,7 +14,9 @@ import {
 import {
   FRASE_DO_CANAL_REAL,
   FRASE_SEM_FATOS_DA_CONEXAO,
+  conectaPorQrCode,
   conferirNumeroConectado,
+  podeConectarPorQrCode,
   podeSimularConexao,
   proximaConexao,
   validarArquivamento,
@@ -182,11 +184,80 @@ describe("CR-01 (16-17): o Canal ligado a um provedor real não volta a simulado
   );
 
   it("podeSimularConexao é a mesma regra para a tela", () => {
-    expect(podeSimularConexao({ conexao: "desconectada", estado: "ativo", ligadoAoProvedor: false })).toBe(true);
-    expect(podeSimularConexao({ conexao: "com_erro", estado: "ativo", ligadoAoProvedor: false })).toBe(true);
-    expect(podeSimularConexao({ conexao: "desconectada", estado: "ativo", ligadoAoProvedor: true })).toBe(false);
-    expect(podeSimularConexao({ conexao: "conectada", estado: "ativo", ligadoAoProvedor: false })).toBe(false);
-    expect(podeSimularConexao({ conexao: "desconectada", estado: "arquivado", ligadoAoProvedor: false })).toBe(false);
+    const permitida = true;
+    expect(podeSimularConexao({ conexao: "desconectada", estado: "ativo", ligadoAoProvedor: false, simulacaoPermitida: permitida })).toBe(true);
+    expect(podeSimularConexao({ conexao: "com_erro", estado: "ativo", ligadoAoProvedor: false, simulacaoPermitida: permitida })).toBe(true);
+    expect(podeSimularConexao({ conexao: "desconectada", estado: "ativo", ligadoAoProvedor: true, simulacaoPermitida: permitida })).toBe(false);
+    expect(podeSimularConexao({ conexao: "conectada", estado: "ativo", ligadoAoProvedor: false, simulacaoPermitida: permitida })).toBe(false);
+    expect(podeSimularConexao({ conexao: "desconectada", estado: "arquivado", ligadoAoProvedor: false, simulacaoPermitida: permitida })).toBe(false);
+  });
+
+  it("4.3.4: com o servidor sem simulação (produção), a tela nunca oferece o botão, mesmo onde a transição caberia", () => {
+    expect(podeSimularConexao({ conexao: "desconectada", estado: "ativo", ligadoAoProvedor: false, simulacaoPermitida: false })).toBe(false);
+    expect(podeSimularConexao({ conexao: "com_erro", estado: "ativo", ligadoAoProvedor: false, simulacaoPermitida: false })).toBe(false);
+  });
+});
+
+describe("conectar (Sessão 4, 4.2.1): a pessoa pede o QR code", () => {
+  it.each(["desconectada", "com_erro"] as const)("a partir de %s cabe e NÃO muda a conexão (só o provedor confirma)", (conexao) => {
+    expect(proximaConexao({ conexao, estado: "ativo" }, "conectar")).toEqual({
+      ok: true,
+      value: { conexao, conexaoSimulada: false },
+    });
+  });
+
+  it("recusa o Canal já conectado", () => {
+    expect(proximaConexao({ conexao: "conectada", estado: "ativo" }, "conectar")).toEqual({
+      ok: false,
+      error: "O Canal já está conectado.",
+    });
+  });
+
+  it("recusa o Canal arquivado", () => {
+    expect(proximaConexao({ conexao: "desconectada", estado: "arquivado" }, "conectar")).toEqual({
+      ok: false,
+      error: "Um Canal arquivado não se conecta.",
+    });
+  });
+
+  it("não exige os fatos da conexão (eles são só da simulação)", () => {
+    expect(proximaConexao({ conexao: "desconectada", estado: "ativo" }, "conectar").ok).toBe(true);
+    expect(proximaConexao({ conexao: "desconectada", estado: "ativo" }, "conectar", { ligadoAoProvedor: true }).ok).toBe(true);
+  });
+});
+
+describe("conexao_perdida (Sessão 4, 4.2.1): o provedor avisou que a sessão caiu", () => {
+  it.each(["conectada", "com_erro"] as const)("a partir de %s leva a com_erro, e NÃO simulada", (conexao) => {
+    expect(proximaConexao({ conexao, estado: "ativo" }, "conexao_perdida")).toEqual({
+      ok: true,
+      value: { conexao: "com_erro", conexaoSimulada: false },
+    });
+  });
+
+  it("num Canal desconectado não há conexão a perder: um close depois de \"Desconectar\" não vira erro", () => {
+    expect(proximaConexao({ conexao: "desconectada", estado: "ativo" }, "conexao_perdida")).toEqual({
+      ok: false,
+      error: "O Canal já está desconectado.",
+    });
+  });
+
+  it("recusa o Canal arquivado", () => {
+    expect(proximaConexao({ conexao: "conectada", estado: "arquivado" }, "conexao_perdida")).toMatchObject({ ok: false });
+  });
+});
+
+describe("conectaPorQrCode / podeConectarPorQrCode (a tela decide o botão)", () => {
+  it("só o WhatsApp não oficial conecta lendo um QR code", () => {
+    expect(conectaPorQrCode("whatsapp-nao-oficial")).toBe(true);
+    for (const outro of ["whatsapp-cloud", "instagram-graph", "email-imap-smtp"] as const) expect(conectaPorQrCode(outro)).toBe(false);
+  });
+
+  it("oferece \"Conectar\" no não oficial desconectado ou com erro, e em mais nada", () => {
+    expect(podeConectarPorQrCode({ provedor: "whatsapp-nao-oficial", conexao: "desconectada", estado: "ativo" })).toBe(true);
+    expect(podeConectarPorQrCode({ provedor: "whatsapp-nao-oficial", conexao: "com_erro", estado: "ativo" })).toBe(true);
+    expect(podeConectarPorQrCode({ provedor: "whatsapp-nao-oficial", conexao: "conectada", estado: "ativo" })).toBe(false);
+    expect(podeConectarPorQrCode({ provedor: "whatsapp-nao-oficial", conexao: "desconectada", estado: "arquivado" })).toBe(false);
+    expect(podeConectarPorQrCode({ provedor: "instagram-graph", conexao: "desconectada", estado: "ativo" })).toBe(false);
   });
 });
 
