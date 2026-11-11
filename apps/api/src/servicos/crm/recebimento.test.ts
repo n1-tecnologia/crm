@@ -384,6 +384,111 @@ describeComBanco("ServicoDeRecebimento — Postgres local", () => {
     expect(await contar(c.ws, "mensagens")).toBe(2);
   });
 
+  describe("a Mensagem digitada no celular do Canal (4.4.2)", () => {
+    const doCelular = (extras: Partial<RecebidaDoProvedor> = {}) =>
+      evento({ idExterno: "cel-1", conteudo: "respondi pelo celular", remetente: { tipo: "whatsapp", valor: WHATSAPP_DA_ANA }, digitadaNoAparelho: true, ...extras });
+
+    it("para um número sem Contato: abre Contato (com o número por nome), Conversa e uma Mensagem `enviada` pelo Canal", async () => {
+      const c = await espaco("cel-novo");
+      const r = valor(await servico.receberMensagem(c.ws, c.canalId, doCelular()));
+      expect(r).toMatchObject({ contatoNovo: true, conversaNova: true, conversaReaberta: false, repetida: false });
+      expect(r.mensagem).toMatchObject({
+        direcao: "enviada",
+        ator: { tipo: "integration", id: c.canalId },
+        statusEntrega: "enviada",
+        conteudo: "respondi pelo celular",
+        idExterno: "cel-1",
+        remetenteExterno: null,
+        identificadorId: null,
+      });
+      expect(r.conversa.titulo).toBe(WHATSAPP_DA_ANA);
+      expect(await contar(c.ws, "mensagens")).toBe(1);
+    });
+
+    it("na Conversa aberta do par: entra no mesmo fio, depois da recebida, sem mexer no Contato nem na Conversa", async () => {
+      const c = await espaco("cel-aberta");
+      const a = valor(await servico.receberMensagem(c.ws, c.canalId, evento({ idExterno: "ext-a" })));
+      const b = valor(await servico.receberMensagem(c.ws, c.canalId, doCelular({ criadoEm: new Date(Date.now() + 1_000).toISOString() })));
+      expect(b).toMatchObject({ contatoNovo: false, conversaNova: false, conversaReaberta: false });
+      expect(b.conversa.id).toBe(a.conversa.id);
+      expect(b.contatoId).toBe(a.contatoId);
+      const contato = (await pool().query<{ nome: string }>("select nome from plataforma.contatos where workspace_id = $1 and id = $2", [c.ws, a.contatoId])).rows[0]!;
+      expect(contato.nome).toBe("Ana");
+      expect((await lerConversa(c.ws, a.conversa.id)).reaberturas).toBe(0);
+      const fio = (await pool().query<{ direcao: string }>("select direcao from plataforma.mensagens where workspace_id = $1 and conversa_id = $2 order by criado_em, seq", [c.ws, a.conversa.id])).rows;
+      expect(fio.map((m) => m.direcao)).toEqual(["recebida", "enviada"]);
+    });
+
+    it("a Conversa resolvida dentro da janela NÃO é reaberta: a Mensagem entra nela e ela continua resolvida", async () => {
+      const c = await espaco("cel-resolvida");
+      const a = valor(await servico.receberMensagem(c.ws, c.canalId, evento({ idExterno: "ext-a" })));
+      await prepararConversa(c.ws, a.conversa.id, { situacao: "resolvida", resolvidaHaHoras: 10 });
+      const b = valor(await servico.receberMensagem(c.ws, c.canalId, doCelular()));
+      expect(b).toMatchObject({ conversaNova: false, conversaReaberta: false });
+      expect(b.conversa.id).toBe(a.conversa.id);
+      expect(await lerConversa(c.ws, a.conversa.id)).toMatchObject({ situacao: "resolvida", reaberturas: 0 });
+      expect(await contar(c.ws, "conversas")).toBe(1);
+    });
+
+    it("a Conversa pendente continua pendente e adiada (responder pelo celular não a acorda)", async () => {
+      const c = await espaco("cel-pendente");
+      const a = valor(await servico.receberMensagem(c.ws, c.canalId, evento({ idExterno: "ext-a" })));
+      await prepararConversa(c.ws, a.conversa.id, { situacao: "pendente", adiada: true });
+      const b = valor(await servico.receberMensagem(c.ws, c.canalId, doCelular()));
+      expect(b.conversa.id).toBe(a.conversa.id);
+      const depois = await lerConversa(c.ws, a.conversa.id);
+      expect(depois).toMatchObject({ situacao: "pendente", reaberturas: 0 });
+      expect(depois.adiada_ate).not.toBeNull();
+    });
+
+    it("a resolvida há 80 h (fora da janela de 72 h) ou na lixeira não recebe: abre outra Conversa e a antiga fica como está", async () => {
+      const c = await espaco("cel-fora");
+      const a = valor(await servico.receberMensagem(c.ws, c.canalId, evento({ idExterno: "ext-a" })));
+      await prepararConversa(c.ws, a.conversa.id, { situacao: "resolvida", resolvidaHaHoras: 80 });
+      const b = valor(await servico.receberMensagem(c.ws, c.canalId, doCelular({ idExterno: "cel-b" })));
+      expect(b).toMatchObject({ conversaNova: true, contatoNovo: false });
+      expect(b.conversa.id).not.toBe(a.conversa.id);
+      expect((await lerConversa(c.ws, a.conversa.id)).situacao).toBe("resolvida");
+
+      await prepararConversa(c.ws, b.conversa.id, { situacao: "resolvida", resolvidaHaHoras: 1, naLixeira: true });
+      await prepararConversa(c.ws, a.conversa.id, { situacao: "resolvida", resolvidaHaHoras: 100 });
+      const d = valor(await servico.receberMensagem(c.ws, c.canalId, doCelular({ idExterno: "cel-d" })));
+      expect(d.conversaNova).toBe(true);
+      expect(await lerConversa(c.ws, b.conversa.id)).toMatchObject({ situacao: "resolvida", estado: "na_lixeira" });
+    });
+
+    it.each(["arquivado", "na_lixeira"] as const)("o Contato %s NÃO volta a ativo por uma Mensagem que a pessoa digitou (quem escreveu foi ela, não o Contato)", async (estado) => {
+      const c = await espaco(`cel-${estado}`);
+      const a = valor(await servico.receberMensagem(c.ws, c.canalId, evento({ idExterno: "ext-a" })));
+      await pool().query("update plataforma.contatos set estado = $3 where workspace_id = $1 and id = $2", [c.ws, a.contatoId, estado]);
+      const b = valor(await servico.receberMensagem(c.ws, c.canalId, doCelular()));
+      expect(b.contatoId).toBe(a.contatoId);
+      const contato = (await pool().query<{ estado: string }>("select estado from plataforma.contatos where workspace_id = $1 and id = $2", [c.ws, a.contatoId])).rows[0]!;
+      expect(contato.estado).toBe(estado);
+      expect(await contar(c.ws, "mensagens")).toBe(2);
+    });
+
+    it("o mesmo id externo entregue duas vezes grava uma Mensagem só (repetida)", async () => {
+      const c = await espaco("cel-repetida");
+      valor(await servico.receberMensagem(c.ws, c.canalId, doCelular()));
+      const segunda = valor(await servico.receberMensagem(c.ws, c.canalId, doCelular()));
+      expect(segunda.repetida).toBe(true);
+      expect(await contar(c.ws, "mensagens")).toBe(1);
+      expect(await contar(c.ws, "contatos")).toBe(1);
+    });
+
+    it("o Contato mesclado continua recusado (409): a Mensagem não cai num Contato que já não existe", async () => {
+      const c = await espaco("cel-mesclado");
+      const a = valor(await servico.receberMensagem(c.ws, c.canalId, evento({ idExterno: "ext-a" })));
+      const sobrevivente = valor(await servico.receberMensagem(c.ws, c.canalId, evento({ idExterno: "ext-s", remetente: { tipo: "whatsapp", valor: "+5511955556666", nomeExibido: "Bia" } })));
+      await pool().query(
+        "update plataforma.contatos set estado = 'mesclado', mesclado_em_id = $3, mesclado_em = now() where workspace_id = $1 and id = $2",
+        [c.ws, a.contatoId, sobrevivente.contatoId],
+      );
+      expect(recusado(await servico.receberMensagem(c.ws, c.canalId, doCelular()))).toMatchObject({ status: 409, codigo: "CONTATO_MESCLADO" });
+    });
+  });
+
   it("o Contato mesclado recusa com 409 CONTATO_MESCLADO e não grava Mensagem", async () => {
     const c = await espaco("mesclado");
     const a = valor(await servico.receberMensagem(c.ws, c.canalId, evento({ idExterno: "ext-a" })));

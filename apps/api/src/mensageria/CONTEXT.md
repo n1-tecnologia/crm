@@ -14,7 +14,8 @@ provedor de fora.
 saída, mídia, Evolution) é construído contra ela; as Sessões 4, 7, 8 e 9 só ligam uma implementação nova.
 
 - `EventoDoProvedor` compõe o `RecebidaDoProvedor` do domínio e acrescenta `status`, `conexao` e `ignorado`
-  (o tradutor diz por que descartou: grupo, `fromMe`, sem número).
+  (o tradutor diz por que descartou: grupo, sem número, reação, edição). A Mensagem digitada no celular do Canal
+  (`digitadaNoAparelho`, Sessão 4, 4.4.2) é um evento `mensagem` como os outros, com o Contato como `remetente`.
 - `ResultadoDoEnvio` separa `transitorio` de permanente e marca `ambiguo` quando o provedor pode ter enviado
   (timeout, resposta perdida): quem chama nunca reenvia sozinho um ambíguo.
 - `CanalParaProvedor` junta o Canal, o segredo do webhook e a credencial já decifrada. Só existe dentro do
@@ -54,8 +55,28 @@ existe** e o Instagram (`instagram-graph`, Sessão 8) **só com `INSTAGRAM_APP_I
 `INSTAGRAM_REDIRECT_URI`** (`provedores/instagram/do-ambiente.ts`): sem elas, um Canal real continua recusando com
 `PROVEDOR_INDISPONIVEL`. A credencial do Canal é o JSON
 `{ instancia, apikey }` com o token da INSTÂNCIA (nunca a chave global da Evolution), no cofre com
-`tipo = "whatsapp-nao-oficial"`. A Evolution traduz `MESSAGES_UPSERT` e, desde a Sessão 4, `connection.update`: a
-mensagem que a pessoa digita no celular (`fromMe`) e o `status` de entrega continuam sem tradução (4.4.5).
+`tipo = "whatsapp-nao-oficial"`. A Evolution traduz `MESSAGES_UPSERT` e, desde a Sessão 4, `connection.update` e a mensagem que a pessoa digita no
+celular (`fromMe`, 4.4.2, abaixo); o `status` de entrega (os tiques) continua sem tradução (4.4.5).
+
+## A Mensagem digitada no celular (Sessão 4, 4.4.2)
+
+O webhook que o "Conectar" configura já assina `MESSAGES_UPSERT`, e o que a pessoa digita no WhatsApp do celular chega ali
+com `key.fromMe` verdadeiro. O tradutor o entrega como `digitadaNoAparelho` e `receberMensagem` o grava como `enviada`
+pelo Canal (Ator `integration`, status `enviada` no instante do provedor, sem `remetente_externo` nem `identificador_id`,
+como uma `enviada` do CRM). O que difere da `recebida`:
+
+- **Nunca reabre** uma Conversa resolvida, **nunca acorda** uma pendente e não mexe na lixeira (`destinoDaDigitadaNoAparelho`
+  no domínio): usa a aberta ou pendente do par; sem ela, a última resolvida (fora da lixeira) dentro da janela de `inbox`, no
+  estado em que está; senão abre uma Conversa nova (a pessoa puxou assunto pelo celular). Suposição minha, a confirmar com o
+  dono: a resposta "até logo" depois de resolver não deve reabrir o atendimento.
+- **Não reativa** o Contato arquivado ou na lixeira (quem escreveu foi a pessoa, não o Contato); o mesclado continua recusado.
+- **Não é `recebida`**: não conta para a janela de 24 h nem escolhe por onde responder.
+- **A corrida com o envio do CRM:** o socket da Evolution tem `emitOwnEvents: false`, então o que o CRM envia não deveria voltar
+  como `fromMe`. Se voltar ANTES de `gravarEnvio` registrar o aceite, a cópia ficaria com o `id_externo` e o aceite quebraria no
+  índice único; por isso `gravarEnvio` apaga, na mesma transação, a `enviada` do Canal como Integração que tem esse id externo
+  (só quando a Mensagem do CRM ainda está `pendente`) e a do CRM fica com o id. Se voltar depois, a repetida é descartada.
+- **Ainda não:** os tiques dessas Mensagens (4.4.5), a mídia que o dono manda do celular nunca foi vista na Evolution real
+  (o pipeline é o da `recebida`) e o nono dígito (4.4.3) pode abrir um Contato novo para quem já existe com o outro formato.
 
 ## O segredo do webhook
 
@@ -203,8 +224,10 @@ Adaptador mínimo da Evolution v2 para o Canal `whatsapp-nao-oficial` (D-16-04 a
   `sairDaSessao` e `apagarInstancia` (idempotentes). `criarInstancia` e `apagarInstancia` RECUSAM qualquer nome que não
   seja `n1-...` (`ambiente.ts`): a chave global apaga a `numeropvmarcos` do Financeiro, e esta é a trava.
 - `traduzir.ts`: texto, imagem, áudio, vídeo, documento (inclusive com legenda) e figurinha (`image/webp`) viram
-  mensagem; `fromMe`, grupo, `status@broadcast`, `@lid` sem número, reação, edição e localização, contato e enquete
-  viram `ignorado` com motivo. O instante vem só de `messageTimestamp`; a chave da instância é retirada da carga bruta
+  mensagem; grupo, `status@broadcast`, `@lid` sem número, reação, edição e localização, contato e enquete viram
+  `ignorado` com motivo. `fromMe` (a pessoa digitou no celular) entra como `digitadaNoAparelho`, com o `remoteJid` como
+  `remetente` e SEM `nomeExibido` (o `pushName` dela é o do dono do número); o que o dono manda em grupo ou no status
+  continua ignorado. O instante vem só de `messageTimestamp`; a chave da instância é retirada da carga bruta
   em qualquer nível. `exemplos/` guarda os corpos de teste, sem dado real.
 - `provedor.ts` (`criarProvedorEvolution`): `verificarChamada` confere o cabeçalho `x-n1-webhook-segredo` em tempo
   constante E que o `instance` do corpo é o da credencial do Canal (o segredo certo com a instância de outro Canal

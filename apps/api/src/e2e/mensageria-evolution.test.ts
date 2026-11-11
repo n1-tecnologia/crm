@@ -9,7 +9,8 @@
  * (`conexao_simulada = false`) `whatsapp-nao-oficial` guarda no cofre o segredo do webhook e a credencial
  * `{ instancia, apikey }`. Entrada: o `MESSAGES_UPSERT` de texto entra por `POST /webhooks/mensageria/:canalId` e vira
  * Contato, Conversa e Mensagem. Saída: a resposta escrita na Caixa sai por `POST /message/sendText/<instancia>` no falso e
- * a Mensagem fica `enviada` com o `key.id` que a Evolution devolveu.
+ * a Mensagem fica `enviada` com o `key.id` que a Evolution devolveu. O que a pessoa digita no celular (`fromMe`, 4.4.2) entra no
+ * mesmo fio como `enviada` pelo Canal; e, se a Evolution devolver a Mensagem do CRM antes do aceite, o fio fica com uma só.
  */
 
 import { randomBytes } from "node:crypto";
@@ -20,6 +21,7 @@ import { criarWorkerDeSaida } from "../mensageria/entregar-mensagem";
 import { criarProcessadorDeEntrada } from "../mensageria/processador-de-entrada";
 import { CABECALHO_DO_SEGREDO, TIPO_DO_SEGREDO_DO_WEBHOOK } from "../mensageria/provedor";
 import { criarProvedorEvolution } from "../mensageria/provedores/evolution/provedor";
+import textoDoCelular from "../mensageria/provedores/evolution/exemplos/texto-do-celular.json";
 import texto from "../mensageria/provedores/evolution/exemplos/texto.json";
 import { registroPadrao, type RegistroDeProvedores } from "../mensageria/registro";
 import { provedorDeTeste } from "../mensageria/provedores/teste";
@@ -154,6 +156,47 @@ describeComBanco("Fase 16 ponta a ponta: a Evolution (servidor falso) entra pelo
     const lista = await app().inject({ method: "GET", url: `/mensagens?conversaId=${conversaId}`, headers: MEMBRO });
     const depois = (lista.json() as Envelope).itens!.find((m) => m.id === id)!;
     expect(depois).toMatchObject({ statusEntrega: "enviada", idExterno: "3EB0AA" });
+  });
+
+  it("a Mensagem digitada no celular (fromMe) entra no mesmo fio como `enviada` pelo Canal, e o pushName do dono do número não vira nome do Contato", async () => {
+    const resposta = await chamar(textoDoCelular);
+    expect(resposta.statusCode).toBe(200);
+    const processador = criarProcessadorDeEntrada({ workerId: "teste-evolution-celular", chaves, registro });
+    expect(await processador.processarUm()).toBe(true);
+    expect((await linhas()).at(-1)).toMatchObject({ estado: "processado", chave: textoDoCelular.data.key.id });
+
+    const conversas = (await pool().query<{ id: string }>("select id from plataforma.conversas where workspace_id = $1 and canal_id = $2", [ws, canalId])).rows;
+    expect(conversas).toHaveLength(1);
+    const lista = await app().inject({ method: "GET", url: `/mensagens?conversaId=${conversas[0]!.id}`, headers: MEMBRO });
+    const doCelular = (lista.json() as Envelope).itens!.find((m) => m.idExterno === textoDoCelular.data.key.id)!;
+    expect(doCelular).toMatchObject({ direcao: "enviada", statusEntrega: "enviada", conteudo: "enviada pelo celular" });
+
+    const nomes = (await pool().query<{ nome: string }>("select nome from plataforma.contatos where workspace_id = $1", [ws])).rows.map((c) => c.nome);
+    expect(nomes).not.toContain("Dono do Numero");
+  });
+
+  it("se a Evolution devolver a Mensagem do CRM como 'digitada no celular' ANTES do aceite, o fio fica com uma Mensagem só: a do CRM, com o Membro e o id", async () => {
+    const conversaId = (await pool().query<{ id: string }>("select id from plataforma.conversas where workspace_id = $1 and canal_id = $2", [ws, canalId])).rows[0]!.id;
+    const criada = await app().inject({ method: "POST", url: "/mensagens", headers: MEMBRO, payload: { conversaId, direcao: "enviada", conteudo: "eco do CRM" } });
+    expect(criada.statusCode).toBe(201);
+    const idDoCrm = (criada.json() as Envelope).dados!.id;
+
+    // O eco chega e é processado primeiro (a Evolution mandou o webhook antes de o worker gravar o aceite).
+    const eco = { ...textoDoCelular, data: { ...textoDoCelular.data, key: { ...textoDoCelular.data.key, id: "3EB0EC" }, message: { conversation: "eco do CRM" } } };
+    expect((await chamar(eco)).statusCode).toBe(200);
+    const processador = criarProcessadorDeEntrada({ workerId: "teste-evolution-eco", chaves, registro });
+    expect(await processador.processarUm()).toBe(true);
+    const antesDoAceite = (await app().inject({ method: "GET", url: `/mensagens?conversaId=${conversaId}`, headers: MEMBRO })).json() as Envelope;
+    expect(antesDoAceite.itens!.filter((m) => m.conteudo === "eco do CRM")).toHaveLength(2);
+
+    falso.enfileirar({ kind: "ok", status: 201, corpo: { key: { remoteJid: "5511987654321@s.whatsapp.net", fromMe: true, id: "3EB0EC" }, status: "PENDING" } });
+    const worker = criarWorkerDeSaida({ workerId: "teste-evolution-eco-saida", workspaceId: ws, chaves, registro });
+    expect(await worker.processarUm()).toBe(true);
+
+    const depois = (await app().inject({ method: "GET", url: `/mensagens?conversaId=${conversaId}`, headers: MEMBRO })).json() as Envelope;
+    const doEco = depois.itens!.filter((m) => m.conteudo === "eco do CRM");
+    expect(doEco).toHaveLength(1);
+    expect(doEco[0]).toMatchObject({ id: idDoCrm, idExterno: "3EB0EC", statusEntrega: "enviada", motivoFalha: null });
   });
 
   it("o mesmo corpo com a instância de OUTRO Canal recebe 401 e nada é gravado", async () => {

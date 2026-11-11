@@ -1172,7 +1172,10 @@ export function ConversationThread({
                       <ActorAvatar
                         kind={mensagem.ator.tipo}
                         name={
-                          quemFalou?.displayName ?? agente?.name ?? "Sistema"
+                          quemFalou?.displayName ??
+                          agente?.name ??
+                          // Uma `enviada` do Canal como Integração é a que a pessoa digitou no celular (4.4.2).
+                          (mensagem.ator.tipo === "integration" ? "Celular" : "Sistema")
                         }
                         size="grande"
                         {...(quemFalou?.photoFileId

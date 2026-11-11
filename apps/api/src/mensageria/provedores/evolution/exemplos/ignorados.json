@@ -1,34 +1,5 @@
 [
   {
-    "caso": "fromMe",
-    "motivo": "fromMe",
-    "corpo": {
-      "event": "messages.upsert",
-      "instance": "inst-teste",
-      "data": {
-        "key": {
-          "remoteJid": "5511987654321@s.whatsapp.net",
-          "fromMe": true,
-          "id": "3EB0A1B2C3D4E5F60010"
-        },
-        "pushName": "Ana Teste",
-        "status": "DELIVERY_ACK",
-        "message": {
-          "conversation": "enviada pelo celular"
-        },
-        "messageType": "conversation",
-        "messageTimestamp": 1731150000,
-        "instanceId": "00000000-0000-4000-8000-000000000001",
-        "source": "android"
-      },
-      "destination": "https://api.exemplo.test/webhooks/mensageria/canal_exemplo",
-      "date_time": "2024-11-09T08:00:00.000Z",
-      "sender": "5511977770001@s.whatsapp.net",
-      "server_url": "https://evolution.exemplo.test",
-      "apikey": null
-    }
-  },
-  {
     "caso": "grupo",
     "motivo": "grupo",
     "corpo": {

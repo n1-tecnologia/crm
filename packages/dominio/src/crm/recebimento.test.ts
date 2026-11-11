@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { JANELA_DE_REABERTURA_PADRAO_HORAS, contatoDaRecebida, destinoDaRecebida } from "./recebimento";
+import { JANELA_DE_REABERTURA_PADRAO_HORAS, contatoDaRecebida, destinoDaDigitadaNoAparelho, destinoDaRecebida } from "./recebimento";
 
 const AGORA = Date.parse("2026-11-09T12:00:00.000Z");
 const horasAtras = (horas: number) => new Date(AGORA - horas * 3_600_000).toISOString();
@@ -87,6 +87,43 @@ describe("destinoDaRecebida (RN-CXE-09)", () => {
         agora: AGORA,
       }),
     ).toEqual({ acao: "abrir" });
+  });
+});
+
+describe("destinoDaDigitadaNoAparelho (4.4.2)", () => {
+  const entrada = (extras: object) => ({ aberta: null, ultimaResolvida: null, janelaDeReaberturaHoras: 72, agora: AGORA, ...extras });
+
+  it("sem Conversa nenhuma abre uma (a pessoa puxou assunto pelo celular)", () => {
+    expect(destinoDaDigitadaNoAparelho(entrada({}))).toEqual({ acao: "abrir" });
+  });
+
+  it("usa a Conversa aberta ou a pendente, e nunca pede para acordá-la (não há `voltaParaAberta`)", () => {
+    expect(destinoDaDigitadaNoAparelho(entrada({ aberta: { id: "c1", situacao: "aberta" } }))).toEqual({ acao: "usar", conversaId: "c1" });
+    expect(destinoDaDigitadaNoAparelho(entrada({ aberta: { id: "c2", situacao: "pendente" } }))).toEqual({ acao: "usar", conversaId: "c2" });
+  });
+
+  it("a resolvida dentro da janela recebe a Mensagem SEM reabrir (a resposta 'até logo' não reabre o atendimento)", () => {
+    const resolvida = { id: "c3", resolvidaEm: horasAtras(10), naLixeira: false };
+    expect(destinoDaDigitadaNoAparelho(entrada({ ultimaResolvida: resolvida }))).toEqual({ acao: "usar", conversaId: "c3" });
+    expect(destinoDaRecebida(entrada({ ultimaResolvida: resolvida }))).toEqual({ acao: "reabrir", conversaId: "c3" });
+  });
+
+  it("a resolvida fora da janela, ou na lixeira, não recebe: abre outra", () => {
+    expect(destinoDaDigitadaNoAparelho(entrada({ ultimaResolvida: { id: "c4", resolvidaEm: horasAtras(80), naLixeira: false } }))).toEqual({ acao: "abrir" });
+    expect(destinoDaDigitadaNoAparelho(entrada({ ultimaResolvida: { id: "c5", resolvidaEm: horasAtras(1), naLixeira: true } }))).toEqual({ acao: "abrir" });
+  });
+
+  it("os dois lados do limite da janela: exatamente na hora ainda usa, um milissegundo depois não", () => {
+    const naHora = { id: "c6", resolvidaEm: horasAtras(72), naLixeira: false };
+    expect(destinoDaDigitadaNoAparelho(entrada({ ultimaResolvida: naHora }))).toEqual({ acao: "usar", conversaId: "c6" });
+    const passou = { id: "c7", resolvidaEm: new Date(AGORA - 72 * 3_600_000 - 1).toISOString(), naLixeira: false };
+    expect(destinoDaDigitadaNoAparelho(entrada({ ultimaResolvida: passou }))).toEqual({ acao: "abrir" });
+  });
+
+  it("a aberta vence a resolvida", () => {
+    expect(
+      destinoDaDigitadaNoAparelho(entrada({ aberta: { id: "ca", situacao: "aberta" }, ultimaResolvida: { id: "cr", resolvidaEm: horasAtras(1), naLixeira: false } })),
+    ).toEqual({ acao: "usar", conversaId: "ca" });
   });
 });
 
