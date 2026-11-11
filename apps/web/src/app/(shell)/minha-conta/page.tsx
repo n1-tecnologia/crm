@@ -15,6 +15,7 @@ import Link from "next/link";
 import { useData, useSession } from "@/dados/store";
 import { AVAILABILITY_LABEL } from "@/features/shell/format";
 import { useFormat } from "@/features/shell/use-format";
+import { TrocaDeSenha } from "@/features/conta/troca-de-senha";
 import {
   CabecalhoDePainel,
   CorpoDeTela,
@@ -133,6 +134,8 @@ export default function MinhaContaPage() {
                 )}
               </div>
             </Painel>
+
+            <TrocaDeSenha />
 
             <Painel>
               <CabecalhoDePainel titulo="Equipes" contagem={teams.length} />

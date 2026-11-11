@@ -37,6 +37,8 @@ import { rotasDeWebhookMeta, type OpcoesDeWebhookMeta } from "./rotas/webhook-me
 import { rotasDeWebhooksDeMensageria, type OpcoesDeWebhooksDeMensageria } from "./rotas/webhooks-de-mensageria";
 import { rotasDeIntegracaoDeSolicitacoes } from "./rotas/integracao-solicitacoes";
 import { rotasDeOperacoes } from "./rotas/operacoes";
+import { rotasDeConvites } from "./rotas/convites";
+import { rotasDeMembros, type OpcoesDeMembros } from "./rotas/membros";
 
 export interface OpcoesDoApp {
   /** Padrão: `process.env.WORKSPACE_ID ?? "ws_n1"`. */
@@ -106,6 +108,8 @@ export interface OpcoesDoApp {
   readonly financeiro?: OpcoesDeFinanceiro;
   /** Fase 7 (07-01) — SÓ PARA TESTE: troca o serviço (ou o pool) do CRM por um falso, sem banco. */
   readonly crm?: OpcoesDeCrm;
+  /** 12.3.2 — o Auth do reenvio de convite; os testes passam um falso. */
+  readonly membros?: OpcoesDeMembros;
   /**
    * Fase 16 (16-07, D-16-01) — o tempo real: `GET /eventos` entrega por SSE o que o hub recebe do ouvinte `LISTEN`.
    * `index.ts` cria o hub antes do `buildApp` e o encerra antes do `app.close()`; sem `hub` a rota responde 503
@@ -256,8 +260,15 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
   // `Authorization: Bearer`, salvo `config: { publica: true }`. `buildApp`
   // continua síncrono — `app.register` sem `await` enfileira o plugin, e o
   // Fastify resolve a fila sozinho no primeiro `ready()`/`listen()`/`inject()`.
-  app.register(rotasDeOperacoes);
+  app.register(rotasDeOperacoes, {
+    ...(opcoes.membros?.auth ? { auth: opcoes.membros.auth } : {}),
+    ...(opcoes.membros?.resolverUsuario ? { resolverUsuario: opcoes.membros.resolverUsuario } : {}),
+  });
   app.register(rotasDeEstado);
+  // 12.3.3 — o aceite do convite: a única rota que o Membro `pendente` alcança.
+  app.register(rotasDeConvites);
+  // 12.3.2 — reenviar o convite de um Membro pendente.
+  app.register(rotasDeMembros, opcoes.membros ?? {});
   // Checklist 7.3 — o anexo de verdade da Tarefa: ticket, envio direto ao bucket, confirmação.
   app.register(rotasDeAnexosDaTarefa);
   // Fase 4 (04-05) — na RAIZ herda o JWT de Membro; dentro do bloco de rotas

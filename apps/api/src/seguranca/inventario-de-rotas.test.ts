@@ -7,7 +7,9 @@
  *
  *   1. sem `Authorization`                              -> 401;
  *   2. token que o verificador recusa (adulterado/expirado) -> 401;
- *   3. Membro `suspenso` num método de escrita          -> 403 (1.2.1).
+ *   3. Membro `suspenso` num método de escrita          -> 403 (1.2.1);
+ *   4. Membro `suspenso` em qualquer rota, leitura também -> 403 (12.1.5 B);
+ *   5. Membro `pendente` fora de `ROTAS_DO_PENDENTE`       -> 403 (12.3.3).
  *
  * As rotas sem JWT são exatamente as de `ROTAS_PUBLICAS` (cada uma com o seu
  * motivo) mais as de `/v1/integrations`, que autenticam por credencial de
@@ -80,6 +82,14 @@ const CONTEUDO_POR_ROTA: Readonly<Record<string, { readonly tipo: string; readon
  */
 const ESCRITA_PERMITIDA_AO_SUSPENSO: readonly (RotaDeclarada & { readonly motivo: string })[] = [];
 
+/**
+ * 12.3.3 — as rotas que o Membro `pendente` alcança (`config: { aceitaPendente: true }`),
+ * cada uma com o motivo. Uma rota marcada que não está aqui, ou o contrário, faz o teste falhar.
+ */
+const ROTAS_DO_PENDENTE: readonly (RotaDeclarada & { readonly motivo: string })[] = [
+  { metodo: "POST", url: "/convites/aceitar", motivo: "o convidado aceita o convite no primeiro acesso; quem aceita é sempre o Membro da sessão" },
+];
+
 const METODOS_DE_LEITURA = new Set(["GET", "HEAD", "OPTIONS"]);
 
 const chave = (rota: RotaDeclarada) => `${rota.metodo} ${rota.url}`;
@@ -111,6 +121,7 @@ const acessoProibido: AcessoAoCrm = {
 
 const TOKEN_ATIVO = "token-ativo";
 const TOKEN_SUSPENSO = "token-suspenso";
+const TOKEN_PENDENTE = "token-pendente";
 const TOKEN_RECUSADO = "token-recusado";
 
 function membroDoSeed(estado: Member["state"], userId: string, ignorar?: string): Member {
@@ -134,13 +145,14 @@ function relatorio(titulo: string, falhas: readonly string[]): string {
 
 describe("inventário de rotas — toda rota com JWT recusa sessão ausente, token recusado e suspenso na escrita", () => {
   let app: FastifyInstance;
-  const declaradas: (RotaDeclarada & { readonly publica: boolean })[] = [];
+  const declaradas: (RotaDeclarada & { readonly publica: boolean; readonly aceitaPendente: boolean })[] = [];
 
   beforeAll(async () => {
     const ativo = membroDoSeed("ativo", "usuario-ativo");
     const suspenso = membroDoSeed("suspenso", "usuario-suspenso", ativo.id);
-    const usuarios: Record<string, string> = { [TOKEN_ATIVO]: "usuario-ativo", [TOKEN_SUSPENSO]: "usuario-suspenso" };
-    const membros: Record<string, Member> = { "usuario-ativo": ativo, "usuario-suspenso": suspenso };
+    const pendente = membroDoSeed("pendente", "usuario-pendente", ativo.id);
+    const usuarios: Record<string, string> = { [TOKEN_ATIVO]: "usuario-ativo", [TOKEN_SUSPENSO]: "usuario-suspenso", [TOKEN_PENDENTE]: "usuario-pendente" };
+    const membros: Record<string, Member> = { "usuario-ativo": ativo, "usuario-suspenso": suspenso, "usuario-pendente": pendente };
 
     app = buildApp({
       logger: false,
@@ -155,7 +167,7 @@ describe("inventário de rotas — toda rota com JWT recusa sessão ausente, tok
       for (const metodo of metodosDe(opcoes)) {
         // OPTIONS é o preflight do CORS, que o `@fastify/cors` gera sozinho; HEAD é o espelho que o Fastify cria de cada GET.
         if (metodo === "OPTIONS") continue;
-        declaradas.push({ metodo, url: opcoes.url, publica: opcoes.config?.publica === true });
+        declaradas.push({ metodo, url: opcoes.url, publica: opcoes.config?.publica === true, aceitaPendente: opcoes.config?.aceitaPendente === true });
       }
     });
     await app.ready();
@@ -181,6 +193,18 @@ describe("inventário de rotas — toda rota com JWT recusa sessão ausente, tok
   }
 
   const escritas = () => rotasComJwt().filter((r) => !METODOS_DE_LEITURA.has(r.metodo));
+
+  /** Chama a rota como o dono do token, com um corpo que passa do parser (a recusa tem de vir antes dele). */
+  function chamarComo(token: string, rota: RotaDeclarada) {
+    const conteudo = CONTEUDO_POR_ROTA[chave(rota)];
+    const leitura = METODOS_DE_LEITURA.has(rota.metodo);
+    return app.inject({
+      method: rota.metodo as "POST",
+      url: urlPreenchida(rota.url),
+      headers: { authorization: `Bearer ${token}`, ...(leitura ? {} : { "content-type": conteudo?.tipo ?? "application/json", ...conteudo?.cabecalhos }) },
+      ...(leitura ? {} : { payload: conteudo ? conteudo.corpo : rota.url === "/operacoes/:nome" ? { args: [] } : {} }),
+    });
+  }
 
   it("enxerga as rotas dos plugins (o hook onRoute pegou o que importa)", () => {
     const conhecidas = new Set(rotasComJwt().map(chave));
@@ -264,6 +288,36 @@ describe("inventário de rotas — toda rota com JWT recusa sessão ausente, tok
     }
     expect(semConteudo, relatorio("rotas que só aceitam outro tipo de conteúdo (acrescente a CONTEUDO_POR_ROTA)", semConteudo)).toEqual([]);
     expect(falhas, relatorio("escritas que o suspenso consegue fazer", falhas)).toEqual([]);
+  });
+
+  it("12.1.5 (B) — o Membro suspenso recebe 403 SUSPENSO em toda rota com JWT, leitura também", async () => {
+    const falhas: string[] = [];
+    for (const rota of rotasComJwt()) {
+      const resposta = await chamarComo(TOKEN_SUSPENSO, rota);
+      // HEAD não tem corpo: lá só o status prova a recusa.
+      const semFrase = rota.metodo !== "HEAD" && !resposta.body.includes(FRASE_DE_SUSPENSO);
+      if (resposta.statusCode !== 403 || semFrase) falhas.push(`${chave(rota)} -> ${resposta.statusCode} ${resposta.body.slice(0, 80)}`);
+    }
+    expect(falhas, relatorio("rotas que o suspenso alcança", falhas)).toEqual([]);
+  });
+
+  it("12.3.3 — as rotas aceitaPendente são exatamente ROTAS_DO_PENDENTE (e todas têm motivo)", () => {
+    const marcadas = new Set(declaradas.filter((r) => r.aceitaPendente).map(chave));
+    const listadas = new Set(ROTAS_DO_PENDENTE.map(chave));
+    expect([...marcadas].filter((r) => !listadas.has(r)), "rota aceitaPendente fora de ROTAS_DO_PENDENTE").toEqual([]);
+    expect([...listadas].filter((r) => !marcadas.has(r)), "ROTAS_DO_PENDENTE cita rota que não é aceitaPendente").toEqual([]);
+    for (const rota of ROTAS_DO_PENDENTE) expect(rota.motivo.trim().length, `${chave(rota)} sem motivo`).toBeGreaterThan(10);
+  });
+
+  it("12.3.3 — o Membro pendente recebe 403 CONVITE_PENDENTE em toda rota com JWT fora de ROTAS_DO_PENDENTE", async () => {
+    const liberadas = new Set(ROTAS_DO_PENDENTE.map(chave));
+    const falhas: string[] = [];
+    for (const rota of rotasComJwt().filter((r) => !liberadas.has(chave(r)))) {
+      const resposta = await chamarComo(TOKEN_PENDENTE, rota);
+      const semCodigo = rota.metodo !== "HEAD" && !resposta.body.includes("CONVITE_PENDENTE");
+      if (resposta.statusCode !== 403 || semCodigo) falhas.push(`${chave(rota)} -> ${resposta.statusCode} ${resposta.body.slice(0, 80)}`);
+    }
+    expect(falhas, relatorio("rotas que o pendente alcança", falhas)).toEqual([]);
   });
 
   it("rota de /v1/integrations chamada com o JWT de um Membro ativo responde 401 (lá só vale credencial de serviço)", async () => {

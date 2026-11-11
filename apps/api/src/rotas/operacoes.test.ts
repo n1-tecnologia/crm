@@ -1010,7 +1010,7 @@ describeComBanco("POST /operacoes — resposta recortada pelo que o Membro enxer
     expect(conversa, "o seed precisa de uma Conversa de grupo ativa").toBeDefined();
     const resposta = await chamar(TOKENS_DE_VAZAMENTO.suspenso, "toggleConversationStar", [conversa!.id]);
     expect(resposta.statusCode, resposta.body.slice(0, 200)).toBe(403);
-    expect(resposta.json()).toEqual({ ok: false, error: FRASE_DE_SUSPENSO });
+    expect(resposta.json()).toEqual({ ok: false, error: FRASE_DE_SUSPENSO, codigo: "SUSPENSO" });
 
     const cliente = await pool().connect();
     try {

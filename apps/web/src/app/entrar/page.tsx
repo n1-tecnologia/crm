@@ -24,6 +24,12 @@ import { Painel } from "@/features/shell/ui";
 
 const inicial: EstadoDoLogin = {};
 
+/** 12.3.4 — `/entrar/confirmar` volta para cá com `?aviso=` quando o link do e-mail não serve mais. */
+const AVISOS: Readonly<Record<string, string>> = {
+  "convite-vencido": "Este link venceu. Peça outro a quem te convidou.",
+  "senha-vencida": "Este link venceu. Peça outro em “Esqueci a senha”.",
+};
+
 /**
  * `useSearchParams()` exige uma fronteira `<Suspense>` acima dela em
  * produção — sem isso o `next build` recusa a página inteira (mesma regra
@@ -42,6 +48,7 @@ export default function EntrarPage() {
 function FormularioDeEntrada() {
   const params = useSearchParams();
   const para = params.get("para") ?? "";
+  const aviso = AVISOS[params.get("aviso") ?? ""];
   const [estado, acao, pendente] = useActionState(entrar, inicial);
 
   return (
@@ -52,6 +59,12 @@ function FormularioDeEntrada() {
           <p className="app-base mt-1" style={{ color: "var(--texto-3)" }}>
             Entre com o e-mail e a senha da sua conta.
           </p>
+
+          {aviso ? (
+            <p role="alert" className="app-sm mt-4" style={{ color: "var(--erro)" }}>
+              {aviso}
+            </p>
+          ) : null}
 
           <form action={acao} className="mt-6 flex flex-col gap-4">
             <input type="hidden" name="para" value={para} />
@@ -95,6 +108,12 @@ function FormularioDeEntrada() {
               {pendente ? "Entrando…" : "Entrar"}
             </Button>
           </form>
+
+          <p className="app-sm mt-4 text-center">
+            <Link href="/entrar/esqueci" className="hover:underline">
+              Esqueci a senha
+            </Link>
+          </p>
         </Painel>
 
         <p className="app-sm mt-4 text-center" style={{ color: "var(--texto-3)" }}>

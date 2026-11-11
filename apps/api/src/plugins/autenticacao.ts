@@ -3,6 +3,12 @@
  * e decora `request.membro` com o Membro resolvido dentro do Espaço de
  * Trabalho configurado.
  *
+ * Só o Membro `ativo` passa (12.1.5, decisão B: o suspenso fica sem acesso, como
+ * um removido, e volta com o histórico ao ser reativado). A exceção é o
+ * `pendente` numa rota marcada `config: { aceitaPendente: true }` — hoje só
+ * `POST /convites/aceitar` (12.3.3), onde ele aceita o convite. Cada recusa leva
+ * um `codigo` para a web saber que tela mostrar.
+ *
  * Registrado direto na instância raiz — sem o wrapper de encapsulamento que
  * outros plugins usam — para alcançar toda rota registrada depois, sem
  * precisar declarar dependência por plugin. Uma rota se isenta marcando
@@ -11,10 +17,9 @@
  * porque autentica por credencial de serviço (`autenticacao-servico.ts`),
  * nunca por JWT humano.
  *
- * A regra de acesso replica `apps/web/src/dados/sessao-provider.tsx`
- * (`state === "ativo" || state === "suspenso"`), mas aqui ela é controle de
- * acesso de verdade: o front barra a tela, o backend barra a escrita
- * (Security Domain V4, RESEARCH.md).
+ * A web repete a regra para mostrar a tela certa, mas o controle de acesso de
+ * verdade é este: o front barra a tela, o backend barra o dado (Security
+ * Domain V4, RESEARCH.md).
  */
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -34,16 +39,27 @@ declare module "fastify" {
   }
   interface FastifyContextConfig {
     publica?: boolean;
+    /** 12.3.3 — a rota atende o Membro `pendente` (só quem aceita o convite). */
+    aceitaPendente?: boolean;
   }
 }
 
-/** A frase que o Membro suspenso lê ao tentar gravar (1.2.1). */
-export const FRASE_DE_SUSPENSO = "Seu acesso está suspenso: você consulta, mas não altera.";
+/** A frase que o Membro suspenso lê em qualquer rota (12.1.5 B). */
+export const FRASE_DE_SUSPENSO = "Seu acesso foi suspenso.";
+
+/** A frase que o Membro pendente lê fora das rotas `aceitaPendente`. */
+export const FRASE_DE_CONVITE_PENDENTE = "Seu convite ainda não foi aceito.";
+
+/** Os `codigo` das recusas do hook, para a web escolher a tela. */
+export const CODIGO_SUSPENSO = "SUSPENSO";
+export const CODIGO_CONVITE_PENDENTE = "CONVITE_PENDENTE";
+export const CODIGO_REMOVIDO = "REMOVIDO";
 
 /**
- * 1.2.1 — o suspenso passa pela autenticação (acima) para CONSULTAR; quem grava
- * recusa por esta função, ou por `podeNoCrm` no CRM novo. Devolve a frase da
- * recusa quando o Membro não está `ativo`, e `undefined` quando pode seguir.
+ * 1.2.1 — segunda barreira das rotas que gravam: devolve a frase da recusa
+ * quando o Membro não está `ativo`, e `undefined` quando pode seguir. Desde a
+ * 12.1.5 (B) o hook já barra o suspenso antes; esta conferência fica para que
+ * nenhuma escrita dependa de uma barreira só.
  */
 export function recusaDeSuspenso(membro: MembroDaSessao): string | undefined {
   return membro.state !== "ativo" ? FRASE_DE_SUSPENSO : undefined;
@@ -52,10 +68,9 @@ export function recusaDeSuspenso(membro: MembroDaSessao): string | undefined {
 /**
  * Hook `preValidation` das rotas REST que gravam (Financeiro, anexos da Tarefa e
  * CRM): para um método fora de GET/HEAD/OPTIONS, o Membro que não está `ativo`
- * recebe 403 com a frase do suspenso, ANTES de validar o corpo (1.2 e a Open
- * Question 7 da pesquisa: o suspenso consulta e não grava, em toda família de
- * rota). `POST /operacoes/:nome` recusa na própria rota (1.2.1), depois de
- * conferir o nome da operação.
+ * recebe 403 com a frase do suspenso, ANTES de validar o corpo. É a segunda
+ * barreira: o hook de autenticação já recusa o suspenso em toda rota (12.1.5 B).
+ * `POST /operacoes/:nome` repete a conferência na própria rota (1.2.1).
  *
  * Registre-o na primeira linha do plugin, antes de registrar os filhos, para
  * que as rotas deles o herdem. No CRM a `podeNoCrm` continua como segunda barreira.
@@ -64,7 +79,7 @@ export async function recusarSuspensoNaEscrita(request: FastifyRequest, reply: F
   if (METODOS_DE_LEITURA.has(request.method)) return;
   const frase = recusaDeSuspenso(request.membro);
   if (frase === undefined) return;
-  await reply.status(403).send({ ok: false, error: frase, codigo: "SUSPENSO" });
+  await reply.status(403).send({ ok: false, error: frase, codigo: CODIGO_SUSPENSO });
 }
 
 const METODOS_DE_LEITURA: ReadonlySet<string> = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -114,12 +129,15 @@ export function registrarAutenticacao(app: FastifyInstance, opcoes: OpcoesDeAute
         .send({ ok: false, error: "Sua conta existe, mas não é Membro deste Espaço de Trabalho." });
       return;
     }
-    if (membro.state !== "ativo" && membro.state !== "suspenso") {
-      const motivo =
+    const pendenteAceitando = membro.state === "pendente" && request.routeOptions.config.aceitaPendente === true;
+    if (membro.state !== "ativo" && !pendenteAceitando) {
+      const [motivo, codigo] =
         membro.state === "pendente"
-          ? "Seu convite ainda não foi aceito."
-          : "Sua participação neste Espaço de Trabalho foi encerrada.";
-      await reply.status(403).send({ ok: false, error: motivo });
+          ? [FRASE_DE_CONVITE_PENDENTE, CODIGO_CONVITE_PENDENTE]
+          : membro.state === "suspenso"
+            ? [FRASE_DE_SUSPENSO, CODIGO_SUSPENSO]
+            : ["Sua participação neste Espaço de Trabalho foi encerrada.", CODIGO_REMOVIDO];
+      await reply.status(403).send({ ok: false, error: motivo, codigo });
       return;
     }
 

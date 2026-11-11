@@ -16,11 +16,20 @@ Os arquivos deste diretório, desde o Plan 01-04 (`esquemas-de-argumentos.ts` ch
 
 **A linha de medição de `POST /operacoes` (Fase 12, D-02/D-03).** Toda gravação — 200, recusa do domínio (200 `ok:false`), 409 e 500 — escreve UMA linha `request.log.info` com `msg` `"gravacao medida"`, sempre ligada, sem variável de ambiente: `{ operacao, medicao: { conexaoMs, inicioMs, travaMs, hidratarMs, operacaoMs, atualizaMs, gravarMs, eventosMs, commitMs, tentativas, linhasLidas, linhasGravadas, desfecho, recorteMs?, totalMs } }`. Os `*Ms` são milissegundos com uma casa decimal, somados entre as tentativas de `executar()` (`tentativas` diz quantas); `desfecho` é `gravou`, `recusou`, `conflito` ou `excecao`. `recorteMs` é a etapa do recorte por Membro (`visibilidadePara` + `recortarDiferenca` + `recortarValor`, SEG-01) e só existe quando a rota recortou; `totalMs` vai do começo do handler até a resposta. Os caminhos 400/403/404 não gravam e não escrevem a linha. A medição chega à rota pelo callback `aoMedir` de `executar()` (e de `convidarMembro`, para `inviteMember` em `SERVICOS`) — nunca por campo do resultado — e **nunca** sai no corpo nem em cabeçalho da resposta (`Server-Timing` incluso): `operacoes-medicao.test.ts` afirma a ausência da chave `medicao` em 200, recusa, 409, 500 e `inviteMember`. A linha só leva o nome da operação (já validado por `ehNomeDeOperacao`), números e o desfecho: nunca `args`, `value`, título, nome de Contato, e-mail ou valor financeiro. Para ler na VPS: `sudo journalctl --no-pager -u n1-crm-api.service -n 80 | grep "gravacao medida"`. O comando `gravacao:medir` (12-02) lê esta mesma linha; mudar um campo é mudar o contrato dele.
 
-**O suspenso também não grava pelas rotas REST (Fase 9, 09-12, 1.2).** Financeiro, anexos da Tarefa e CRM registram `recusarSuspensoNaEscrita` (`../plugins/autenticacao.ts`) como hook `preValidation` na primeira linha do plugin: método fora de GET/HEAD/OPTIONS e Membro que não está `ativo` recebem 403 `SUSPENSO` antes de validar o corpo. Rota nova com JWT é coberta sozinha por `../seguranca/inventario-de-rotas.test.ts`, que ouve `onRoute`; rota nova SEM JWT precisa entrar em `ROTAS_PUBLICAS` lá, com o motivo.
+**O suspenso também não grava pelas rotas REST (Fase 9, 09-12, 1.2).** Financeiro, anexos da Tarefa e CRM registram `recusarSuspensoNaEscrita` (`../plugins/autenticacao.ts`) como hook `preValidation` na primeira linha do plugin: método fora de GET/HEAD/OPTIONS e Membro que não está `ativo` recebem 403 `SUSPENSO` antes de validar o corpo. Desde a Sessão 12 (12.1.5 B) o hook de autenticação já recusa o suspenso em toda rota, leitura também; esta conferência ficou como segunda barreira. Rota nova com JWT é coberta sozinha por `../seguranca/inventario-de-rotas.test.ts`, que ouve `onRoute`; rota nova SEM JWT precisa entrar em `ROTAS_PUBLICAS` lá, com o motivo.
 
 **Entrada hostil e IP forjado (Fase 9, 09-15, D-14).** `app.ts` remove o parser embutido de `text/plain` do Fastify: nenhuma rota recebe esse tipo, então ele volta 415 (e não 400 depois de ler o corpo como texto). `../seguranca/entrada-hostil.test.ts` prova 413 (corpo acima de 1 MiB), 415, 400 para aninhamento além do reviver e para `__proto__`/`constructor.prototype`, sem 500 e sem tocar o banco; `../seguranca/xff-e-trust-proxy.test.ts` prova que o balde do limite por IP é o IP que o nginx anexou à direita do `X-Forwarded-For` (`TRUST_PROXY=loopback`) e que o cabeçalho é ignorado fora do loopback ou com `TRUST_PROXY` vazio; `../seguranca/segredos-publicos.test.ts` prova o 404 uniforme e o 429 com `Retry-After` nos links públicos. Rota nova que precise de `text/plain` registra o próprio parser.
 
 A regra continua: a rota chama `executar()` da Unidade de Trabalho (`../persistencia/unidade-de-trabalho.ts`) e traduz o resultado para HTTP — nunca SQL, nunca regra de negócio aqui. Toda rota registrada depois do hook de `../plugins/autenticacao.ts` exige `Authorization: Bearer`, a menos que se marque `config: { publica: true }`.
+
+## Convite e reenvio (Sessão 12)
+
+| Rota | O quê | Quem |
+|---|---|---|
+| `POST /convites/aceitar` | `{ nome }`; roda `aceitarConvite` com o Membro da sessão (`convites.ts`) | só o Membro `pendente` com Usuário; a única rota `aceitaPendente` |
+| `POST /membros/:id/convite` | reenvia o convite pelo Supabase Auth (`membros.ts`, serviço `../servicos/reenviar-convite.ts`); 409 quando a pessoa já tem conta ou já criou a senha; 429 no limite de envio | Administrador ou Proprietário ativo (`registrarReenvioDoConvite`) |
+
+O convite (`POST /operacoes/inviteMember`, serviço `../servicos/convidar-membro.ts`) manda e-mail pelo Auth quando o e-mail ainda não tem conta. Os dois serviços ENSAIAM a regra do domínio sobre o estado lido antes de falar com o Auth: nenhum e-mail sai de um pedido que seria recusado. O Auth entra por injeção (`AuthDeConvite`, `../autenticacao/auth-de-convite.ts`, e `membros.auth` em `buildApp`); os testes passam um falso e nunca o Supabase real.
 
 ## Rotas de integração (v1)
 
@@ -84,7 +93,7 @@ Três rotas ao lado das de Contato, nas tabelas da 011:
 - `GET /contatos/:id/notas` — as notas do Contato, a mais recente primeiro,
   `{ ok: true, itens, total }`. Querystring só `limite` (teto de
   `LIMITES_CRM.paginaMaxima`) e `deslocamento`; `estado` e `q` são 400.
-  Qualquer Membro ativo ou suspenso lê, inclusive de Contato `mesclado` ou
+  Qualquer Membro ativo lê (o suspenso não entra: 12.1.5 B), inclusive de Contato `mesclado` ou
   na lixeira (o histórico não some com o estado).
 - `POST /contatos/:id/notas` — corpo `{ conteudo }` (`.strict()`, aparado,
   1 a 5000 caracteres), **201** com a nota. O autor é sempre o Membro da
@@ -114,7 +123,7 @@ Contato, sobre `plataforma.contato_consentimentos` (011), que é SÓ INSERÇÃO:
 - `GET /contatos/:id/consentimentos` — o histórico do Contato, o mais recente
   (por `em`) primeiro, `{ ok: true, itens, total }`, sem paginação. A tela
   calcula o vigente por finalidade e tipo de Canal com `consentimentoVigente`
-  do domínio. Qualquer Membro ativo ou suspenso lê, inclusive de Contato
+  do domínio. Qualquer Membro ativo lê (o suspenso não entra: 12.1.5 B), inclusive de Contato
   `mesclado` ou na lixeira.
 - `POST /contatos/:id/consentimentos` — corpo `{ finalidadeId, tipoDeCanal,
   decisao, origem, em?, evidenciaMensagemId? }` (`.strict()`), **201** com a
@@ -410,7 +419,7 @@ regra"). As tabelas são as da `008-canais-conversas-mensagens.sql`
 
 | Verbo e rota | Efeito | Papel |
 |---|---|---|
-| `GET /canais` | lista, filtros `estado` (`ativo`/`arquivado`, sem lixeira), `tipo`, `provedor`, `conexao`, `q` | todo Papel ativo ou suspenso |
+| `GET /canais` | lista, filtros `estado` (`ativo`/`arquivado`, sem lixeira), `tipo`, `provedor`, `conexao`, `q` | todo Papel ativo (o suspenso para no hook desde a 12.1.5 B) |
 | `GET /canais/:id` | a ficha | idem |
 | `POST /canais` | cria um Canal `desconectada` (201): `provedor`, `nome`, `identificador`; o `tipo` sai do provedor | Administrador/Proprietário (B35) |
 | `PATCH /canais/:id` | só `nome`, `filaPadraoId` e `origemPadraoId` (INV-CXE-02) | Administrador/Proprietário |

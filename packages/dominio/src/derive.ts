@@ -743,11 +743,7 @@ export function requirementLabel(
  */
 export function memberSeesResource(state: DataState, memberId: Id, resourceId: Id): boolean {
   const granted = state.grants.some(
-    (grant) =>
-      grant.resourceId === resourceId &&
-      ((grant.subjectKind === "member" && grant.subjectId === memberId) ||
-        (grant.subjectKind === "team" &&
-          state.teams.some((team) => team.id === grant.subjectId && team.memberIds.includes(memberId)))),
+    (grant) => grant.resourceId === resourceId && concessaoValeParaMembro(state, grant, memberId),
   );
   if (granted) return true;
 
@@ -1161,14 +1157,23 @@ function guestCommentsByRole(state: DataState, memberId: Id, taskId: Id): boolea
   return memberSeesTask(state, memberId, taskId);
 }
 
-/** Concessão direta a este Membro (ou a uma Equipe dele) neste recurso. */
+/**
+ * A Concessão vale para este Membro: dada a ele, a uma Equipe dele ou ao Papel
+ * dele (12.4.3). É a única leitura de "a quem a Concessão vale"; quem avalia
+ * Concessão de Membro passa por aqui.
+ */
+export function concessaoValeParaMembro(state: DataState, grant: Grant, memberId: Id): boolean {
+  if (grant.subjectKind === "member") return grant.subjectId === memberId;
+  if (grant.subjectKind === "team") {
+    return state.teams.some((team) => team.id === grant.subjectId && team.memberIds.includes(memberId));
+  }
+  if (grant.subjectKind === "role") return state.members.some((m) => m.id === memberId && m.roleId === grant.subjectId);
+  return false;
+}
+
+/** Concessão direta a este Membro (a uma Equipe dele ou ao Papel dele) neste recurso. */
 function grantsOn(state: DataState, memberId: Id, resourceId: Id): Grant[] {
-  return state.grants.filter(
-    (grant) =>
-      grant.resourceId === resourceId &&
-      ((grant.subjectKind === "member" && grant.subjectId === memberId) ||
-        (grant.subjectKind === "team" && state.teams.some((team) => team.id === grant.subjectId && team.memberIds.includes(memberId)))),
-  );
+  return state.grants.filter((grant) => grant.resourceId === resourceId && concessaoValeParaMembro(state, grant, memberId));
 }
 
 /**

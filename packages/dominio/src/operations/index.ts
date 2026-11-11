@@ -195,6 +195,19 @@ export const transferWorkspaceOwnership = instrumentar("transferWorkspaceOwnersh
 export const inviteMember = instrumentar("inviteMember");
 export const deleteRole = instrumentar("deleteRole");
 export const grantGovernanceAccess = instrumentar("grantGovernanceAccess");
+// Sessão 12 — papeis.ts, equipes.ts, acessos.ts, ciclo-do-membro.ts
+export const createRole = instrumentar("createRole");
+export const updateRole = instrumentar("updateRole");
+export const createTeam = instrumentar("createTeam");
+export const updateTeam = instrumentar("updateTeam");
+export const addMemberToTeam = instrumentar("addMemberToTeam");
+export const removeMemberFromTeam = instrumentar("removeMemberFromTeam");
+export const deleteTeam = instrumentar("deleteTeam");
+export const concederAcesso = instrumentar("concederAcesso");
+export const revogarAcesso = instrumentar("revogarAcesso");
+export const aceitarConvite = instrumentar("aceitarConvite");
+export const suspenderMembro = instrumentar("suspenderMembro");
+export const reativarMembro = instrumentar("reativarMembro");
 
 // structure.ts
 export const createSpace = instrumentar("createSpace");

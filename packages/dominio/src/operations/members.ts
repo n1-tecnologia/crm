@@ -521,8 +521,8 @@ export function inviteMember(
     workspaceId: state.workspace.id,
     // `input.userId` presente permite um Membro `pendente` COM Usuário
     // conhecido (o tipo já admite `userId?` fora do caminho de convite) — o
-    // aceite do convite, que muda o estado para `ativo`, não é operação
-    // desta fase.
+    // aceite do convite, que muda o estado para `ativo`, é `aceitarConvite`
+    // (`ciclo-do-membro.ts`, 12.3.3).
     ...(input.userId !== undefined ? { userId: input.userId } : {}),
     invitedIdentity: { type: "email", value: email },
     displayName: email,

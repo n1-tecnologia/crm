@@ -21,15 +21,14 @@ import type { EstadoDoServidor } from "./transporte";
 export type EstadoInicial =
   | { readonly tipo: "ok"; readonly estado: EstadoDoServidor }
   | { readonly tipo: "semSessao" } // 401 — o token do cookie não serviu ao apps/api
-  | { readonly tipo: "semAcesso"; readonly motivo: string } // 403 — a frase vem da API
+  | { readonly tipo: "semAcesso"; readonly motivo: string; readonly codigo?: string } // 403 — a frase e o `codigo` vêm da API (CONVITE_PENDENTE, SUSPENSO, REMOVIDO)
   | { readonly tipo: "indisponivel"; readonly erro: string }; // rede/500
 
-async function corpoDeErro(resposta: Response): Promise<string | undefined> {
+async function corpoDeErro(resposta: Response): Promise<{ readonly error?: string; readonly codigo?: string }> {
   try {
-    const corpo = (await resposta.json()) as { readonly error?: string };
-    return corpo.error;
+    return (await resposta.json()) as { readonly error?: string; readonly codigo?: string };
   } catch {
-    return undefined;
+    return {};
   }
 }
 
@@ -55,10 +54,11 @@ export const carregarEstadoInicial = cache(async (): Promise<EstadoInicial> => {
 
   if (resposta.status === 401) return { tipo: "semSessao" };
   if (resposta.status === 403) {
-    return { tipo: "semAcesso", motivo: (await corpoDeErro(resposta)) ?? "Sem acesso." };
+    const { error, codigo } = await corpoDeErro(resposta);
+    return { tipo: "semAcesso", motivo: error ?? "Sem acesso.", ...(codigo ? { codigo } : {}) };
   }
   if (!resposta.ok) {
-    return { tipo: "indisponivel", erro: (await corpoDeErro(resposta)) ?? `O servidor respondeu ${resposta.status}.` };
+    return { tipo: "indisponivel", erro: (await corpoDeErro(resposta)).error ?? `O servidor respondeu ${resposta.status}.` };
   }
 
   const corpo = (await resposta.json()) as { data: EstadoDoServidor["data"]; revisao: number; ordens: EstadoDoServidor["ordens"]; sessao: { memberId: EstadoDoServidor["memberId"] }; sequencia?: number };

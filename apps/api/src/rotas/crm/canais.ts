@@ -3,7 +3,7 @@
  *
  *   GET   /canais                       lista (só `ativo` ou `arquivado`: Canal não tem lixeira)
  *   POST  /canais                       cria um Canal `desconectada` (201); só Administrador/Proprietário (B35)
- *   GET   /canais/:id                   a ficha; todo Papel ativo ou suspenso lê
+ *   GET   /canais/:id                   a ficha; todo Papel ativo lê
  *   PATCH /canais/:id                   configura: só `nome`, `filaPadraoId` e `origemPadraoId` (INV-CXE-02)
  *   POST  /canais/:id/simular-conexao   conecta sem provedor, marcando como simulada (D-08)
  *   POST  /canais/:id/desconectar       volta a `desconectada`

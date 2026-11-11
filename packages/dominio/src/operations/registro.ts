@@ -159,6 +159,11 @@ import { alterarStatusEmLote } from "./lote";
 
 // ── members.ts ──────────────────────────────────────────────────────────
 import { alterarEmailDoConvite, alterarPapelDoMembro, deleteRole, grantGovernanceAccess, inviteMember, removeMember, transferWorkspaceOwnership } from "./members";
+// ── Sessão 12: papeis.ts, equipes.ts, acessos.ts, ciclo-do-membro.ts ─────
+import { createRole, updateRole } from "./papeis";
+import { addMemberToTeam, createTeam, deleteTeam, removeMemberFromTeam, updateTeam } from "./equipes";
+import { concederAcesso, revogarAcesso } from "./acessos";
+import { aceitarConvite, reativarMembro, suspenderMembro } from "./ciclo-do-membro";
 
 // ── structure.ts ────────────────────────────────────────────────────────
 import { archiveContainer, createFolder, createList, createSpace, moveContainer, reorderContainers, restoreContainer, trashContainer, unarchiveContainer, updateContainer } from "./structure";
@@ -482,6 +487,19 @@ export const OPERACOES = {
   inviteMember,
   deleteRole,
   grantGovernanceAccess,
+  // Sessão 12 — papeis.ts, equipes.ts, acessos.ts, ciclo-do-membro.ts
+  createRole,
+  updateRole,
+  createTeam,
+  updateTeam,
+  addMemberToTeam,
+  removeMemberFromTeam,
+  deleteTeam,
+  concederAcesso,
+  revogarAcesso,
+  aceitarConvite,
+  suspenderMembro,
+  reativarMembro,
   // structure.ts
   createSpace,
   createFolder,

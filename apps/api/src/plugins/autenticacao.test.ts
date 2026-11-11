@@ -1,8 +1,10 @@
 /**
  * O hook de autenticação aplicado de verdade: sem token, 401; token de
- * alguém que não é Membro do Espaço, 403; Membro `removido`/`pendente`,
- * 403; Membro `ativo`, passa e chega em `request.membro` com o
- * `workspaceId` da configuração (T-1-02 — nunca o que o cliente mandaria).
+ * alguém que não é Membro do Espaço, 403; Membro `removido`, `suspenso`
+ * (12.1.5 B) ou `pendente`, 403 com o `codigo` de cada um; o `pendente` só passa
+ * numa rota `aceitaPendente` (12.3.3); Membro `ativo`, passa e chega em
+ * `request.membro` com o `workspaceId` da configuração (T-1-02 — nunca o que o
+ * cliente mandaria).
  *
  * A parte sem banco roda sempre, injetando `verificarToken`/`resolverMembro`
  * (D-DEC-09) — nenhum destes casos precisa de `SUPABASE_*` nem de
@@ -22,7 +24,14 @@ const MARYANE = usuarioDoSeed("mem_maryane"); // ativo, no seed do Financeiro
 const TIAGO = usuarioDoSeed("mem_tiago"); // removido, no seed do CRM
 
 const semente = buildSeed();
-const membros = semente.members;
+const maryane = semente.members.find((m) => m.id === "mem_maryane")!;
+// O mesmo Membro em outros estados: o que muda é o estado, nunca o Papel.
+const membros = [
+  ...semente.members,
+  { ...maryane, id: "mem_suspensa", userId: "usuario-suspenso", state: "suspenso" as const },
+  { ...maryane, id: "mem_pendente", userId: "usuario-pendente", state: "pendente" as const },
+];
+const TOKENS_EXTRAS: Readonly<Record<string, string>> = { "token-suspenso": "usuario-suspenso", "token-pendente": "usuario-pendente" };
 
 function appDeTeste() {
   const app = buildApp({
@@ -35,11 +44,14 @@ function appDeTeste() {
           ? { sub: TIAGO }
           : token === "token-desconhecido"
             ? { sub: "00000000-0000-0000-0000-000000000000" }
-            : null,
+            : TOKENS_EXTRAS[token]
+              ? { sub: TOKENS_EXTRAS[token] }
+              : null,
     resolverMembro: async (_workspaceId, userId) => membros.find((m) => m.userId === userId),
   });
   // Só existe neste teste: uma rota qualquer para ler o que o hook decorou.
   app.get("/quem-sou", async (request) => request.membro);
+  app.post("/aceitando", { config: { aceitaPendente: true } }, async (request) => request.membro);
   return app;
 }
 
@@ -83,7 +95,34 @@ describe("registrarAutenticacao — hook onRequest", () => {
     expect(resposta.json()).toEqual({
       ok: false,
       error: "Sua participação neste Espaço de Trabalho foi encerrada.",
+      codigo: "REMOVIDO",
     });
+  });
+
+  it("12.1.5 (B) — Membro suspenso responde 403 também na leitura, com a frase e o codigo do suspenso", async () => {
+    const resposta = await appDeTeste().inject({ method: "GET", url: "/quem-sou", headers: { authorization: "Bearer token-suspenso" } });
+    expect(resposta.statusCode).toBe(403);
+    expect(resposta.json()).toEqual({ ok: false, error: "Seu acesso foi suspenso.", codigo: "SUSPENSO" });
+  });
+
+  it("12.1.5 (B) — o suspenso também não passa numa rota aceitaPendente", async () => {
+    const resposta = await appDeTeste().inject({ method: "POST", url: "/aceitando", headers: { authorization: "Bearer token-suspenso" } });
+    expect(resposta.statusCode).toBe(403);
+    expect(resposta.json().codigo).toBe("SUSPENSO");
+  });
+
+  it("12.3.3 — Membro pendente responde 403 CONVITE_PENDENTE numa rota comum", async () => {
+    const resposta = await appDeTeste().inject({ method: "GET", url: "/quem-sou", headers: { authorization: "Bearer token-pendente" } });
+    expect(resposta.statusCode).toBe(403);
+    expect(resposta.json()).toEqual({ ok: false, error: "Seu convite ainda não foi aceito.", codigo: "CONVITE_PENDENTE" });
+  });
+
+  it("12.3.3 — Membro pendente passa numa rota aceitaPendente, e o ativo também", async () => {
+    const pendente = await appDeTeste().inject({ method: "POST", url: "/aceitando", headers: { authorization: "Bearer token-pendente" } });
+    expect(pendente.statusCode).toBe(200);
+    expect(pendente.json()).toEqual({ id: "mem_pendente", workspaceId: "ws_teste", state: "pendente" });
+    const ativo = await appDeTeste().inject({ method: "POST", url: "/aceitando", headers: { authorization: "Bearer token-maryane" } });
+    expect(ativo.statusCode).toBe(200);
   });
 
   it("Membro ativo passa: request.membro usa o workspaceId da configuração, não o do registro", async () => {

@@ -10,16 +10,62 @@
  * reconvite) pelo serviço, contra o Postgres: prova que o segundo convite
  * recusa em vez de criar um segundo Membro — o serviço não mudou; o domínio
  * (Plan 01-10, Task 1) é que passou a casar `existing` pelos dois critérios.
+ *
+ * 12.3.2 — o convite manda e-mail pelo Auth. Todo caso passa um Auth FALSO
+ * (`authFalso`), inclusive o (c): nenhum teste deste arquivo cria Usuário nem
+ * manda e-mail no Supabase de verdade. Os casos (f) a (i) provam o "Pronto
+ * quando" do plano: e-mail novo chama o convite do Auth uma vez e grava o
+ * Membro com o `userId` devolvido; uma recusa do domínio apaga o Usuário
+ * criado; e nenhum e-mail sai de um pedido que o domínio recusaria.
  */
 
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { usuarioDoSeed } from "@n1/dominio";
 import { buildSeed } from "@n1/dominio/seed";
 import { buildApp } from "../app";
 import { carregarEnv, encerrar, pool } from "../persistencia/conexao";
 import { hidratar, semear } from "../persistencia/repositorio";
+import type { AuthDeConvite } from "../autenticacao/auth-de-convite";
 import type { ResolverUsuario } from "../autenticacao/resolver-usuario";
+import { executar } from "../persistencia/unidade-de-trabalho";
+import { inviteMember } from "@n1/dominio/operations/members";
 import { convidarMembro } from "./convidar-membro";
+
+/** O Auth do convite, falso: anota as chamadas e devolve um id novo a cada convite. */
+function authFalso(aoConvidar?: (email: string) => Promise<void>) {
+  const chamadas = { convidar: [] as string[], reenviar: [] as string[], apagar: [] as string[], devolvidos: [] as string[] };
+  const auth: AuthDeConvite = {
+    async convidar(email) {
+      chamadas.convidar.push(email);
+      await aoConvidar?.(email);
+      const id = randomUUID();
+      chamadas.devolvidos.push(id);
+      return id;
+    },
+    async reenviar(email) {
+      chamadas.reenviar.push(email);
+      return randomUUID();
+    },
+    async apagar(userId) {
+      chamadas.apagar.push(userId);
+    },
+  };
+  return { auth, chamadas };
+}
+
+/** O (c) nunca pode chegar ao Auth: se chegar, o teste quebra em vez de criar Usuário no Supabase real. */
+const authProibido: AuthDeConvite = {
+  async convidar() {
+    throw new Error("o teste (c) não pode criar Usuário no Auth");
+  },
+  async reenviar() {
+    throw new Error("o teste (c) não pode reenviar convite no Auth");
+  },
+  async apagar() {
+    throw new Error("o teste (c) não pode apagar Usuário no Auth");
+  },
+};
 
 const TIAGO_USER = usuarioDoSeed("mem_tiago"); // removido no seed do CRM
 const THIAGO_USER = usuarioDoSeed("mem_thiago"); // ativo, Proprietário
@@ -103,17 +149,20 @@ d("convidarMembro — contra o banco real, resolvedor falso", () => {
     }
   });
 
-  it("(b) e-mail sem conta no Auth cria um Membro novo pendente por invitedIdentity", async () => {
+  it("(b) e-mail sem conta no Auth: o Auth convida uma vez e o Membro nasce pendente com o userId devolvido", async () => {
+    const { auth, chamadas } = authFalso();
     const resultado = await convidarMembro(
       { workspaceId: WS, actingMemberId: "mem_thiago", email: "sememAuth@empresa.com.br", roleId: "role_mem" },
-      { resolverUsuario: resolverFalso },
+      { resolverUsuario: resolverFalso, auth },
     );
 
     expect(resultado.ok).toBe(true);
     if (!resultado.ok) throw new Error("deveria convidar");
+    expect(chamadas.convidar).toEqual(["sememauth@empresa.com.br"]);
     expect(resultado.value.state).toBe("pendente");
-    expect(resultado.value.userId).toBeUndefined();
+    expect(resultado.value.userId).toBe(chamadas.devolvidos[0]);
     expect(resultado.value.invitedIdentity?.value).toBe("sememauth@empresa.com.br");
+    expect(chamadas.apagar).toEqual([]);
   });
 
   const ANA_USER = "22222222-2222-2222-2222-222222222222"; // não existe em USUARIOS_DO_SEED
@@ -129,12 +178,13 @@ d("convidarMembro — contra o banco real, resolvedor falso", () => {
       roleId: "role_mem",
     };
 
-    const primeiro = await convidarMembro(pedido, { resolverUsuario: resolverSemConta });
+    const { auth, chamadas } = authFalso();
+    const primeiro = await convidarMembro(pedido, { resolverUsuario: resolverSemConta, auth });
 
     expect(primeiro.ok).toBe(true);
     if (!primeiro.ok) throw new Error("deveria convidar");
     expect(primeiro.value.state).toBe("pendente");
-    expect(primeiro.value.userId).toBeUndefined();
+    expect(primeiro.value.userId).toBe(chamadas.devolvidos[0]);
     expect(primeiro.value.invitedIdentity?.value).toBe("ana@n1.teste");
 
     let antes: number;
@@ -148,9 +198,11 @@ d("convidarMembro — contra o banco real, resolvedor falso", () => {
 
     // A conta da Ana foi criada no Auth entre os dois convites — o e-mail
     // agora resolve um userId.
-    const segundo = await convidarMembro(pedido, { resolverUsuario: resolverComConta });
+    const segundo = await convidarMembro(pedido, { resolverUsuario: resolverComConta, auth });
 
     expect(segundo.ok).toBe(false);
+    // Com conta no Auth, o segundo convite nem fala com o Auth: nenhum e-mail a mais.
+    expect(chamadas.convidar).toEqual(["ana@n1.teste"]);
     if (segundo.ok) throw new Error("deveria recusar");
     expect(segundo.error).toContain("convite pendente");
     expect("conflito" in segundo).toBe(false);
@@ -163,6 +215,55 @@ d("convidarMembro — contra o banco real, resolvedor falso", () => {
     } finally {
       clienteDepois.release();
     }
+  });
+
+  it("(f) quem não pode convidar não faz sair e-mail: o Auth não é chamado", async () => {
+    const { auth, chamadas } = authFalso();
+    const resultado = await convidarMembro(
+      { workspaceId: WS, actingMemberId: "mem_julia", email: "spam@qualquer.com", roleId: "role_mem" },
+      { resolverUsuario: async () => undefined, auth },
+    );
+    expect(resultado.ok).toBe(false);
+    expect(chamadas.convidar).toEqual([]);
+  });
+
+  it("(g) convite repetido para um e-mail pendente não faz sair outro e-mail", async () => {
+    const { auth, chamadas } = authFalso();
+    const resultado = await convidarMembro(
+      { workspaceId: WS, actingMemberId: "mem_thiago", email: "sememauth@empresa.com.br", roleId: "role_mem" },
+      { resolverUsuario: async () => undefined, auth },
+    );
+    expect(resultado.ok).toBe(false);
+    expect(chamadas.convidar).toEqual([]);
+  });
+
+  it("(h) o domínio recusa depois do convite (outra gravação passou na frente): o Usuário criado é apagado", async () => {
+    const email = "corrida@empresa.com.br";
+    // Entre o ensaio e a transação, outro convite para o mesmo e-mail é gravado.
+    const { auth, chamadas } = authFalso(async () => {
+      await executar(WS, (state) => inviteMember(state, "mem_thiago", { email, roleId: "role_mem" }));
+    });
+    const resultado = await convidarMembro(
+      { workspaceId: WS, actingMemberId: "mem_thiago", email, roleId: "role_mem" },
+      { resolverUsuario: async () => undefined, auth },
+    );
+    expect(resultado.ok).toBe(false);
+    expect(chamadas.convidar).toEqual([email]);
+    expect(chamadas.apagar).toEqual(chamadas.devolvidos);
+    expect(chamadas.apagar).toHaveLength(1);
+  });
+
+  it("(i) e-mail que já tem conta no Auth: nenhum e-mail sai, e o Membro nasce com o userId da conta", async () => {
+    const { auth, chamadas } = authFalso();
+    const conta = randomUUID();
+    const resultado = await convidarMembro(
+      { workspaceId: WS, actingMemberId: "mem_thiago", email: "jatemconta@empresa.com.br", roleId: "role_mem" },
+      { resolverUsuario: async () => conta, auth },
+    );
+    expect(resultado.ok).toBe(true);
+    if (!resultado.ok) throw new Error("deveria convidar");
+    expect(resultado.value.userId).toBe(conta);
+    expect(chamadas.convidar).toEqual([]);
   });
 });
 
@@ -204,6 +305,7 @@ d("POST /operacoes/inviteMember — contra o banco real, resolvedor real do Auth
       const app = buildApp({
         logger: false,
         workspaceId: WS2,
+        membros: { auth: authProibido },
         verificarToken: async (token) => (token === "token-thiago" ? { sub: THIAGO_USER } : null),
         resolverMembro: async (_workspaceId, userId) => semente.members.find((m) => m.userId === userId),
       });

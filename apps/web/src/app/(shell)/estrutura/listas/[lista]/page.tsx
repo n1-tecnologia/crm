@@ -86,6 +86,7 @@ import {
 import type { OperationResult } from "@n1/dominio";
 import type { Task, View, ViewFilters } from "@n1/dominio/types";
 import type { RelatorioDeLote } from "@n1/dominio/operations/lote";
+import { AcessosDoConteinerDialog } from "@/features/estrutura/acessos-do-conteiner-dialog";
 
 type ViewKind = TipoDeAba;
 const VIEW_LABEL = ROTULO_DA_ABA;
@@ -108,6 +109,7 @@ export default function ListaPage({
   const state = useData((data) => data);
   const runConfirmado = useRunConfirmado();
   const { memberId } = useSession();
+  const [vendoAcessos, setVendoAcessos] = useState(false);
   // B38a — a Lista que o Membro não alcança não existe para ele.
   const list = state.lists.find(
     (l) =>
@@ -520,6 +522,11 @@ export default function ListaPage({
             >
               Configurações
             </Link>
+            {/* 12.4.4 — quem tem acesso a este contêiner: conceder e revogar. */}
+            <button type="button" className="btn btn-contorno btn-sm" onClick={() => setVendoAcessos(true)}>
+              Acessos
+            </button>
+            <AcessosDoConteinerDialog open={vendoAcessos} type="list" id={list.id} onClose={() => setVendoAcessos(false)} />
             {lente?.kind === "receber" && effective === "ativo" ? (
               <Button
                 size="sm"

@@ -82,6 +82,10 @@ import { IA_HABILIDADES } from "./esquemas/ia-habilidades";
 import { IA_INTEGRACOES } from "./esquemas/ia-integracoes";
 import { LOTE } from "./esquemas/lote";
 import { MEMBROS } from "./esquemas/membros";
+import { PAPEIS } from "./esquemas/papeis";
+import { EQUIPES } from "./esquemas/equipes";
+import { ACESSOS } from "./esquemas/acessos";
+import { CICLO_DO_MEMBRO } from "./esquemas/ciclo-do-membro";
 import { NOTAS } from "./esquemas/notas";
 import { PASTAS_DE_CHAT } from "./esquemas/pastas-de-chat";
 import { PLANEJAMENTO } from "./esquemas/planejamento";
@@ -108,6 +112,10 @@ export const ESQUEMAS = {
   ...PLANEJAMENTO,
   ...ESCALA,
   ...MEMBROS,
+  ...PAPEIS,
+  ...EQUIPES,
+  ...ACESSOS,
+  ...CICLO_DO_MEMBRO,
   ...ESTRUTURA,
   ...NOTAS,
   ...CAPTACAO,

@@ -265,6 +265,18 @@ O que cada nome de recusa quer dizer, em uma linha:
 | `inviteMember` | `operations/members.ts` | recusa embutida (Administrador ou Proprietário) | confere o Papel base de quem chama, não o estado do Membro: um suspenso só é barrado pelo 403 da rota |
 | `deleteRole` | `operations/members.ts` | recusa embutida (Administrador ou Proprietário) | confere o Papel base de quem chama, não o estado do Membro: um suspenso só é barrado pelo 403 da rota |
 | `grantGovernanceAccess` | `operations/members.ts` | recusa embutida (Administrador ou Proprietário) | ato de governança com motivo obrigatório; confere o Papel base, não o estado do Membro: um suspenso só é barrado pelo 403 da rota |
+| `createRole` | `operations/papeis.ts` | `recusaDeGovernanca` (Administrador ou Proprietário ativo) | base Proprietário recusada; o Papel nasce com módulos e sem lista de permissões (12.1.4) |
+| `updateRole` | `operations/papeis.ts` | `recusaDeGovernanca` (Administrador ou Proprietário ativo) | Papel de sistema recusa edição; muda nome e módulos, nunca a base |
+| `createTeam` | `operations/equipes.ts` | `recusaDeGovernanca` (Administrador ou Proprietário ativo) | nome único no Espaço de Trabalho |
+| `updateTeam` | `operations/equipes.ts` | `recusaDeGovernanca` (Administrador ou Proprietário ativo) | nome e descrição |
+| `addMemberToTeam` | `operations/equipes.ts` | `recusaDeGovernanca` (Administrador ou Proprietário ativo) | RN-ET-12: só Membro ativo ou suspenso entra |
+| `removeMemberFromTeam` | `operations/equipes.ts` | `recusaDeGovernanca` (Administrador ou Proprietário ativo) |  |
+| `deleteTeam` | `operations/equipes.ts` | `recusaDeGovernanca` (Administrador ou Proprietário ativo) | recusa enquanto a Equipe tiver Concessão, com a contagem |
+| `concederAcesso` | `operations/acessos.ts` | `containerAdminRefusal` | Membro, Equipe ou Papel; escopo subárvore, origem concessaoDireta |
+| `revogarAcesso` | `operations/acessos.ts` | `containerAdminRefusal` | recusa tirar a última concessão administrar que alcança um contêiner privado (B38a) |
+| `aceitarConvite` | `operations/ciclo-do-membro.ts` | recusa embutida (o próprio Membro pendente com Usuário) | o hook da api só deixa um pendente chegar aqui por `POST /convites/aceitar` |
+| `suspenderMembro` | `operations/ciclo-do-membro.ts` | `recusaDeGovernanca` (Administrador ou Proprietário ativo) | nunca o Proprietário nem quem suspende; só um Membro ativo |
+| `reativarMembro` | `operations/ciclo-do-membro.ts` | `recusaDeGovernanca` (Administrador ou Proprietário ativo) | só um Membro suspenso |
 | `createSpace` | `operations/structure.ts` | `mayBuild` |  |
 | `createFolder` | `operations/structure.ts` | `mayBuild` |  |
 | `createList` | `operations/structure.ts` | `mayBuild` |  |

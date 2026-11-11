@@ -119,10 +119,10 @@ describe("rota GET /atividades — serviço falso, sem banco", () => {
   });
 
   it("a recusa do serviço (403 de Papel) chega com status, codigo e frase intactos", async () => {
-    const { servico } = novoFalso(recusa(403, "Só um Membro ativo ou suspenso consulta o CRM.", { codigo: "PERMISSAO" }));
+    const { servico } = novoFalso(recusa(403, "Só um Membro ativo consulta o CRM.", { codigo: "PERMISSAO" }));
     const resposta = await appCom(servico).inject({ method: "GET", url: "/atividades", headers: AUTORIZACAO });
     expect(resposta.statusCode).toBe(403);
-    expect(resposta.json()).toEqual({ ok: false, error: "Só um Membro ativo ou suspenso consulta o CRM.", codigo: "PERMISSAO" });
+    expect(resposta.json()).toEqual({ ok: false, error: "Só um Membro ativo consulta o CRM.", codigo: "PERMISSAO" });
   });
 
   it("só existe GET: POST, PATCH, PUT e DELETE em /atividades não são rota", async () => {

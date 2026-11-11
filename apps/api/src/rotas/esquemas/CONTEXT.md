@@ -58,6 +58,10 @@ operações do CRM antigo que eles descreviam.
 | `planejamento.ts` | `planning.ts` |
 | `escala.ts` | `scale.ts` |
 | `membros.ts` | `members.ts` |
+| `papeis.ts` | `papeis.ts` (Sessão 12) |
+| `equipes.ts` | `equipes.ts` (Sessão 12) |
+| `acessos.ts` | `acessos.ts` (Sessão 12) |
+| `ciclo-do-membro.ts` | `ciclo-do-membro.ts` (Sessão 12) |
 | `estrutura.ts` | `structure.ts` |
 | `notas.ts` | `ferramentas/notas.ts` |
 | `captacao.ts` | `ferramentas/captacao.ts` |
