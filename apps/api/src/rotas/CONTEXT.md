@@ -423,9 +423,10 @@ regra"). As tabelas são as da `008-canais-conversas-mensagens.sql`
 | `GET /canais/:id` | a ficha | idem |
 | `POST /canais` | cria um Canal `desconectada` (201): `provedor`, `nome`, `identificador`; o `tipo` sai do provedor | Administrador/Proprietário (B35) |
 | `PATCH /canais/:id` | só `nome`, `filaPadraoId` e `origemPadraoId` (INV-CXE-02) | Administrador/Proprietário |
-| `POST /canais/:id/simular-conexao` | conecta sem provedor, marcando `conexaoSimulada` (D-08) | Administrador/Proprietário |
-| `POST /canais/:id/desconectar` | volta a `desconectada` | Administrador/Proprietário |
-| `POST /canais/:id/arquivar` | arquiva e desconecta na mesma escrita | Administrador/Proprietário |
+| `POST /canais/:id/conectar` | Sessão 4: pede o QR code (WhatsApp não oficial). Devolve `{ situacao: "qrcode" \| "aguardando" \| "conectada", ... }`; NUNCA grava `conectada` por QR lido (é do webhook). 409 `PROVEDOR_ERRADO`/`TRANSICAO_INVALIDA`, 503 `EVOLUTION_NAO_CONFIGURADA`/`EVOLUTION_CHAVE_RECUSADA`/`COFRE_NAO_CONFIGURADO`, 502 `EVOLUTION_INDISPONIVEL` | Administrador/Proprietário |
+| `POST /canais/:id/simular-conexao` | conecta sem provedor, marcando `conexaoSimulada` (D-08). **SÓ é registrada com `PERMITIR_CONEXAO_SIMULADA=true`** (4.3.4): em produção responde 404 | Administrador/Proprietário |
+| `POST /canais/:id/desconectar` | volta a `desconectada`; no WhatsApp não oficial real tira antes o aparelho da sessão (Evolution fora do ar: 502 e nada é gravado) | Administrador/Proprietário |
+| `POST /canais/:id/arquivar` | arquiva e desconecta na mesma escrita; no WhatsApp não oficial sai da sessão, apaga a instância do CRM e a credencial do cofre | Administrador/Proprietário |
 | `GET /conversas`, `GET /conversas/:id` | lista (filtros `canalId`, `contatoId`, `situacao`, `estado`, `atribuidoId`, `filaId`, `comEstrela`, `naoLidas`, `q`) e ficha com o resumo do Canal; cada item da lista traz `contatoNome`, `estrela` e `naoLidas` do Membro da sessão, e `ultimaRecebidaEm` (a `recebida` mais recente, na mesma consulta) | quem lê Conversa |
 | `POST /conversas` | abre a Conversa com a 1ª Mensagem `enviada` (201) | quem envia Mensagem |
 | `POST /conversas/:id/resolver`, `/reabrir` | muda a situação, sem corpo | idem |
@@ -440,7 +441,7 @@ regra"). As tabelas são as da `008-canais-conversas-mensagens.sql`
 | `POST /mensagens/:id/reenviar` | "Tentar de novo": só a `enviada` com `falhou` volta a `pendente` e à fila — 200 com a Mensagem | quem envia Mensagem |
 
 Não há `DELETE` em `/canais`: Canal não tem lixeira (DO-CXE-03), arquivar é o
-fim de uso. As ações sem corpo (`simular-conexao`, `desconectar`, `arquivar`,
+fim de uso. As ações sem corpo (`conectar`, `simular-conexao`, `desconectar`, `arquivar`,
 `resolver`, `reabrir`) não declaram `body` (Fastify 5, Pitfall 4).
 
 **Mover e atribuir (Fase 14).** Os dois corpos são `.strict()` (`workspaceId`,

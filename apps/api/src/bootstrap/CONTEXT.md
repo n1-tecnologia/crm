@@ -97,7 +97,8 @@ recebe de verdade. Para refazer o demo num Espaço, apague o CRM do Espaço (ou 
 
 ## Os comandos dos Canais de mensageria (Fase 16)
 
-Dois comandos de linha cuidam do que a tela de conexão (Sessão 4) ainda não faz. Nenhum deles é de desenvolvimento
+Dois comandos de linha cuidam do que a tela de conexão ainda não faz (desde a Sessão 4 o "Conectar" com QR liga a instância
+que o CRM cria; `canal:ligar-evolution` segue para a que o dono criou à mão). Nenhum deles é de desenvolvimento
 só: os dois falam com o banco que o `DATABASE_URL` apontar, então rode-os sabendo qual é. Os testes rodam só contra
 Postgres local e contra a Evolution falsa de `testes/servidor-falso.ts`.
 

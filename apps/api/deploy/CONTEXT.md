@@ -359,9 +359,22 @@ de terceiros.
 **O que a Fase 16 puxou da Sessão 4:** ligar um Canal a uma instância que o dono
 já conectou na Evolution (guardar a chave da INSTÂNCIA no cofre do CRM e apontar o
 webhook dela para o `apps/api`) é o comando `npm run canal:ligar-evolution` (ver
-"Mensageria (Fase 16)", abaixo). **Fica para a Sessão 4:** o QR code e o botão
-"Conectar" na ficha do Canal, `CONNECTION_UPDATE` e a conferência da conexão. Nada
-disso é feito pelos scripts desta pasta.
+"Mensageria (Fase 16)", abaixo). **A Sessão 4 trouxe:** o QR code e o botão
+"Conectar" na ficha do Canal, `CONNECTION_UPDATE` e a conferência da conexão
+(ver "Conectar pelo CRM (Sessão 4)", abaixo). Nada disso é feito pelos scripts desta pasta.
+
+**Conectar pelo CRM (Sessão 4).** Para o botão "Conectar" funcionar em produção faltam três
+coisas no `api.env` do servidor (o `n1crm` o edita; reinicie com `sudo systemctl restart n1-crm-api`):
+
+| Variável | Para quê |
+|---|---|
+| `EVOLUTION_API_KEY` | a chave GLOBAL da Evolution (o `AUTHENTICATION_API_KEY` do `evolution.env` da instalação da Evolution, modo 600, que só o root lê). A api a usa para criar a instância de cada Canal e apagá-la ao arquivar. Ela apaga QUALQUER instância, inclusive a `numeropvmarcos` do Financeiro: o CRM só cria e apaga `n1-<espaço>-<canal>`, mas é uma chave de poder total, então ela só vive nesse arquivo (modo 600) |
+| `EVOLUTION_CONFERENCIA_ATIVA=true` | liga a conferência de 5 min (opcional; sem ela, só o webhook atualiza a conexão) |
+| `PERMITIR_CONEXAO_SIMULADA` | **não defina em produção.** Sem ela, "Simular conexão" não existe (a rota responde 404). Se algum Canal de demonstração precisar dela, defina `true` e reinicie |
+
+`EVOLUTION_URL`, `API_URL_PUBLICA` e `COFRE_CHAVE` já são exigidos desde a Fase 16. Sem `EVOLUTION_API_KEY`
+o botão responde 503 dizendo o que falta, e `npm run canal:ligar-evolution` continua ligando uma instância
+que o dono criou à mão. A conferência e o webhook de uma instância assim funcionam igual.
 
 ## Mensageria (Fase 16)
 

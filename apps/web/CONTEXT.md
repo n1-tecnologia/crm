@@ -345,9 +345,13 @@ provedor e entrega a `features/crm/conectar-provedor.tsx` (orientação passo a
 passo, espaço reservado do QR/token e o formulário real). A ficha do Canal
 grava por REST quando o Canal é relacional (vem de `GET /estado` com
 `relational: true`) e pela operação antiga quando é do seed (demo); o botão
-"Simular conexão" só aparece para quem administra e só em Canal que nunca foi ligado a um provedor real
-(`podeSimularConexao`, com `ligadoAoProvedor` vindo de `GET /canais/:id`; CR-01, 16-17); no Canal ligado a ficha
-mostra a frase de como reconectar. Três peças visuais novas
+"Simular conexão" só aparece para quem administra, só em Canal que nunca foi ligado a um provedor real e só se o servidor
+a permite (`podeSimularConexao`, com `ligadoAoProvedor` e `simulacaoPermitida` vindos de `GET /canais/:id`; CR-01 e 4.3.4);
+no Canal ligado a ficha mostra a frase de como reconectar. No WhatsApp não oficial desconectado ou com erro a ficha
+oferece "Conectar" ("Reconectar" em `com_erro`, `podeConectarPorQrCode`), que abre o `painel-do-qrcode.tsx`: pede o QR com
+`conectarCanal`, o renova a cada ~25 s, relê o Canal a cada ~3 s e fecha em "Conectado"; criar o Canal leva à ficha com
+`?conectar=1` e o painel abre sozinho. O QR tem fundo claro próprio (`--papel-do-qrcode`): a câmera não lê QR claro sobre
+fundo escuro. Três peças visuais novas
 em `features/crm/`: `selo-do-provedor.tsx` (oficial/não oficial/cadastrado/
 demo/conexão simulada), `seletor-de-canal.tsx` ("Responder por", que troca a
 aba sem mover uma Conversa existente de Canal) e `separador-de-canal.tsx` (o
