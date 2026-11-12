@@ -28,7 +28,7 @@ import {
   Toggle,
 } from "@/features/shell/ui";
 import { Selo } from "@/features/estrutura/icone-de-tipo";
-import { CanaisDeAtendimento } from "@/features/estrutura/canais-de-atendimento";
+import { CanaisDeAtendimento, motivoDeCanalEmOutraLista } from "@/features/estrutura/canais-de-atendimento";
 import { AdicionarCanalDialog } from "@/features/crm/adicionar-canal-dialog";
 import type { Canal } from "@n1/dominio/crm/canais";
 import type { TipoDeAtendimento } from "@n1/dominio/operations/canais";
@@ -383,7 +383,7 @@ export function CreateContainerDialog({
         ) : null}
 
         {conversacional ? (
-          <CanaisDeAtendimento valor={canais} onChange={setCanais} onAdicionar={setAdicionando} recente={recente} />
+          <CanaisDeAtendimento valor={canais} onChange={setCanais} onAdicionar={setAdicionando} recente={recente} ocupadoEm={(canal) => motivoDeCanalEmOutraLista(state, canal)} />
         ) : null}
 
         {kind === "espaco" ? null : (
@@ -469,6 +469,7 @@ export function CreateContainerDialog({
       open={adicionando !== null}
       onClose={() => setAdicionando(null)}
       jaLigados={canais}
+      ocupadoEm={(canal) => motivoDeCanalEmOutraLista(state, canal)}
       onEscolher={(canalId) => {
         setCanais((atuais) => (atuais.includes(canalId) ? atuais : [...atuais, canalId]));
         setAdicionando(null);

@@ -81,15 +81,26 @@ describe("instantiateListTemplate — Canais de atendimento conferidos nos Canai
     if (!r.ok) expect(r.error).toBe("Canal não encontrado ou arquivado.");
   });
 
-  it("instanciar duas vezes o mesmo Template cria duas Listas independentes, as duas conferidas pelos Canais lidos", () => {
-    const canais = [umCanal()];
+  it("instanciar duas vezes o mesmo Template cria duas Listas independentes, cada uma com o seu Canal (5.1.2: um Canal só atende em uma Lista)", () => {
+    const canais = [umCanal(), umCanal({ id: "can_outro_na_tabela", nome: "WhatsApp do suporte", identificadorExterno: "+5511911110002" })];
     const a = instantiateListTemplate(state, THIAGO, templateId, { ...entrada(["can_so_na_tabela"]), name: "Suporte A" }, canais);
-    const b = instantiateListTemplate(state, THIAGO, templateId, { ...entrada(["can_so_na_tabela"]), name: "Suporte B" }, canais);
+    const b = instantiateListTemplate(state, THIAGO, templateId, { ...entrada(["can_outro_na_tabela"]), name: "Suporte B" }, canais);
     expect(a.ok, a.ok ? "" : a.error).toBe(true);
     expect(b.ok, b.ok ? "" : b.error).toBe(true);
     if (!a.ok || !b.ok) return;
     expect(a.value.id).not.toBe(b.value.id);
     expect(a.value.canaisDeAtendimento).toEqual(["can_so_na_tabela"]);
-    expect(b.value.canaisDeAtendimento).toEqual(["can_so_na_tabela"]);
+    expect(b.value.canaisDeAtendimento).toEqual(["can_outro_na_tabela"]);
+  });
+
+  it("5.1.2: a segunda Lista que pede o Canal que a primeira já atende é recusada, sem deixar Lista para trás", () => {
+    const canais = [umCanal()];
+    const a = instantiateListTemplate(state, THIAGO, templateId, { ...entrada(["can_so_na_tabela"]), name: "Suporte A" }, canais);
+    expect(a.ok, a.ok ? "" : a.error).toBe(true);
+    const listas = state.lists.length;
+    const b = instantiateListTemplate(state, THIAGO, templateId, { ...entrada(["can_so_na_tabela"]), name: "Suporte B" }, canais);
+    expect(b.ok).toBe(false);
+    if (!b.ok) expect(b.error).toBe("O Canal “WhatsApp da loja” já atende na Lista “Suporte A”: um Canal só atende em uma Lista conversacional.");
+    expect(state.lists).toHaveLength(listas);
   });
 });

@@ -54,7 +54,16 @@ vi.mock("@/features/crm/conversation-thread", async (original) => ({
       data-contato-id={String(props.contatoId ?? "")}
       data-tarefa-id={String(props.tarefaId ?? "")}
       data-canal-selecionado={String(props.canalSelecionado ?? "")}
-    />
+      data-conversa-fixa-id={String(props.conversaFixaId ?? "")}
+      data-canais-da-lista={Array.isArray(props.canaisDaListaIds) ? props.canaisDaListaIds.join(",") : ""}
+    >
+      {/* 5.2.1: o "Responder por" do fio, ao escolher outro Canal, chama este callback da ficha. */}
+      {typeof props.aoTrocarCanalDaTarefa === "function" ? (
+        <button type="button" onClick={() => (props.aoTrocarCanalDaTarefa as (canalId: string) => void)("ck_novo_2")}>
+          escolher outro Canal no fio
+        </button>
+      ) : null}
+    </div>
   ),
 }));
 vi.mock("@/dados/crm/nomes", async (original) => ({
@@ -337,11 +346,13 @@ describe("o fio e as três colunas pelos Vínculos do CRM novo", () => {
     } as DataState;
   }
 
-  it("(j) com Vínculos para o Contato X e a Conversa C (ids novos) a ficha monta as três colunas e o fio com conversaId, contatoId e o Canal do resumo", () => {
+  it("(j) com Vínculos para o Contato X e a Conversa C (ids novos) a ficha monta as três colunas e o fio preso à Conversa C, com contatoId, o Canal do resumo e os Canais da Lista", () => {
     comVinculos();
     montar();
     const fio = screen.getByTestId("fio-da-conversa");
-    expect(fio.getAttribute("data-conversa-id")).toBe(CONVERSA);
+    // 5.2.1: o fio da Tarefa é o da Conversa dela (`conversaFixaId`), e o "Responder por" só oferece os Canais da Lista.
+    expect(fio.getAttribute("data-conversa-fixa-id")).toBe(CONVERSA);
+    expect(fio.getAttribute("data-canais-da-lista")).toBe("ck_novo_1,ck_novo_2");
     expect(fio.getAttribute("data-contato-id")).toBe(CONTATO);
     expect(fio.getAttribute("data-tarefa-id")).toBe(TAREFA);
     // O Canal vem do resumo (o Canal da Conversa), não do estado.
@@ -355,8 +366,29 @@ describe("o fio e as três colunas pelos Vínculos do CRM novo", () => {
     montar();
     const fio = screen.getByTestId("fio-da-conversa");
     expect(fio.getAttribute("data-conversa-id")).toBe("");
+    // Sem Conversa da Tarefa o fio NÃO fica preso a nada: é o fio comum, que abre a Conversa com a primeira Mensagem.
+    expect(fio.getAttribute("data-conversa-fixa-id")).toBe("");
+    expect(fio.getAttribute("data-canais-da-lista")).toBe("");
     expect(fio.getAttribute("data-contato-id")).toBe(CONTATO);
     expect(fio.getAttribute("data-canal-selecionado")).toBe("");
+  });
+
+  it("5.2.1: escolher outro Canal no “Responder por” do fio abre o diálogo de trocar o Canal DA TAREFA, e confirmar chama a rota", async () => {
+    comVinculos();
+    trocar.mockResolvedValue({ task: {}, mudou: true, conversa: { id: "cv_2", aberta: false } });
+    montar();
+    fireEvent.click(screen.getByRole("button", { name: "escolher outro Canal no fio" }));
+    expect(screen.getByText("Trocar o Canal da Tarefa")).toBeTruthy();
+    expect(trocar).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Trocar o Canal" }));
+    await waitFor(() => expect(trocar).toHaveBeenCalledWith(TAREFA, { canalId: "ck_novo_2" }));
+    await waitFor(() => expect(rehidratar).toHaveBeenCalledTimes(1));
+  });
+
+  it("5.2.1: sem Conversa da Tarefa o fio comum não recebe o callback de trocar o Canal da Tarefa", () => {
+    comVinculos({ semConversa: true });
+    montar();
+    expect(screen.queryByRole("button", { name: "escolher outro Canal no fio" })).toBeNull();
   });
 
   it("(l) o Contato que o resumo diz que não existe neste Espaço não abre fio: layout de sempre com o aviso", () => {

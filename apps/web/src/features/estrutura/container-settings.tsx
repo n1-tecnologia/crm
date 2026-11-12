@@ -28,7 +28,7 @@ import type { Canal } from "@n1/dominio/crm/canais";
 import type { TipoDeAtendimento } from "@n1/dominio/operations/canais";
 import { AdicionarCanalDialog } from "@/features/crm/adicionar-canal-dialog";
 import { CabecalhoDoAspecto } from "@/features/estrutura/cabecalho-do-aspecto";
-import { CanaisDeAtendimento } from "@/features/estrutura/canais-de-atendimento";
+import { CanaisDeAtendimento, motivoDeCanalEmOutraLista } from "@/features/estrutura/canais-de-atendimento";
 import { useRecente } from "@/features/shell/recente";
 import { FeaturesEditor, FieldDefinitionsEditor, StatusSetEditor, TaskTypesEditor, useMayConfigure } from "@/features/estrutura/configuration-editors";
 import { EditorDeVisualizacoesPadrao } from "@/features/estrutura/editor-de-visualizacoes-padrao";
@@ -358,12 +358,14 @@ export function ContainerSettings({
                     {...(useMayConfigureReason ? { motivo: useMayConfigureReason } : {})}
                     podeFicarVazio={(lista.canaisDeAtendimento ?? []).length === 0}
                     recente={recente}
+                    ocupadoEm={(canal) => motivoDeCanalEmOutraLista(state, canal, lista.id)}
                   />
                   <AdicionarCanalDialog
                     {...(adicionando ? { tipo: adicionando } : {})}
                     open={adicionando !== null}
                     onClose={() => setAdicionando(null)}
                     jaLigados={lista.canaisDeAtendimento ?? []}
+                    ocupadoEm={(canal) => motivoDeCanalEmOutraLista(state, canal, lista.id)}
                     onEscolher={(canalId) => {
                       setAdicionando(null);
                       const nome = canaisDaTabela.data?.itens.find((canal) => canal.id === canalId)?.nome ?? "O Canal";

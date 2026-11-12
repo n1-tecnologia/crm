@@ -966,6 +966,22 @@ regra recusa o id (o ramo de `state.channels` saiu no 15-33, junto com o CRM ant
 Quem preenche `canais` é o servidor, dentro da transação (`lerDoCrm`, em
 `POST /operacoes`): o que o navegador manda nesse argumento é descartado.
 
+**Um Canal atende em uma Lista conversacional só (Sessão 5, 5.1.2, decisão A do plano).**
+`validarCanaisDeAtendimento(state, ids, canais, listaAtual?)` recusa o Canal que outra Lista conversacional ATIVA já atende
+(`listaConversacionalQueAtendePeloCanal`, `canalJaAtendidoEmOutraLista`): a mensagem que chega cria a Tarefa na Lista do Canal,
+e dois destinos duplicariam o atendimento. A Lista arquivada ou na lixeira não segura o Canal; a que já o atende pode salvá-lo
+de novo. Dado de antes da regra, com um Canal em duas Listas, não é consertado: `tarefaDaRecebida` usa a primeira do estado.
+
+**A Tarefa que a Mensagem recebida cria ou reabre (Sessão 5, 5.1.1 a 5.1.4).** `tarefaDaRecebida(state, { canalId, contatoId,
+conversaId })` (em `operations/tarefa-conversacional-nas-tabelas.ts`) devolve `nada`, `criar` ou `reabrir`, pura e idempotente:
+Canal fora de Lista conversacional ativa, ou Contato com Tarefa aberta na Lista: nada; Contato sem Tarefa: cria (A); só há Tarefas
+encerradas e uma é a da Conversa da Mensagem: reabre essa, no Status inicial da Lista; nenhuma é (Conversa nova): cria outra e
+deixa a concluída como histórico (C). Não recebe "a Conversa nasceu/reabriu agora" de propósito: o Vínculo "conversa da Tarefa"
+diz o mesmo e sobrevive à segunda passada do mesmo webhook. A Tarefa encerrada da MESMA Conversa também reabre quando a Conversa
+nunca foi resolvida: a Tarefa segue a Conversa. `aplicarTarefaDaRecebida` executa a decisão pelas operações de sempre
+(`criarTarefaConversacionalNasTabelas`, `changeTaskStatus`) e troca o Ator do que gravou por `atorDaMensagemRecebida(canalId)`;
+`autorizadorDaTarefaDaRecebida` escolhe o Membro que autoriza a escrita. Nenhuma das três está em `OPERACOES`.
+
 **Nomes do CRM novo em lote (Fase 15, 15-10, 3.4.9 e 3.4.10, UCR-08).** `crm/nomes.ts` (sem
 barril, subcaminho `@n1/dominio/crm/nomes`) tem só os tipos e o teto: `AlvoDoCrm` (`tipo` de
 `TIPOS_DE_OBJETO_DO_CRM` e `id`), `NomeDoAlvo` (o alvo com `nome: string | null`) e

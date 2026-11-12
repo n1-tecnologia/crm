@@ -95,7 +95,7 @@ export function definirCanaisDaLista(
   if (refusal) return fail(refusal);
   if (list.lifecycle !== "ativo") return fail("Um contêiner arquivado ou na lixeira não muda de configuração.");
   if (list.modeloDeTarefa !== "conversacional") return fail(CANAIS_SO_NA_CONVERSACIONAL, "canais");
-  const validos = validarCanaisDeAtendimento(state, ids, canais);
+  const validos = validarCanaisDeAtendimento(state, ids, canais, listId);
   if (typeof validos === "string") return fail(validos, "canais");
   const atuais = list.canaisDeAtendimento ?? [];
   if (atuais.length === validos.ids.length && atuais.every((id, i) => id === validos.ids[i])) return ok(list);

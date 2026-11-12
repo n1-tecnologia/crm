@@ -708,6 +708,85 @@ describe("ConversationThread — o fio por Canal", () => {
   });
 });
 
+/**
+ * 5.2.1 — o fio da ficha da Tarefa fica PRESO à Conversa da Tarefa (`conversaFixaId`): a aba é a do Canal dela, a resposta
+ * sai por ela, o "Responder por" só oferece os Canais da Lista e escolher outro Canal pede à ficha que troque o Canal DA
+ * TAREFA (callback), em vez de só mudar a aba. Sem `conversaFixaId` nada disso vale (os casos (1) a (18) acima).
+ */
+describe("ConversationThread — preso à Conversa da Tarefa (5.2.1)", () => {
+  const CANAIS_DA_LISTA = ["chn_suporte", "chn_comercial"];
+
+  /** As abas de Canal (a fileira também tem as de Nota interna e Tarefa, que não são Canal). */
+  const abasDeCanal = () => abas().filter((a) => a.textContent?.includes("WhatsApp"));
+
+  function montarDaTarefa(props: PropsDoFio = {}) {
+    const aoTrocarCanalDaTarefa = vi.fn();
+    montar({ conversaFixaId: "cnv_suporte", canaisDaListaIds: CANAIS_DA_LISTA, aoTrocarCanalDaTarefa, ...props });
+    return aoTrocarCanalDaTarefa;
+  }
+
+  it("(19) a Mensagem sai pela Conversa da Tarefa, mesmo quando a tela pede outro Canal por fora", async () => {
+    // A ficha ainda manda o Canal do resumo e uma preferência de outro Canal: a Conversa da Tarefa manda mais.
+    montarDaTarefa({ canalSelecionado: "chn_comercial", canalPreferidoId: "chn_comercial" });
+    await waitFor(() => expect(screen.getByText("cnv_suporte mensagem 1")).toBeTruthy());
+    expect(screen.queryByText("cnv_comercial mensagem 1")).toBeNull();
+
+    fireEvent.change(compositor(), { target: { value: "pela Conversa da Tarefa" } });
+    fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
+    const dialogo = await screen.findByRole("alertdialog");
+    expect(dialogo.textContent).toContain("Suporte · WhatsApp não oficial");
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Enviar" }));
+    await waitFor(() => expect(gravacoes()).toHaveLength(1));
+    expect(gravacoes()[0]).toMatchObject({ caminho: "/mensagens", metodo: "POST", corpo: { conversaId: "cnv_suporte", conteudo: "pela Conversa da Tarefa" } });
+  });
+
+  it("(20) a fileira tem só a aba do Canal da Tarefa, e o “Responder por” só os Canais da Lista, com o da Tarefa marcado", async () => {
+    montarDaTarefa();
+    await fioPronto("cnv_suporte mensagem");
+    expect(abasDeCanal().map((a) => a.textContent)).toEqual([expect.stringContaining("Suporte · WhatsApp não oficial")]);
+
+    expect(respondePor().textContent).toContain("Suporte · WhatsApp não oficial");
+    fireEvent.click(respondePor());
+    const opcoes = screen.getAllByRole("option").map((o) => o.textContent ?? "");
+    // “Comercial SP” é um WhatsApp conectado que alcança o Contato, mas não está na Lista.
+    expect(opcoes.sort()).toEqual(["Comercial · WhatsApp oficial", "Suporte · WhatsApp não oficial"]);
+  });
+
+  it("(21) escolher outro Canal da Lista chama o callback da ficha e não muda de aba nem grava nada", async () => {
+    const aoTrocarCanalDaTarefa = montarDaTarefa();
+    await fioPronto("cnv_suporte mensagem");
+    fireEvent.click(respondePor());
+    fireEvent.click(screen.getAllByRole("option").find((o) => o.textContent === "Comercial · WhatsApp oficial") as HTMLElement);
+
+    expect(aoTrocarCanalDaTarefa).toHaveBeenCalledTimes(1);
+    expect(aoTrocarCanalDaTarefa).toHaveBeenCalledWith("chn_comercial");
+    // O fio segue na Conversa da Tarefa até a ficha trocar o Vínculo; nada foi enviado nem aberto.
+    expect(abasDeCanal()).toHaveLength(1);
+    expect(abasDeCanal()[0]?.textContent).toContain("Suporte");
+    expect(screen.getByText("cnv_suporte mensagem 1")).toBeTruthy();
+    expect(screen.queryByText(/Respondendo por/)).toBeNull();
+    expect(gravacoes()).toEqual([]);
+  });
+
+  it("(22) sem o callback da ficha o seletor só oferece o Canal que a Tarefa já usa", async () => {
+    montar({ conversaFixaId: "cnv_suporte", canaisDaListaIds: CANAIS_DA_LISTA });
+    await fioPronto("cnv_suporte mensagem");
+    fireEvent.click(respondePor());
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["Suporte · WhatsApp não oficial"]);
+  });
+
+  it("(23) a Conversa da Tarefa que a api não acha (404) cai no fio comum: todas as abas e o seletor de sempre", async () => {
+    const aoTrocarCanalDaTarefa = montarDaTarefa({ conversaFixaId: "cnv_que_nao_existe" });
+    await waitFor(() => expect(abasDeCanal().length).toBeGreaterThan(1));
+    fireEvent.click(respondePor());
+    expect(screen.getAllByRole("option")).toHaveLength(3);
+    fireEvent.click(screen.getAllByRole("option").find((o) => o.textContent === "Comercial · WhatsApp oficial") as HTMLElement);
+    // Sem Conversa fixa, escolher o Canal é só trocar a aba (INV-CXE-04): o callback da Tarefa não é chamado.
+    await waitFor(() => expect(abaDe("Comercial · WhatsApp oficial").getAttribute("aria-selected")).toBe("true"));
+    expect(aoTrocarCanalDaTarefa).not.toHaveBeenCalled();
+  });
+});
+
 describe("ConversationThread — abrir a Conversa pelo fio com a primeira Mensagem (F14-D-07)", () => {
   /** O Contato nunca falou em "Comercial": o Canal alcança, mas não há Conversa nele. */
   function semConversaEmComercial() {

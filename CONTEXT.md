@@ -241,6 +241,14 @@ Caixa. **Segue sem prova real** o corpo exato do `connection.update`, o `statusR
 queda do celular e os eventos novos da 4.4.5 (tique, apagada, editada, Reação e a citação do
 texto), cujos formatos vêm do código da Evolution, não de uma captura.
 
+A Sessão 5 liga a Lista conversacional à mensageria: a Mensagem recebida cria a Tarefa do Contato na Lista que atende pelo
+Canal (ou reabre a concluída da mesma Conversa), e um Canal atende em uma Lista conversacional só. A decisão é do domínio
+(`tarefaDaRecebida`), o passo roda no processador de entrada (`apps/api/src/servicos/crm/tarefa-da-mensagem.ts`) e a tela
+confere a revisão ao receber `mensagem.nova` ou `conversa.mudou`. A ficha da Tarefa fica presa à Conversa dela: o "Responder
+por" oferece só os Canais da Lista. Sem migração. As três decisões da 5.1 foram as recomendadas pelo plano (A, A e C), e a
+Tarefa encerrada da mesma Conversa também reabre enquanto a Conversa não foi resolvida. Ainda não passou por um celular
+(5.3.1) nem por uma Evolution de homologação (5.2.2, o teste existe e é pulado sem as variáveis).
+
 ## Comandos
 
 Todos rodam da raiz:

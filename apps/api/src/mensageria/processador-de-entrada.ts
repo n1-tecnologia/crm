@@ -34,6 +34,13 @@
  * Quem escreveu (Sessão 8): um provedor com `resolverRemetente` (o Instagram, cujo webhook só traz o IGSID) troca o id
  * opaco pelo Identificador do Contato antes de `receberMensagem`, também fora da transação. Falhar ali é transitório.
  *
+ * A Lista conversacional (Sessão 5, 5.1.5): depois de gravar a Mensagem RECEBIDA, o processador pede à Tarefa da Mensagem
+ * (`servicos/crm/tarefa-da-mensagem.ts`) que crie a Tarefa do Contato na Lista que atende pelo Canal, ou reabra a concluída da
+ * mesma Conversa. É um passo à parte, depois do commit da Mensagem: se lança, a linha volta a `pendente` (`marcarTransitoria`)
+ * e a passada seguinte o repete, o que é seguro porque a decisão olha as Tarefas que já existem. Recusa por regra (Lista cheia,
+ * ninguém que possa escrever) não derruba a linha: fica em `resultado` como `tarefa:pulada:<motivo>`, e a Mensagem segue na Caixa.
+ * A Mensagem digitada no celular (`enviada`) nunca mexe em Tarefa.
+ *
  * A rota do webhook chama `acordar()` depois do 200 (Pitfall 3): o laço de `intervaloMs` é só a reserva.
  *
  * Nada aqui loga corpo, texto, telefone nem segredo: `registrar` só recebe o id da linha, contagens e
@@ -50,6 +57,7 @@ import { criarRepositorioDeCanaisPg } from "../repositorios/crm/canais";
 import { criarRepositorioDeMensagensPg } from "../repositorios/crm/mensagens";
 import { lerChavesDoCofre, type ChavesDoCofre } from "../servicos/cofre";
 import { criarServicoDeRecebimento, type ServicoDeRecebimento } from "../servicos/crm/recebimento";
+import { criarServicoDaTarefaDaMensagem, type ServicoDaTarefaDaMensagem } from "../servicos/crm/tarefa-da-mensagem";
 import type { Relogio } from "../testes/relogio";
 import { relogioDoSistema } from "../testes/relogio";
 import type { ArmazenamentoDeAnexos } from "../servicos/armazenamento-de-anexos";
@@ -68,6 +76,8 @@ export interface OpcoesDoProcessadorDeEntrada {
   readonly chaves?: ChavesDoCofre;
   readonly registro?: RegistroDeProvedores;
   readonly recebimento?: ServicoDeRecebimento;
+  /** 5.1.5: cria ou reabre a Tarefa da Lista conversacional do Canal depois de gravar a Mensagem recebida. */
+  readonly tarefaDaMensagem?: ServicoDaTarefaDaMensagem;
   readonly relogio?: Relogio;
   /** 16-10: o bucket onde a mídia recebida é guardada antes da transação. Padrão: o do Supabase; os testes injetam o falso. */
   readonly armazenamento?: ArmazenamentoDeAnexos;
@@ -142,6 +152,7 @@ export function criarProcessadorDeEntrada(opcoes: OpcoesDoProcessadorDeEntrada):
   const pool = opcoes.pool ?? poolPadrao;
   const registro = opcoes.registro ?? registroPadrao();
   const recebimento = opcoes.recebimento ?? criarServicoDeRecebimento({ pool });
+  const tarefaDaMensagem = opcoes.tarefaDaMensagem ?? criarServicoDaTarefaDaMensagem({ pool });
   const relogio = opcoes.relogio ?? relogioDoSistema;
   const guardaDeMidia = criarGuardaDeMidia(opcoes.armazenamento ? { armazenamento: opcoes.armazenamento } : {});
   const intervaloMs = opcoes.intervaloMs ?? 10_000;
@@ -305,8 +316,23 @@ export function criarProcessadorDeEntrada(opcoes: OpcoesDoProcessadorDeEntrada):
         const inicioDaTransacao = performance.now();
         const r = await recebimento.receberMensagem(linha.workspace_id, linha.canal_id, recebida, guardados ? { anexos: guardados.anexos } : undefined);
         etapas.transacaoMs += performance.now() - inicioDaTransacao;
-        if (r.ok) mensagens += 1;
-        else recusa ??= r.codigo ?? `RECUSADA_${r.status}`;
+        if (r.ok) {
+          mensagens += 1;
+          // 5.1.5: só a Mensagem que o Contato escreveu mexe em Tarefa; a repetida também passa (o passo é idempotente).
+          if (r.valor.mensagem.direcao === "recebida") {
+            const tarefa = await tarefaDaMensagem.aplicar({
+              workspaceId: linha.workspace_id,
+              canalId: linha.canal_id,
+              contatoId: r.valor.contatoId,
+              conversaId: r.valor.conversa.id,
+            });
+            if (tarefa.tipo === "criada" || tarefa.tipo === "reaberta") resultados.add(`tarefa:${tarefa.tipo}`);
+            else if (tarefa.tipo === "pulada") {
+              resultados.add(`tarefa:pulada:${tarefa.motivo}`);
+              registrar("warn", "a Mensagem recebida não gerou Tarefa na Lista conversacional", { id: linha.id, motivo: tarefa.motivo });
+            }
+          }
+        } else recusa ??= r.codigo ?? `RECUSADA_${r.status}`;
       } else if (evento.tipo === "ignorado") {
         resultados.add(`ignorado:${evento.motivo}`);
       } else if (evento.tipo === "status") {

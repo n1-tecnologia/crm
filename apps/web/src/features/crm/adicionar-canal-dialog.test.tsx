@@ -154,3 +154,53 @@ describe("15-12 — a seção Canais de atendimento lê useCanais", () => {
     expect(marcado.textContent).toContain("Setor: Comercial");
   });
 });
+
+/**
+ * 5.1.2 (A) — um Canal atende em UMA Lista conversacional só. A conta que já atende em outra Lista aparece nos dois
+ * pontos de escolha (o popup e a seção de contas), desligada e com o motivo; quem chama diz o motivo em `ocupadoEm`.
+ */
+describe("5.1.2 — a conta que já atende em outra Lista não se marca", () => {
+  const MOTIVO = "O Canal “Suporte do Zap” já atende na Lista “SDR”: um Canal só atende em uma Lista conversacional.";
+  const ocupadoEm = (c: Canal) => (c.id === "c1" ? MOTIVO : undefined);
+
+  it("(9) no popup, aparece desligada com o motivo e confirmar não chama onEscolher", () => {
+    const onEscolher = vi.fn();
+    render(<AdicionarCanalDialog open onClose={vi.fn()} jaLigados={[]} onEscolher={onEscolher} ocupadoEm={ocupadoEm} />);
+
+    const ocupada = screen.getByRole("radio", { name: /Suporte do Zap/ });
+    expect(ocupada.getAttribute("aria-disabled")).toBe("true");
+    expect(ocupada.getAttribute("title")).toBe(MOTIVO);
+    expect(ocupada.textContent).toContain("Em outra Lista");
+    fireEvent.click(ocupada);
+    fireEvent.click(screen.getByRole("button", { name: "Marcar nesta Lista" }));
+    expect(onEscolher).not.toHaveBeenCalled();
+
+    // A outra conta segue escolhível.
+    fireEvent.click(screen.getByRole("radio", { name: /Comercial do Zap/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Marcar nesta Lista" }));
+    expect(onEscolher).toHaveBeenCalledWith("c2");
+  });
+
+  it("(10) na seção de contas, a ocupada não se marca (o clique não chama onChange) e a livre sim", () => {
+    const onChange = vi.fn();
+    render(<CanaisDeAtendimento valor={["c2"]} onChange={onChange} onAdicionar={vi.fn()} ocupadoEm={ocupadoEm} />);
+
+    const ocupada = screen.getByRole("checkbox", { name: /Suporte do Zap/ });
+    expect(ocupada.getAttribute("aria-disabled")).toBe("true");
+    expect(ocupada.getAttribute("title")).toBe(MOTIVO);
+    expect(ocupada.textContent).toContain("Em outra Lista");
+    fireEvent.click(ocupada);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("(11) a conta que ESTA Lista já marcou se desmarca mesmo que o dado antigo a tenha em outra Lista também", () => {
+    const onChange = vi.fn();
+    render(<CanaisDeAtendimento valor={["c1", "c2"]} onChange={onChange} onAdicionar={vi.fn()} ocupadoEm={ocupadoEm} />);
+
+    const marcada = screen.getByRole("checkbox", { name: /Suporte do Zap/ });
+    expect(marcada.getAttribute("aria-checked")).toBe("true");
+    expect(marcada.getAttribute("aria-disabled")).toBe("false");
+    fireEvent.click(marcada);
+    expect(onChange).toHaveBeenCalledWith(["c2"]);
+  });
+});

@@ -31,6 +31,7 @@ import {
   CONEXAO_ESTAVEL_MS,
   criarConexaoDoTempoReal,
   ESPERA_MAXIMA_DE_RECONEXAO_MS,
+  eventoPedeRevisao,
   INTERVALO_SEM_TEMPO_REAL_MS,
   JANELA_DE_AGRUPAMENTO_MS,
   lerQuadrosSse,
@@ -119,6 +120,13 @@ describe("chavesDoEvento (D-16-02)", () => {
     expect(chavesDosEventos([{ tipo: "canal.mudou", canalId: "ch1" }, { tipo: "canal.mudou", canalId: "ch2" }])).toEqual(["/canais"]);
   });
 
+  it("5.1.6: só mensagem.nova e conversa.mudou pedem a revisão do Espaço (a Tarefa que o servidor cria mora em `registros`)", () => {
+    expect(eventoPedeRevisao({ tipo: "mensagem.nova", conversaId: "c1" })).toBe(true);
+    expect(eventoPedeRevisao({ tipo: "conversa.mudou", conversaId: "c1" })).toBe(true);
+    expect(eventoPedeRevisao({ tipo: "mensagem.status", conversaId: "c1", mensagemId: "m1" })).toBe(false);
+    expect(eventoPedeRevisao({ tipo: "canal.mudou", canalId: "ch1" })).toBe(false);
+  });
+
   it("a releitura completa (conexão que abre, fluxo fora do ar) também relê os Canais: um canal.mudou perdido não deixa o WhatsApp conectado na tela", () => {
     expect(CHAVES_DE_BASE).toContain("/canais");
   });
@@ -150,6 +158,59 @@ describe("AcompanhanteDoTempoReal (traçador)", () => {
     expect(url).toBe("http://api/eventos");
     expect((init.headers as Record<string, string>).authorization).toBe("Bearer tok");
     expect(url).not.toContain("tok");
+  });
+});
+
+describe("AcompanhanteDoTempoReal — a revisão do Espaço (5.1.6)", () => {
+  const QUADRO_MUDOU = 'data: {"tipo":"conversa.mudou","conversaId":"c1"}\n\n';
+  const QUADRO_STATUS = 'data: {"tipo":"mensagem.status","conversaId":"c1","mensagemId":"m1"}\n\n';
+  const QUADRO_CANAL = 'data: {"tipo":"canal.mudou","canalId":"ch1"}\n\n';
+  let aoPrecisarDaRevisao: ReturnType<typeof vi.fn<() => void>>;
+
+  beforeEach(() => {
+    process.env.NEXT_PUBLIC_API_URL = "http://api";
+    obterSessao.mockReset();
+    obterSessao.mockResolvedValue({ data: { session: { access_token: "tok" } } });
+    invalidarCrmComArrays.mockClear();
+    aoPrecisarDaRevisao = vi.fn<() => void>();
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** Abre o fluxo com os quadros e devolve quando o lote de eventos foi entregue (o fio do evento só se revalida por ele). */
+  async function abrirCom(...quadros: string[]): Promise<void> {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respostaAberta(fluxoDe(": aberto\n\n", ...quadros).corpo)));
+    render(createElement(AcompanhanteDoTempoReal, { ativo: true, aoPrecisarDaRevisao }));
+    await waitFor(() => expect(invalidarCrmComArrays).toHaveBeenCalledWith("/mensagens?conversaId=c1"), { timeout: 2000 });
+  }
+
+  it("um mensagem.nova pede a revisão uma vez, além de revalidar as chaves", async () => {
+    await abrirCom(QUADRO_NOVA);
+    expect(aoPrecisarDaRevisao).toHaveBeenCalledTimes(1);
+    expect(invalidarCrmComArrays).toHaveBeenCalledWith("/conversas");
+  });
+
+  it("o conversa.mudou que a api manda depois de criar a Tarefa também pede a revisão", async () => {
+    // Um conversa.mudou sozinho só revalida chaves que a releitura de base também revalida; o que o distingue é a revisão.
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respostaAberta(fluxoDe(": aberto\n\n", QUADRO_MUDOU).corpo)));
+    render(createElement(AcompanhanteDoTempoReal, { ativo: true, aoPrecisarDaRevisao }));
+    await waitFor(() => expect(aoPrecisarDaRevisao).toHaveBeenCalledTimes(1), { timeout: 2000 });
+  });
+
+  it("uma rajada de mensagem.nova e conversa.mudou vira UMA pergunta de revisão", async () => {
+    await abrirCom(QUADRO_NOVA, QUADRO_MUDOU, QUADRO_NOVA);
+    expect(aoPrecisarDaRevisao).toHaveBeenCalledTimes(1);
+  });
+
+  it("o tique (mensagem.status) e o canal.mudou não pedem a revisão", async () => {
+    await abrirCom(QUADRO_STATUS, QUADRO_CANAL);
+    expect(aoPrecisarDaRevisao).not.toHaveBeenCalled();
+  });
+
+  it("sem o callback (nenhum store montado) o evento só revalida as chaves e nada quebra", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respostaAberta(fluxoDe(": aberto\n\n", QUADRO_NOVA).corpo)));
+    render(createElement(AcompanhanteDoTempoReal, { ativo: true }));
+    await waitFor(() => expect(invalidarCrmComArrays).toHaveBeenCalledWith("/conversas"), { timeout: 2000 });
   });
 });
 

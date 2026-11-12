@@ -180,6 +180,15 @@ Canal fica `conectada`, reenfileira as Mensagens `pendente` dele. O `resultado` 
 falhou de forma que pede nova passada), `midia_indisponivel` (a terceira passada desistiu) e
 `sem_tratamento:<tipo>`, que só existe como rede de segurança para um tipo de evento que o código ainda não conhece.
 
+**A Tarefa da Lista conversacional (Sessão 5, 5.1.5).** Depois de `receberMensagem` gravar uma Mensagem `recebida`
+(a repetida também), o processador chama `servicos/crm/tarefa-da-mensagem.ts`: se o Canal está numa Lista conversacional
+ativa, cria a Tarefa do Contato nela, ou reabre a concluída da mesma Conversa, e sai `tarefa:criada` ou `tarefa:reaberta`
+no `resultado` da linha. É um passo à parte, depois do commit da Mensagem: se lança, a linha volta a `pendente` pela
+escada de `backoff()` e a passada seguinte o repete sem duplicar nada (a decisão olha as Tarefas que já existem). Uma
+recusa por regra (Lista cheia, ninguém que possa escrever na Lista) não derruba a linha: vira `tarefa:pulada:<motivo>`
+e a Mensagem segue na Caixa. A Mensagem digitada no celular (`enviada`) nunca mexe em Tarefa. Sem `MENSAGERIA_WORKER_ATIVO`
+nada disto roda, como a entrada inteira.
+
 O `corpo` da chamada é dado pessoal: só o banco o guarda (com a chave do provedor retirada do topo antes do
 `insert`), nunca log. A política de retenção dele é da Sessão 19.
 

@@ -2267,7 +2267,21 @@ export function TarefaCompleta({
             {/* Nas colunas, rola só se as partes fixas do fio (abas, Rascunho, compositor) não couberem; empilhada, nada aqui rola — só o fio. */}
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto @max-4xl:overflow-visible">
               <ConversationThread
-                {...(conversaId ? { conversaId } : {})}
+                /*
+                  5.2.1: o fio da Tarefa é o da Conversa dela. Preso a ela, o "Responder por" só oferece os Canais da
+                  Lista e escolher outro abre o MESMO diálogo do seletor "Canal" da ficha (troca o Canal da Tarefa).
+                */
+                {...(conversaId
+                  ? {
+                      conversaFixaId: conversaId,
+                      canaisDaListaIds: state.lists.find((l) => l.id === task.listId)?.canaisDeAtendimento ?? [],
+                      aoTrocarCanalDaTarefa: (canalId: Id) => {
+                        setErroDoCanal(null);
+                        setMensagemDoCanal("");
+                        setCanalNovo(canalId);
+                      },
+                    }
+                  : {})}
                 contatoId={contatoIdDoFio}
                 tarefaId={task.id}
                 canalSelecionado={canalDoFio ?? canalDoResumo?.id ?? null}

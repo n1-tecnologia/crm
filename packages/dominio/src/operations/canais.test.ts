@@ -9,7 +9,7 @@ import type { Canal } from "../crm/canais";
 import { buildSeed } from "../seed";
 import { canalDeTeste } from "../testes/crm-de-teste";
 import type { DataState } from "../state";
-import { identificadorCanonico } from "./canais";
+import { identificadorCanonico, listaConversacionalQueAtendePeloCanal } from "./canais";
 import { baseDoPapel } from "./ia/permissoes-ia";
 import { createList } from "./structure";
 import { alterarModeloDaLista, definirCanaisDaLista } from "./tarefas-conversacionais";
@@ -19,6 +19,10 @@ const THIAGO = "mem_thiago";
 let state: DataState;
 beforeEach(() => {
   state = buildSeed();
+  // O demo já atende a Pós-venda por estes Canais, e um Canal só atende em uma Lista conversacional (5.1.2): os testes
+  // daqui criam as Listas deles, então começam com a Pós-venda sem Canais.
+  const posVenda = state.lists.find((l) => l.id === "lst_pos_venda");
+  if (posVenda) posVenda.canaisDeAtendimento = [];
 });
 
 /** Os Canais de `plataforma.canais` que o servidor leria na transação (`lerDoCrm`): é por eles que a Lista confere os ids. */
@@ -109,6 +113,70 @@ describe("Canais de atendimento da Lista (C36)", () => {
     expect(definirCanaisDaLista(state, THIAGO, listId, ["chn_wpp"], CANAIS).ok).toBe(true);
     expect(alterarModeloDaLista(state, THIAGO, listId, "operacional").ok).toBe(true);
     expect(state.lists.find((l) => l.id === listId)?.canaisDeAtendimento).toBeUndefined();
+  });
+});
+
+describe("Um Canal atende em uma Lista conversacional só (5.1.2, A)", () => {
+  const FRASE = "O Canal “Comercial SP” já atende na Lista “Suporte ao aluno”: um Canal só atende em uma Lista conversacional.";
+
+  /** A Lista “Suporte ao aluno” já atende por `chn_wpp`; devolve a outra Lista, ainda vazia. */
+  const duasListas = (): { readonly primeira: string; readonly segunda: string } => {
+    const primeira = listaConversacionalVazia();
+    expect(definirCanaisDaLista(state, THIAGO, primeira, ["chn_wpp"], CANAIS).ok).toBe(true);
+    const criada = createList(state, THIAGO, { name: "Outro atendimento", parentType: "space", parentId: "spc_com" });
+    if (!criada.ok) throw new Error(criada.error);
+    const virada = alterarModeloDaLista(state, THIAGO, criada.value.id, "conversacional");
+    if (!virada.ok) throw new Error(virada.error);
+    return { primeira, segunda: criada.value.id };
+  };
+
+  it("definirCanaisDaLista recusa o Canal que outra Lista conversacional já atende, e nada é gravado", () => {
+    const { segunda } = duasListas();
+    const recusa = definirCanaisDaLista(state, THIAGO, segunda, ["chn_wpp"], CANAIS);
+    expect(recusa.ok).toBe(false);
+    if (!recusa.ok) {
+      expect(recusa.error).toBe(FRASE);
+      expect(recusa.field).toBe("canais");
+    }
+    expect(state.lists.find((l) => l.id === segunda)?.canaisDeAtendimento ?? []).toEqual([]);
+  });
+
+  it("createList conversacional com o Canal de outra Lista também recusa", () => {
+    duasListas();
+    const antes = state.lists.length;
+    const recusa = createList(
+      state,
+      THIAGO,
+      { name: "Terceira", parentType: "space", parentId: "spc_com", modeloDeTarefa: "conversacional", canaisDeAtendimento: ["chn_wpp"] },
+      CANAIS,
+    );
+    expect(recusa.ok).toBe(false);
+    if (!recusa.ok) expect(recusa.error).toBe(FRASE);
+    expect(state.lists).toHaveLength(antes);
+  });
+
+  it("a Lista que já atende pelo Canal pode salvá-lo de novo, e outro Canal livre passa", () => {
+    const { primeira, segunda } = duasListas();
+    expect(definirCanaisDaLista(state, THIAGO, primeira, ["chn_wpp", "chn_mail"], CANAIS).ok).toBe(true);
+    expect(definirCanaisDaLista(state, THIAGO, segunda, ["chn_mail"], CANAIS).ok).toBe(false);
+    const livre = [...CANAIS, canalDeTeste({ id: "chn_ig", nome: "Instagram da loja", tipo: "instagram", provedor: "instagram-graph", identificadorExterno: "loja.x" })];
+    expect(definirCanaisDaLista(state, THIAGO, segunda, ["chn_ig"], livre).ok).toBe(true);
+  });
+
+  it("a Lista arquivada ou na lixeira não segura o Canal", () => {
+    const { primeira, segunda } = duasListas();
+    const lista = state.lists.find((l) => l.id === primeira);
+    if (!lista) throw new Error("falta a primeira Lista");
+    lista.lifecycle = "arquivado";
+    expect(listaConversacionalQueAtendePeloCanal(state, "chn_wpp")).toBeUndefined();
+    expect(definirCanaisDaLista(state, THIAGO, segunda, ["chn_wpp"], CANAIS).ok).toBe(true);
+  });
+
+  it("listaConversacionalQueAtendePeloCanal acha a Lista ativa, ignora a pedida em `exceto` e não olha Lista operacional", () => {
+    const { primeira } = duasListas();
+    expect(listaConversacionalQueAtendePeloCanal(state, "chn_wpp")?.id).toBe(primeira);
+    expect(listaConversacionalQueAtendePeloCanal(state, "chn_wpp", primeira)).toBeUndefined();
+    expect(listaConversacionalQueAtendePeloCanal(state, "chn_mail")).toBeUndefined();
   });
 });
 
