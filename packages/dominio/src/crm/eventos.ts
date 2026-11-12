@@ -1,6 +1,6 @@
 /**
- * O evento de tempo real do CRM (16-07, D-16-01, MSG-03): o que o backend avisa à tela quando uma Mensagem ou uma
- * Conversa muda. Só ids e o tipo, nunca texto, nome nem telefone: a tela busca o resto pelas rotas que já conferem
+ * O evento de tempo real do CRM (16-07, D-16-01, MSG-03): o que o backend avisa à tela quando uma Mensagem, uma
+ * Conversa ou um Canal muda (o Canal: Sessão 4, a conexão do WhatsApp que cai ou volta). Só ids e o tipo, nunca texto, nome nem telefone: a tela busca o resto pelas rotas que já conferem
  * o acesso (prohibition de MSG-03).
  *
  * O tipo mora aqui para a api (que escreve e lê o aviso) e a web (que lê o fluxo) usarem a mesma forma.
@@ -9,19 +9,34 @@
  * Sem barril: quem precisa importa por `@n1/dominio/crm/eventos`.
  */
 
-export const TIPOS_DE_EVENTO_DO_CRM = ["mensagem.nova", "mensagem.status", "conversa.mudou"] as const;
+export const TIPOS_DE_EVENTO_DO_CRM = ["mensagem.nova", "mensagem.status", "conversa.mudou", "canal.mudou"] as const;
 
 export type TipoDeEventoDoCrm = (typeof TIPOS_DE_EVENTO_DO_CRM)[number];
 
-export interface EventoDoCrm {
+/** Os tipos que falam de uma Conversa (e, às vezes, de uma Mensagem dela). */
+export type TipoDeEventoDeConversa = Exclude<TipoDeEventoDoCrm, "canal.mudou">;
+
+export interface EventoDeConversaDoCrm {
   readonly workspaceId: string;
-  readonly tipo: TipoDeEventoDoCrm;
+  readonly tipo: TipoDeEventoDeConversa;
   readonly conversaId: string;
   readonly mensagemId?: string;
 }
 
+/**
+ * O Canal mudou (a conexão caiu ou voltou, o Canal foi criado, editado ou arquivado): só o id dele. A tela relê os Canais e
+ * mostra o estado novo sem a pessoa recarregar nada.
+ */
+export interface EventoDeCanalDoCrm {
+  readonly workspaceId: string;
+  readonly tipo: "canal.mudou";
+  readonly canalId: string;
+}
+
+export type EventoDoCrm = EventoDeConversaDoCrm | EventoDeCanalDoCrm;
+
 /** O que sai para a aba: o mesmo evento sem o Espaço. */
-export type EventoParaATela = Omit<EventoDoCrm, "workspaceId">;
+export type EventoParaATela = Omit<EventoDeConversaDoCrm, "workspaceId"> | Omit<EventoDeCanalDoCrm, "workspaceId">;
 
 /**
  * O contrato do fluxo `GET /eventos` entre a api (quem bate) e a web (quem conta). O servidor manda `: batida` a cada
@@ -55,8 +70,14 @@ function objetoComAsChaves(valor: unknown, permitidas: readonly string[]): Recor
 }
 
 function lerTipoEIds(objeto: Record<string, unknown>): EventoParaATela | undefined {
-  const { tipo, conversaId, mensagemId } = objeto;
-  if (!ehTipo(tipo) || !ehId(conversaId)) return undefined;
+  const { tipo, conversaId, mensagemId, canalId } = objeto;
+  if (!ehTipo(tipo)) return undefined;
+  if (tipo === "canal.mudou") {
+    // O evento de Canal leva o id do Canal e mais nada: um `conversaId` ou `mensagemId` junto recusa o evento inteiro.
+    if (!ehId(canalId) || conversaId !== undefined || mensagemId !== undefined) return undefined;
+    return { tipo, canalId };
+  }
+  if (canalId !== undefined || !ehId(conversaId)) return undefined;
   if (mensagemId === undefined) return { tipo, conversaId };
   if (!ehId(mensagemId)) return undefined;
   return { tipo, conversaId, mensagemId };
@@ -64,7 +85,7 @@ function lerTipoEIds(objeto: Record<string, unknown>): EventoParaATela | undefin
 
 /** Lê o que o `NOTIFY` leva (validação à mão, sem biblioteca de esquema). `undefined` para qualquer forma que não seja exatamente esta. */
 export function lerEventoDoCrm(valor: unknown): EventoDoCrm | undefined {
-  const objeto = objetoComAsChaves(valor, ["workspaceId", "tipo", "conversaId", "mensagemId"]);
+  const objeto = objetoComAsChaves(valor, ["workspaceId", "tipo", "conversaId", "mensagemId", "canalId"]);
   if (!objeto || !ehId(objeto.workspaceId)) return undefined;
   const aTela = lerTipoEIds(objeto);
   return aTela ? { workspaceId: objeto.workspaceId, ...aTela } : undefined;
@@ -72,6 +93,6 @@ export function lerEventoDoCrm(valor: unknown): EventoDoCrm | undefined {
 
 /** Lê o que sai para a aba: o mesmo evento, sem `workspaceId` (ele não sai do servidor). */
 export function lerEventoParaATela(valor: unknown): EventoParaATela | undefined {
-  const objeto = objetoComAsChaves(valor, ["tipo", "conversaId", "mensagemId"]);
+  const objeto = objetoComAsChaves(valor, ["tipo", "conversaId", "mensagemId", "canalId"]);
   return objeto ? lerTipoEIds(objeto) : undefined;
 }

@@ -7,12 +7,16 @@
  * ordem de travas de `servicos/crm/canais.ts` (WR-02): a linha do Espaço ANTES da do Canal. Quem repete a conexão atual
  * não sobe a revisão (a tela não recarrega à toa), mas um Canal `conectada` sempre reenfileira as Mensagens `pendente`:
  * é a rede para a que ficou guardada, e a linha que já está `pending` ou `delivering` não é tocada.
+ *
+ * Quando a conexão MUDA, as abas abertas são avisadas (`canal.mudou`, só o id do Canal, no mesmo commit): o WhatsApp que
+ * foi desconectado pelo celular ou pelo painel da Evolution aparece como desconectado sem ninguém recarregar a tela.
  */
 
 import type { Pool } from "pg";
 import { proximaConexao, type ConexaoDoCanal } from "@n1/dominio/crm/canais";
 import { criarRepositorioDeCanaisPg } from "../repositorios/crm/canais";
 import { avancarRevisaoDoEspaco } from "../repositorios/crm/referencias";
+import { avisarCrm } from "./avisar";
 import { reenfileirarPendentesDoCanal } from "./fila-de-saida";
 
 export interface DesfechoDaConexao {
@@ -63,6 +67,7 @@ export async function aplicarConexaoAoCanal(
       if (canal.conexao !== conexao) {
         await canais.definirConexao(alvo.workspaceId, alvo.canalId, { conexao, conexaoSimulada: false });
         await avancarRevisaoDoEspaco(cliente, alvo.workspaceId);
+        await avisarCrm(cliente, { workspaceId: alvo.workspaceId, tipo: "canal.mudou", canalId: alvo.canalId });
         mudou = true;
       }
       if (conexao === "conectada") {

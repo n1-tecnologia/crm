@@ -26,6 +26,7 @@ vi.mock("./crm/cliente-crm", async (original) => {
 import {
   AcompanhanteDoTempoReal,
   chavesDoEvento,
+  CHAVES_DE_BASE,
   chavesDosEventos,
   CONEXAO_ESTAVEL_MS,
   criarConexaoDoTempoReal,
@@ -111,6 +112,15 @@ describe("chavesDoEvento (D-16-02)", () => {
       "/tarefas-conversacionais/resumo",
     ]);
     expect(chavesDoEvento({ tipo: "conversa.mudou", conversaId: "c1" })).toEqual(["/conversas", "/tarefas-conversacionais/resumo"]);
+  });
+
+  it("canal.mudou (o WhatsApp desconectou, caiu ou voltou) revalida os Canais, a lista e a ficha, e mais nada", () => {
+    expect(chavesDoEvento({ tipo: "canal.mudou", canalId: "ch1" })).toEqual(["/canais"]);
+    expect(chavesDosEventos([{ tipo: "canal.mudou", canalId: "ch1" }, { tipo: "canal.mudou", canalId: "ch2" }])).toEqual(["/canais"]);
+  });
+
+  it("a releitura completa (conexão que abre, fluxo fora do ar) também relê os Canais: um canal.mudou perdido não deixa o WhatsApp conectado na tela", () => {
+    expect(CHAVES_DE_BASE).toContain("/canais");
   });
 });
 

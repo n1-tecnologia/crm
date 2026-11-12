@@ -59,6 +59,7 @@ import { esquecerCredenciaisDaEvolution } from "../../mensageria/provedores/evol
 import { esquecerConta } from "../../mensageria/provedores/instagram/repositorio";
 import { criarRepositorioDeCanaisPg, type RepositorioDeCanais } from "../../repositorios/crm/canais";
 import { avancarRevisaoDoEspaco, filaAtiva, origemAtiva } from "../../repositorios/crm/referencias";
+import { avisarCrm } from "../../mensageria/avisar";
 import { exigir, type AcessoAoCrm } from "./acesso";
 import { recusa, sucesso, type ResultadoCrm } from "./resultado";
 import { comTransacao, type FrasesDeRestricao } from "./transacao";
@@ -231,6 +232,7 @@ export function criarServicoDeCanais(deps: {
       // Sessão 8: desconectar o Instagram apaga a conta ligada e o token do cofre, na mesma transação.
       if (acao === "desconectar" && canal.provedor === "instagram-graph") await esquecerConta(cliente, membro.workspaceId, id);
       await avancarRevisaoDoEspaco(cliente, membro.workspaceId);
+      await avisarCrm(cliente, { workspaceId: membro.workspaceId, tipo: "canal.mudou", canalId: id });
       // B69 (16-06): as Mensagens guardadas enquanto o Canal estava fora do ar saem agora, no MESMO commit da
       // conexão: se a fila falhar, o Canal também não muda. Nada é descartado.
       if (atualizado.conexao === "conectada") await reenfileirarPendentesDoCanal(cliente, membro.workspaceId, id);
@@ -309,6 +311,7 @@ export function criarServicoDeCanais(deps: {
             origemPadraoId: entrada.origemPadraoId,
           });
           await avancarRevisaoDoEspaco(cliente, membro.workspaceId);
+          await avisarCrm(cliente, { workspaceId: membro.workspaceId, tipo: "canal.mudou", canalId: canal.id });
           return sucesso(canal);
         },
         FRASES,
@@ -334,6 +337,7 @@ export function criarServicoDeCanais(deps: {
           const atualizado = await repositorio.atualizar(membro.workspaceId, id, campos);
           if (!atualizado) return naoEncontrado();
           await avancarRevisaoDoEspaco(cliente, membro.workspaceId);
+          await avisarCrm(cliente, { workspaceId: membro.workspaceId, tipo: "canal.mudou", canalId: id });
           return sucesso(atualizado);
         },
         () => (validacao.ok ? undefined : valorInvalido(validacao)),
@@ -380,6 +384,7 @@ export function criarServicoDeCanais(deps: {
         // 4.3.3: arquivar o WhatsApp não oficial apaga a credencial da instância e o segredo do webhook do cofre.
         if (canal.provedor === "whatsapp-nao-oficial") await esquecerCredenciaisDaEvolution(cliente, membro.workspaceId, id);
         await avancarRevisaoDoEspaco(cliente, membro.workspaceId);
+        await avisarCrm(cliente, { workspaceId: membro.workspaceId, tipo: "canal.mudou", canalId: id });
         return sucesso(arquivado);
       });
     },

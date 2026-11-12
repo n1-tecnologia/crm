@@ -20,6 +20,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Pool } from "pg";
 import { criarRepositorioDeCanaisPg } from "../../../repositorios/crm/canais";
 import { avancarRevisaoDoEspaco } from "../../../repositorios/crm/referencias";
+import { avisarCrm } from "../../avisar";
 import { contasDoUsuarioDaMeta, esquecerConta } from "./repositorio";
 
 const PREFIXO_DO_CODIGO = "n1/instagram/exclusao:";
@@ -40,6 +41,7 @@ export function criarEsquecimentoDoInstagram(deps: { readonly pool: () => Pool }
           await canais.definirConexao(conta.workspaceId, conta.canalId, { conexao: "desconectada", conexaoSimulada: false });
         }
         await avancarRevisaoDoEspaco(conexao, conta.workspaceId);
+        await avisarCrm(conexao, { workspaceId: conta.workspaceId, tipo: "canal.mudou", canalId: conta.canalId });
         await conexao.query("commit");
       } catch (erro) {
         await conexao.query("rollback").catch(() => undefined);

@@ -1024,8 +1024,9 @@ funções antigas saíram de `derive-conversacional.ts` no 15-42.
   decisões puras de `receberMensagem`: `destinoDaRecebida` (RN-CXE-09: usa a aberta ou pendente, reabre a última
   resolvida dentro da janela do Espaço, `JANELA_DE_REABERTURA_PADRAO_HORAS = 72`, ou abre outra; a lixeira nunca
   reabre) e `contatoDaRecebida` (RN-CON-13: arquivado e na lixeira reativam, o mesclado é recusado).
-- `crm/eventos.ts` (`@n1/dominio/crm/eventos`): `EventoDoCrm` (`mensagem.nova`, `mensagem.status`, `conversa.mudou`;
-  só ids, nunca texto, nome nem telefone) e `EventoParaATela` (sem `workspaceId`), com `lerEventoDoCrm` e
+- `crm/eventos.ts` (`@n1/dominio/crm/eventos`): `EventoDoCrm` (`mensagem.nova`, `mensagem.status`, `conversa.mudou` e, desde a
+  Sessão 4, `canal.mudou`: a conexão ou o estado de um Canal mudou, com só o `canalId`; só ids, nunca texto, nome nem
+  telefone) e `EventoParaATela` (sem `workspaceId`), com `lerEventoDoCrm` e
   `lerEventoParaATela`, que recusam campo a mais, id vazio e id com mais de 64 caracteres: a api (que escreve o
   NOTIFY e o fluxo SSE) e a web (que lê o fluxo) usam a mesma forma.
   `BATIDA_DO_FLUXO_MS` (25 s) e `SILENCIO_MAXIMO_DO_FLUXO_MS` (60 s, mais que duas batidas) são o contrato do fluxo

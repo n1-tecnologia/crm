@@ -238,7 +238,7 @@ ouvinte do tempo real o chama a cada `mensagem.nova`/`mensagem.status`, e o proc
 - **`avisarCrm(cliente, evento)`** valida o `EventoDoCrm` pelo domínio e faz `pg_notify('crm_eventos', …)` no cliente
   da transação: nada chega antes do `commit`, nada depois do `rollback`. É o único `pg_notify` do `apps/api`. O
   evento só carrega `{ tipo, conversaId, mensagemId? }` mais o Espaço, nunca texto nem telefone (limite de 8 KB do
-  NOTIFY).
+  NOTIFY). O de Canal (`canal.mudou`, Sessão 4) leva só `{ tipo, canalId }`: ver "Quando o WhatsApp é desconectado".
 - **O ouvinte** (`criarOuvinteDoCrm`) é uma conexão `LISTEN` por processo, FORA do pool (`keepAlive`, sem
   `query_timeout`, mesmo TLS do pool): soma 1 à contagem de conexões do processo. Cair desliga o hub (`aoCair`), que
   encerra os fluxos, e reconecta com espera de 1 s a 30 s; com `DATABASE_SSL_INSECURE` ou sem CA o `construirSsl`
@@ -320,6 +320,24 @@ numa transação, marca o Canal `conectada` (`conexao_confirmada`, `conexao_simu
 `pendente`. Recusa a instância `numeropvmarcos` (é do `automation/`). `--seco` é um ensaio que recusa como o comando
 real e não escreve. Rodar de novo troca o segredo e revoga o anterior. Desde a Sessão 4 o "Conectar" com QR é o
 caminho pela tela; o comando segue valendo para ligar uma instância que o dono criou à mão.
+
+## Quando o WhatsApp é desconectado (Sessão 4)
+
+O que o app mostra quando a instância cai, por quem a derrubou:
+
+| O que aconteceu | Como o CRM fica sabendo | O que a tela mostra |
+|---|---|---|
+| O aparelho foi removido no celular ("Aparelhos conectados"), ou o logout foi pelo painel da Evolution | `connection.update` `close` com `statusReason` 401 → `desconectada` | "WhatsApp desconectado", o envio bloqueado e o link "Reconectar" (ficha do Canal) |
+| A sessão caiu por outra razão (Evolution reiniciada, rede) | `connection.update` `close` com outra razão → `com_erro`; o `open` seguinte volta a `conectada` depois da conferência na fonte | "Canal com erro de conexão" e o envio bloqueado |
+| A instância foi **apagada** no painel da Evolution | **nenhum webhook** (a configuração some junto): só a conferência de 5 min percebe (`instancia_inexistente` → `com_erro`) | como acima, até 5 min depois |
+| O webhook se perdeu (API fora do ar, Evolution sem alcançar a API) | só a conferência de 5 min | como acima, até 5 min depois |
+
+A conferência (`EVOLUTION_CONFERENCIA_ATIVA=true`) é a rede dos dois últimos casos; **sem ela só o webhook atualiza o estado**.
+Toda mudança de conexão passa por `aplicarConexaoAoCanal`, que grava, sobe a revisão do Espaço e **avisa as abas** com
+`canal.mudou` (só o id do Canal, no mesmo commit): a tela relê `/canais` e mostra o estado novo sem recarregar. As ações dos
+Membros (criar, conectar, desconectar, editar, arquivar), o Instagram (conectar, erro, desautorização) e `canal:ligar-evolution`
+também avisam. Repetir a conexão que o Canal já tem não avisa. Com o fluxo de eventos fora do ar a tela relê `/canais` a cada 5 s
+e a cada reconexão, então um aviso perdido não deixa o WhatsApp "conectado" na tela.
 
 ## Conectar pelo CRM (Sessão 4)
 

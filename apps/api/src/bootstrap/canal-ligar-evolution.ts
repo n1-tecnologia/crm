@@ -33,6 +33,7 @@ import { TIPO_DO_SEGREDO_DO_WEBHOOK } from "../mensageria/provedor";
 import { criarClienteDaEvolution, type ClienteDaEvolution } from "../mensageria/provedores/evolution/cliente";
 import { pool as poolPadrao } from "../persistencia/conexao";
 import { criarRepositorioDeCanaisPg } from "../repositorios/crm/canais";
+import { avisarCrm } from "../mensageria/avisar";
 import { avancarRevisaoDoEspaco } from "../repositorios/crm/referencias";
 import { guardarCredencial, lerChavesDoCofre, type ChavesDoCofre } from "../servicos/cofre";
 
@@ -286,6 +287,7 @@ async function gravarALigacao(
     const atualizado = await repositorio.definirConexao(entrada.workspaceId, entrada.canalId, proxima.value);
     if (!atualizado) throw new RecusaDaLigacao("Canal não encontrado.");
     await avancarRevisaoDoEspaco(cliente, entrada.workspaceId);
+    await avisarCrm(cliente, { workspaceId: entrada.workspaceId, tipo: "canal.mudou", canalId: entrada.canalId });
     // B69: o que foi escrito com o Canal fora do ar sai agora, no MESMO commit da conexão.
     const reenfileiradas = await reenfileirarPendentesDoCanal(cliente, entrada.workspaceId, entrada.canalId);
     await cliente.query("commit");
