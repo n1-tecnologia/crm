@@ -31,9 +31,13 @@ export const JANELA_DE_AGRUPAMENTO_MS = 300;
 const CAMINHO_DAS_MENSAGENS = "/mensagens";
 const CAMINHO_DAS_CONVERSAS = "/conversas";
 const CAMINHO_DO_RESUMO = "/tarefas-conversacionais/resumo";
+const CAMINHO_DOS_CANAIS = "/canais";
 
-/** As chaves que uma releitura completa (a cada conexão aberta e a cada 5 s sem conexão) revalida. */
-export const CHAVES_DE_BASE: readonly string[] = [CAMINHO_DAS_MENSAGENS, CAMINHO_DAS_CONVERSAS, CAMINHO_DO_RESUMO];
+/**
+ * As chaves que uma releitura completa (a cada conexão aberta e a cada 5 s sem conexão) revalida. Os Canais entram porque um
+ * `canal.mudou` perdido com o fluxo fora do ar deixaria o WhatsApp "conectado" na tela depois de desconectado.
+ */
+export const CHAVES_DE_BASE: readonly string[] = [CAMINHO_DAS_MENSAGENS, CAMINHO_DAS_CONVERSAS, CAMINHO_DO_RESUMO, CAMINHO_DOS_CANAIS];
 
 export interface OpcoesDaConexao {
   obterToken(): Promise<string | undefined>;
@@ -77,6 +81,8 @@ export function lerQuadrosSse(resto: string, pedaco: string): { eventos: EventoP
 
 /** Os prefixos de chave SWR que um evento revalida (D-16-02). */
 export function chavesDoEvento(evento: EventoParaATela): readonly string[] {
+  // A conexão ou o estado de um Canal mudou (o WhatsApp foi desconectado, caiu ou voltou): relê a lista e a ficha dos Canais.
+  if (evento.tipo === "canal.mudou") return [CAMINHO_DOS_CANAIS];
   const fio = `${CAMINHO_DAS_MENSAGENS}?${new URLSearchParams({ conversaId: evento.conversaId }).toString()}`;
   switch (evento.tipo) {
     case "mensagem.nova":

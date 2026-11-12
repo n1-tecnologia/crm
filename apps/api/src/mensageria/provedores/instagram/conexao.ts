@@ -27,6 +27,7 @@ import { contaDoProvedorConfere, proximaConexao, type Canal } from "@n1/dominio/
 import type { MembroDaSessao } from "../../../plugins/autenticacao";
 import { criarRepositorioDeCanaisPg } from "../../../repositorios/crm/canais";
 import { avancarRevisaoDoEspaco } from "../../../repositorios/crm/referencias";
+import { avisarCrm } from "../../avisar";
 import { lerChavesDoCofre, type ChavesDoCofre } from "../../../servicos/cofre";
 import { exigir, type AcessoAoCrm } from "../../../servicos/crm/acesso";
 import { recusa, sucesso, type ResultadoCrm } from "../../../servicos/crm/resultado";
@@ -129,6 +130,7 @@ export function criarServicoDeConexaoDoInstagram(deps: DependenciasDoInstagram):
       if (canal && canal.estado === "ativo" && canal.conexao === "conectada" && !canal.conexaoSimulada) {
         await canais.definirConexao(membro.workspaceId, canalId, { conexao: "com_erro", conexaoSimulada: false });
         await avancarRevisaoDoEspaco(transacao, membro.workspaceId);
+        await avisarCrm(transacao, { workspaceId: membro.workspaceId, tipo: "canal.mudou", canalId });
       }
       return sucesso(undefined);
     });
@@ -232,6 +234,7 @@ export function criarServicoDeConexaoDoInstagram(deps: DependenciasDoInstagram):
           const conectado = await criarRepositorioDeCanaisPg(transacao).definirConexao(membro.workspaceId, canal.id, alvo.value);
           if (!conectado) return naoEncontrado();
           await avancarRevisaoDoEspaco(transacao, membro.workspaceId);
+          await avisarCrm(transacao, { workspaceId: membro.workspaceId, tipo: "canal.mudou", canalId: canal.id });
           // B69: o que foi escrito com o Canal fora do ar sai agora, no MESMO commit da conexão.
           await reenfileirarPendentesDoCanal(transacao, membro.workspaceId, canal.id);
           return sucesso(conectado);

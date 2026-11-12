@@ -524,8 +524,10 @@ da api e revalida as chaves SWR certas a cada evento, para a Mensagem que chega 
   `: aberto`/`: batida`, JSON inválido e campo a mais). O token é pedido a cada tentativa (401 pega o renovado; sem
   sessão não chama `fetch`) e nunca vai para a URL nem para log.
 - **Chaves por tipo de evento** (`chavesDoEvento`/`chavesDosEventos`, unidas sem repetir): o evento só revalida listas
-  e o fio (as chaves de `/mensagens`, `/conversas` e o resumo das Tarefas conversacionais); sem toast, som nem título
-  da aba piscando (D-16-02). Os eventos de 300 ms são agrupados (`JANELA_DE_AGRUPAMENTO_MS`).
+  e o fio (as chaves de `/mensagens`, `/conversas` e o resumo das Tarefas conversacionais); `canal.mudou` (Sessão 4: o
+  WhatsApp desconectou, caiu ou voltou) revalida `/canais`, a lista e a ficha; sem toast, som nem título
+  da aba piscando (D-16-02). O fio da Conversa mostra a faixa "WhatsApp desconectado" (com o link "Reconectar" para a
+  ficha do Canal) e bloqueia o envio quando o Canal da aba está `desconectada` ou `com_erro`. Os eventos de 300 ms são agrupados (`JANELA_DE_AGRUPAMENTO_MS`).
 - **Releitura completa a cada conexão aberta e a cada 5 s enquanto cai** (`INTERVALO_SEM_TEMPO_REAL_MS`): o fluxo não
   entrega o que passou no intervalo e não existe evento "ressincronizar", então a tela relê as chaves de base
   (`CHAVES_DE_BASE`) ao (re)conectar. A reconexão espera `min(1 s × 2^n, 30 s)`; um 503 `TEMPO_REAL_INDISPONIVEL` cai

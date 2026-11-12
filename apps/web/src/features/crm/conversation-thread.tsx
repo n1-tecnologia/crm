@@ -458,7 +458,9 @@ export function ConversationThread({
             ? "A janela de resposta expirou."
             : canal?.conexao === "com_erro"
               ? "O Canal está com erro de conexão."
-              : undefined;
+              : canal?.conexao === "desconectada"
+                ? "O Canal está desconectado. Reconecte-o para enviar."
+                : undefined;
 
   /*
     D-15 — "Responder por": muda a aba. O Canal de nenhuma Conversa existente
@@ -792,7 +794,7 @@ export function ConversationThread({
           data-regra-do-canal="true"
           className="app-sm flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2"
           style={
-            janelaFechada || canal?.conexao === "com_erro"
+            janelaFechada || canal?.conexao === "com_erro" || canal?.conexao === "desconectada"
               ? {
                   background: "var(--aviso-lavado)",
                   color: "var(--aviso)",
@@ -819,6 +821,21 @@ export function ConversationThread({
               ? " · Canal com erro de conexão"
               : ""}
           </span>
+          {/* Sessão 4: o WhatsApp desconectado (pelo celular ou pelo painel da Evolution) aparece aqui sem recarregar a tela. */}
+          {canal.conexao === "desconectada" ? (
+            <span data-canal-desconectado="true" className="font-medium">
+              · {canal.provedor === "whatsapp-nao-oficial" ? "WhatsApp desconectado" : "Canal desconectado"}: as Mensagens não saem até reconectar
+            </span>
+          ) : null}
+          {canal.conexao !== "conectada" ? (
+            <Link
+              href={`/crm/caixa-de-entrada/configuracoes/canais/${canal.id}`}
+              className="underline"
+              data-reconectar-canal={canal.id}
+            >
+              Reconectar
+            </Link>
+          ) : null}
         </div>
       ) : null}
 

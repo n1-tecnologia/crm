@@ -546,6 +546,42 @@ describe("ConversationThread — responder numa Conversa aberta grava em platafo
       expect(document.querySelector("[data-respondendo-a]")).toBeNull();
     });
 
+    it("(5i) o WhatsApp desconectado aparece no fio, com o caminho para reconectar, e o envio é bloqueado dizendo por quê", async () => {
+      canaisDaApi = canaisDaApi.map((c) => (c.id === "chn_suporte" ? { ...c, conexao: "desconectada" as const } : c));
+      mensagensDaApi.cnv_suporte = [base(1, "recebida", "oi, tudo bem?")];
+      montar({ conversaId: "cnv_suporte" });
+      await waitFor(() => expect(screen.getByText("oi, tudo bem?")).toBeTruthy());
+      const faixa = document.querySelector("[data-regra-do-canal]") as HTMLElement;
+      expect(faixa.textContent).toContain("WhatsApp desconectado");
+      expect(faixa.querySelector("[data-reconectar-canal]")?.getAttribute("href")).toBe("/crm/caixa-de-entrada/configuracoes/canais/chn_suporte");
+
+      fireEvent.change(compositor(), { target: { value: "alguém aí?" } });
+      expect(screen.getByRole("button", { name: "Enviar" }).getAttribute("aria-disabled")).toBe("true");
+      expect(gravacoes()).toEqual([]);
+    });
+
+    it("(5j) o Canal que cai com a tela aberta passa a aparecer desconectado quando a lista de Canais é relida, e volta ao normal quando reconecta", async () => {
+      mensagensDaApi.cnv_suporte = [base(1, "recebida", "oi")];
+      montar({ conversaId: "cnv_suporte" });
+      await waitFor(() => expect(screen.getByText("oi")).toBeTruthy());
+      expect(document.querySelector("[data-canal-desconectado]")).toBeNull();
+      expect(document.querySelector("[data-reconectar-canal]")).toBeNull();
+
+      // O que o `canal.mudou` do tempo real faz: revalida as chaves `/canais`.
+      canaisDaApi = canaisDaApi.map((c) => (c.id === "chn_suporte" ? { ...c, conexao: "desconectada" as const } : c));
+      await act(async () => {
+        await revalidador.revalidar?.("/canais");
+      });
+      await waitFor(() => expect(document.querySelector("[data-canal-desconectado]")).not.toBeNull());
+
+      canaisDaApi = canaisDaApi.map((c) => (c.id === "chn_suporte" ? { ...c, conexao: "conectada" as const } : c));
+      await act(async () => {
+        await revalidador.revalidar?.("/canais");
+      });
+      await waitFor(() => expect(document.querySelector("[data-canal-desconectado]")).toBeNull());
+      expect(document.querySelector("[data-reconectar-canal]")).toBeNull();
+    });
+
     it("(5h) a Mensagem sem id do provedor (ainda enviando) e as de Canais que não citam não oferecem Responder", async () => {
       mensagensDaApi.cnv_suporte = [base(1, "enviada", "ainda sem id", { idExterno: null, statusEntrega: "pendente" })];
       montar({ conversaId: "cnv_suporte" });
