@@ -158,6 +158,30 @@ describe("Timeline — Ator sistema/Formulário (b)", () => {
   });
 });
 
+describe("Timeline — Ator sistema/Mensagem recebida (5.1.5)", () => {
+  it("a Tarefa que a Mensagem criou aparece como sistema/Mensagem recebida, sem nome de Membro", () => {
+    const task = montarTarefa(state);
+    state.activity.push(
+      atividade(state, {
+        id: "atv_msg",
+        actor: { kind: "system", id: "mensagem:canal_x" },
+        action: "Tarefa criada",
+        objectId: task.id,
+        at: "2026-01-01T10:00:00Z",
+        delegate: undefined,
+      }),
+    );
+
+    render(
+      <StoreProvider sessao={{ memberId: "mem_maryane" }} estadoInicial={{ data: state, revisao: 1, ordens }} transporte={transporte}>
+        <Timeline task={task} fmt={makeFormatters(state.workspace.locale)} readOnly={false} />
+      </StoreProvider>,
+    );
+
+    expect(screen.getByText("sistema/Mensagem recebida")).toBeTruthy();
+  });
+});
+
 describe("Timeline — pill de roteamento (c)", () => {
   it("o comentário apontado por approval.origin.threadCommentId recebe a pill Pedido de aprovação", () => {
     const task = montarTarefa(state);

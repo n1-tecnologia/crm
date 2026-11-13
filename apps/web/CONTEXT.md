@@ -313,6 +313,15 @@ criar Tarefa) vêm de `useCanais` (`GET /canais`, só os ativos) com
 `canaisDaListaNasTabelas`/`listaSemCanaisNasTabelas`; enquanto a api não responde a
 página não afirma "sem canais" (o servidor é quem barra).
 
+**O fio da ficha da Tarefa fica preso à Conversa dela (Sessão 5, 5.2.1).** A ficha passa ao `ConversationThread`
+`conversaFixaId` (o Vínculo "conversa da Tarefa"), `canaisDaListaIds` e `aoTrocarCanalDaTarefa`. Com elas o fio segue só aquela
+Conversa e a fileira mostra só a aba do Canal dela; o "Responder por" oferece só os Canais da Lista (a regra D-15 de alcance
+e conexão continua valendo, `SeletorDeCanalDeResposta` ganhou `apenas`); e escolher outro Canal não troca de aba: chama o
+callback, que abre o mesmo diálogo "Trocar o Canal da Tarefa" do seletor "Canal" da ficha, que pede a primeira Mensagem se o
+par não tem Conversa e troca o Vínculo. Sem `conversaFixaId` (Caixa de Entrada, ficha do Contato) nada muda; se a api não
+achar a Conversa, o fio cai no comportamento comum. Os Canais que outra Lista conversacional já atende aparecem desligados,
+com o motivo, onde a Lista marca os seus (`motivoDeCanalEmOutraLista`, 5.1.2).
+
 **"Meus negócios" é um filtro, não uma rota (Fase 15, plano 15-26, UCR-06,
 F14-D-06).** `/crm/meus-negocios` e `/crm/meus-negocios/[lista]` foram apagadas
 (o endereço cai no 404 do app) e o painel do CRM deixou de desenhar a árvore da
@@ -528,6 +537,11 @@ da api e revalida as chaves SWR certas a cada evento, para a Mensagem que chega 
   WhatsApp desconectou, caiu ou voltou) revalida `/canais`, a lista e a ficha; sem toast, som nem título
   da aba piscando (D-16-02). O fio da Conversa mostra a faixa "WhatsApp desconectado" (com o link "Reconectar" para a
   ficha do Canal) e bloqueia o envio quando o Canal da aba está `desconectada` ou `com_erro`. Os eventos de 300 ms são agrupados (`JANELA_DE_AGRUPAMENTO_MS`).
+- **A Tarefa que a mensagem cria (Sessão 5, 5.1.6).** Um lote com `mensagem.nova` ou `conversa.mudou` também pede
+  `verificarRevisao()` do store (`eventoPedeRevisao`, pelo `aoPrecisarDaRevisao` do `AcompanhanteDoTempoReal`), porque a
+  Tarefa que o servidor cria ou reabre mora em `registros` e nenhuma chave SWR a traz; `mensagem.status` e `canal.mudou`
+  não pedem. O `conversa.mudou` é o que a api manda DEPOIS de criar a Tarefa. Se o pedido chega com a pergunta de revisão
+  em voo, o store a repete uma vez ao terminar (`repetirVerificacao`), em vez de perdê-lo.
 - **Releitura completa a cada conexão aberta e a cada 5 s enquanto cai** (`INTERVALO_SEM_TEMPO_REAL_MS`): o fluxo não
   entrega o que passou no intervalo e não existe evento "ressincronizar", então a tela relê as chaves de base
   (`CHAVES_DE_BASE`) ao (re)conectar. A reconexão espera `min(1 s × 2^n, 30 s)`; um 503 `TEMPO_REAL_INDISPONIVEL` cai

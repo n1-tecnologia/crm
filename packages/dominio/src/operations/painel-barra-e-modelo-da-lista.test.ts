@@ -316,7 +316,7 @@ describe("Modelo de Tarefa da Lista (C35)", () => {
     if (padrao.ok) expect(padrao.value.modeloDeTarefa).toBe("operacional");
 
     // C36 — a conversacional nasce dizendo por onde atende.
-    const conversacional = createList(state, THIAGO, { name: "Suporte ao aluno", parentType: "space", parentId: "spc_com", modeloDeTarefa: "conversacional", canaisDeAtendimento: ["chn_wpp"] }, [canalDeTeste({ id: "chn_wpp" })]);
+    const conversacional = createList(state, THIAGO, { name: "Suporte ao aluno", parentType: "space", parentId: "spc_com", modeloDeTarefa: "conversacional", canaisDeAtendimento: ["chn_suporte"] }, [canalDeTeste({ id: "chn_suporte" })]);
     expect(conversacional.ok).toBe(true);
     if (!conversacional.ok) return;
     expect(conversacional.value.modeloDeTarefa).toBe("conversacional");

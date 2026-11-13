@@ -15,6 +15,7 @@
  * carrega. A tela não o oferece porque o domínio o recusa — não o contrário.
  */
 
+import { effectiveLifecycleOfList } from "../derive";
 import type { DataState } from "../state";
 import type { ChannelType, Id, List } from "../types";
 import type { Canal } from "../crm/canais";
@@ -114,6 +115,8 @@ export function validarCanaisDeAtendimento(
   state: DataState,
   ids: readonly Id[] | undefined,
   canais?: readonly Canal[],
+  /** A Lista que está sendo configurada: o Canal que ela mesma já atende não conta como "em outra Lista". */
+  listaAtual?: Id,
 ): { readonly ids: readonly Id[] } | string {
   const unicos = [...new Set(ids ?? [])];
   if (unicos.length === 0) return "Escolha ao menos um Canal de atendimento.";
@@ -123,9 +126,31 @@ export function validarCanaisDeAtendimento(
     if (!(TIPOS_DE_ATENDIMENTO as readonly string[]).includes(daTabela.tipo)) {
       return `${ROTULO_DO_TIPO_DE_CANAL[daTabela.tipo]} não é canal de atendimento de Lista.`;
     }
+    // 5.1.2 (A): a mensagem que chega cria a Tarefa na Lista do Canal, então o Canal tem uma Lista só.
+    const outra = listaConversacionalQueAtendePeloCanal(state, id, listaAtual);
+    if (outra) return canalJaAtendidoEmOutraLista(daTabela.nome, outra.name);
   }
   return { ids: unicos };
 }
+
+/**
+ * 5.1.2 (A) — a Lista conversacional ATIVA (por si e pelos ancestrais) que já atende pelo Canal, fora `exceto`. Lista
+ * arquivada ou na lixeira não conta: ela não recebe Tarefa, então não segura o Canal. Com mais de uma (dado antigo, de
+ * antes da regra), a primeira na ordem do estado.
+ */
+export function listaConversacionalQueAtendePeloCanal(state: DataState, canalId: Id, exceto?: Id): List | undefined {
+  return state.lists.find(
+    (l) =>
+      l.id !== exceto &&
+      l.modeloDeTarefa === "conversacional" &&
+      (l.canaisDeAtendimento ?? []).includes(canalId) &&
+      effectiveLifecycleOfList(state, l.id) === "ativo",
+  );
+}
+
+/** A recusa de 5.1.2, com o nome do Canal e o da Lista que já o atende. */
+export const canalJaAtendidoEmOutraLista = (canal: string, lista: string): string =>
+  `O Canal “${canal}” já atende na Lista “${lista}”: um Canal só atende em uma Lista conversacional.`;
 
 /** A recusa quando o Canal da tabela não está entre os de atendimento da Lista: o Canal só por id, nome e tipo. */
 export function canalForaDaListaNasTabelas(list: List, canal: Pick<Canal, "id" | "nome" | "tipo">): string | undefined {

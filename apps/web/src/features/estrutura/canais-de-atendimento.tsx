@@ -26,6 +26,10 @@
  * marcada, com o aviso — a conexão é transitória, e é o domínio quem recusa
  * abrir a conversa. Quem não administra a Lista vê tudo desligado com o motivo
  * dela; quem não pode conectar Canal vê o link de conectar desligado no popup.
+ *
+ * 5.1.2 (A): um Canal atende em UMA Lista conversacional só, porque a mensagem que chega cria a Tarefa na Lista do
+ * Canal. A conta que já atende em OUTRA Lista aparece desligada, com o nome da Lista (`ocupadoEm`); a que esta Lista
+ * já marcou continua marcada e se desmarca. O servidor recusa o resto.
  */
 
 import { Check, Plus } from "lucide-react";
@@ -34,11 +38,30 @@ import { useCanais } from "@/dados/crm/canais";
 import { useData } from "@/dados/store";
 import { CHANNEL_ICON } from "@/features/crm/conversation-thread";
 import type { Canal } from "@n1/dominio/crm/canais";
-import { FORMA_DO_IDENTIFICADOR, ROTULO_DO_TIPO_DE_CANAL, TIPOS_DE_ATENDIMENTO, type TipoDeAtendimento } from "@n1/dominio/operations/canais";
+import {
+  FORMA_DO_IDENTIFICADOR,
+  ROTULO_DO_TIPO_DE_CANAL,
+  TIPOS_DE_ATENDIMENTO,
+  canalJaAtendidoEmOutraLista,
+  listaConversacionalQueAtendePeloCanal,
+  type TipoDeAtendimento,
+} from "@n1/dominio/operations/canais";
+import type { DataState } from "@n1/dominio/state";
 import type { Id } from "@n1/dominio/types";
 import { Button, ConditionMarker, Icone, Toggle } from "@/features/shell/ui";
 
 const DESCONECTADO = "Desconectado — reconecte nas configurações da Caixa de Entrada.";
+
+/**
+ * 5.1.2 (A): por que a conta não se marca nesta Lista — ela já atende em outra Lista conversacional ativa —, ou
+ * `undefined` quando se marca. `listaAtualId` é a Lista que está sendo configurada (a que ainda não existe, no diálogo
+ * de criar, fica de fora): o que ela mesma já atende não conta como "em outra".
+ */
+export function motivoDeCanalEmOutraLista(state: DataState, canal: Pick<Canal, "id" | "nome">, listaAtualId?: Id): string | undefined {
+  const outra = listaConversacionalQueAtendePeloCanal(state, canal.id, listaAtualId);
+  return outra ? canalJaAtendidoEmOutraLista(canal.nome, outra.name) : undefined;
+}
+
 const ULTIMO_CANAL = "A Lista precisa de ao menos um canal de atendimento.";
 
 export function CanaisDeAtendimento({
@@ -48,6 +71,7 @@ export function CanaisDeAtendimento({
   motivo,
   podeFicarVazio = true,
   recente = null,
+  ocupadoEm,
 }: {
   /** Os ids dos Canais marcados, na ordem em que foram marcados. */
   readonly valor: readonly Id[];
@@ -60,6 +84,8 @@ export function CanaisDeAtendimento({
   readonly podeFicarVazio?: boolean;
   /** A conta recém-conectada acende como recente. */
   readonly recente?: Id | null;
+  /** 5.1.2: o motivo de a conta não se marcar aqui (já atende em outra Lista), ou `undefined`. Ver `motivoDeCanalEmOutraLista`. */
+  readonly ocupadoEm?: (canal: Canal) => string | undefined;
 }) {
   // Setor e Origem continuam configuração do Espaço (store); a conta em si vem da tabela (D-15-12).
   const filas = useData((data) => data.queues);
@@ -110,6 +136,7 @@ export function CanaisDeAtendimento({
             {...(motivo ? { motivo } : {})}
             ultimoNaoSai={!podeFicarVazio && valor.length === 1}
             recente={recente}
+            {...(ocupadoEm ? { ocupadoEm } : {})}
             filas={filas}
             origens={origens}
           />
@@ -134,6 +161,7 @@ function LinhaDeTipo({
   motivo,
   ultimoNaoSai,
   recente,
+  ocupadoEm,
   filas,
   origens,
 }: {
@@ -148,6 +176,7 @@ function LinhaDeTipo({
   readonly motivo?: string;
   readonly ultimoNaoSai: boolean;
   readonly recente: Id | null;
+  readonly ocupadoEm?: (canal: Canal) => string | undefined;
   readonly filas: ReadonlyArray<{ readonly id: Id; readonly name: string }>;
   readonly origens: ReadonlyArray<{ readonly id: Id; readonly name: string; readonly kind: string }>;
 }) {
@@ -198,7 +227,9 @@ function LinhaDeTipo({
               {contas.map((canal) => {
                 const marcado = marcados.has(canal.id);
                 const desconectada = canal.conexao === "desconectada" && !marcado;
-                const motivoDaConta = motivo ?? (desconectada ? DESCONECTADO : marcado && ultimoNaoSai ? ULTIMO_CANAL : undefined);
+                // 5.1.2: a que esta Lista já marcou se desmarca mesmo que o dado antigo a tenha em outra Lista também.
+                const emOutraLista = marcado ? undefined : ocupadoEm?.(canal);
+                const motivoDaConta = motivo ?? emOutraLista ?? (desconectada ? DESCONECTADO : marcado && ultimoNaoSai ? ULTIMO_CANAL : undefined);
                 const fila = canal.filaPadraoId ? filas.find((f) => f.id === canal.filaPadraoId)?.name : undefined;
                 const origem = canal.origemPadraoId ? origens.find((o) => o.id === canal.origemPadraoId)?.name : undefined;
                 return (
@@ -224,6 +255,7 @@ function LinhaDeTipo({
                           {canal.nome}
                           {canal.conexao === "com_erro" ? <ConditionMarker tone="warning">Com erro</ConditionMarker> : null}
                           {canal.conexao === "desconectada" ? <ConditionMarker tone="danger">Desconectado</ConditionMarker> : null}
+                          {emOutraLista ? <ConditionMarker tone="warning">Em outra Lista</ConditionMarker> : null}
                         </span>
                         <span className="app-sm block" style={{ color: "var(--texto-3)" }}>
                           {/* O identificador só aparece quando diz algo que o nome não disse. */}

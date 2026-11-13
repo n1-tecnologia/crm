@@ -13,10 +13,14 @@ import type { DataState } from "../state";
 import type { Task } from "../types";
 import { LISTA_SEM_CANAIS } from "./canais";
 import { OPERACOES } from "./registro";
-import { listWriteRefusal } from "./tasks";
+import { changeTaskStatus, listWriteRefusal } from "./tasks";
 import {
+  aplicarTarefaDaRecebida,
+  atorDaMensagemRecebida,
+  autorizadorDaTarefaDaRecebida,
   criarTarefaConversacionalNasTabelas,
   ligarNegocioNovoATarefaNasTabelas,
+  tarefaDaRecebida,
   trocarCanalDaTarefaNasTabelas,
   vincularNegocioATarefaNasTabelas,
   type ReferenciasDaTarefaConversacional,
@@ -298,6 +302,183 @@ describe("as quatro recusam o que não é Tarefa conversacional com Contato", ()
       ok: false,
       error: "Lista não encontrada.",
     });
+  });
+});
+
+/**
+ * Sessão 5 (5.1.4) — o que a Mensagem recebida faz com a Tarefa. As decisões (A, A, C) do plano valem aqui: Contato sem
+ * Tarefa aberta na Lista do Canal ganha uma; com Tarefa aberta, nada; a Tarefa encerrada reabre se a Mensagem é da Conversa
+ * dela e uma Conversa nova ganha Tarefa nova.
+ */
+describe("tarefaDaRecebida", () => {
+  const entrada = (sobre: Partial<{ canalId: string; contatoId: string; conversaId: string }> = {}) => ({
+    canalId: CANAL_A,
+    contatoId: CONTATO,
+    conversaId: CONVERSA,
+    ...sobre,
+  });
+
+  /** Leva a Tarefa ao Status concluído da Lista do teste. */
+  const concluirTarefa = (task: Task): void => {
+    const alvo = state.lists.find((l) => l.id === LISTA)?.statusSet?.definitions.find((d) => d.category === "concluido");
+    if (!alvo) throw new Error("a Lista de pós-venda precisa de um Status concluído");
+    const r = changeTaskStatus(state, THIAGO, task.id, alvo.id);
+    if (!r.ok) throw new Error(r.error);
+  };
+
+  it("Canal que nenhuma Lista conversacional atende: nada", () => {
+    expect(tarefaDaRecebida(state, entrada({ canalId: CANAL_FORA }))).toEqual({ acao: "nada" });
+  });
+
+  it("Contato sem Tarefa na Lista do Canal: cria nessa Lista (5.1.1, A)", () => {
+    expect(tarefaDaRecebida(state, entrada())).toEqual({ acao: "criar", listId: LISTA });
+    expect(tarefaDaRecebida(state, entrada({ canalId: CANAL_B }))).toEqual({ acao: "criar", listId: LISTA });
+  });
+
+  it("Contato com Tarefa aberta na Lista: nada, seja qual for a Conversa (as seguintes não criam outra)", () => {
+    nasce();
+    expect(tarefaDaRecebida(state, entrada())).toEqual({ acao: "nada" });
+    expect(tarefaDaRecebida(state, entrada({ conversaId: OUTRA_CONVERSA }))).toEqual({ acao: "nada" });
+  });
+
+  it("a Tarefa de OUTRO Contato não conta", () => {
+    nasce();
+    expect(tarefaDaRecebida(state, entrada({ contatoId: "77777777-7777-4777-8777-777777777777" }))).toEqual({ acao: "criar", listId: LISTA });
+  });
+
+  it("Tarefa concluída da mesma Conversa: reabre, no Status inicial da Lista (5.1.3, C)", () => {
+    const task = nasce();
+    const inicial = task.statusId;
+    concluirTarefa(task);
+    expect(task.statusId).not.toBe(inicial);
+    expect(tarefaDaRecebida(state, entrada())).toEqual({ acao: "reabrir", listId: LISTA, taskId: task.id, statusId: inicial });
+  });
+
+  it("Tarefa concluída e Conversa nova: cria uma Tarefa nova, e a concluída fica como histórico (5.1.3, C)", () => {
+    const task = nasce();
+    concluirTarefa(task);
+    expect(tarefaDaRecebida(state, entrada({ conversaId: OUTRA_CONVERSA }))).toEqual({ acao: "criar", listId: LISTA });
+  });
+
+  it("Tarefa na lixeira não conta como aberta nem como concluída: cria", () => {
+    const task = nasce();
+    task.lifecycle = "naLixeira";
+    expect(tarefaDaRecebida(state, entrada())).toEqual({ acao: "criar", listId: LISTA });
+  });
+
+  it("Lista arquivada deixa de atender: nada", () => {
+    const lista = state.lists.find((l) => l.id === LISTA);
+    if (!lista) throw new Error("falta a Lista");
+    lista.lifecycle = "arquivado";
+    expect(tarefaDaRecebida(state, entrada())).toEqual({ acao: "nada" });
+  });
+
+  it("repetir a decisão depois de criar não cria de novo (o passo pode rodar duas vezes)", () => {
+    const primeira = tarefaDaRecebida(state, entrada());
+    expect(primeira.acao).toBe("criar");
+    const aplicada = aplicarTarefaDaRecebida(state, primeira, {
+      autorizadorId: THIAGO,
+      ator: atorDaMensagemRecebida(CANAL_A),
+      referencias: referencias(),
+    });
+    expect(aplicada.ok).toBe(true);
+    expect(tarefaDaRecebida(state, entrada())).toEqual({ acao: "nada" });
+  });
+});
+
+describe("aplicarTarefaDaRecebida", () => {
+  const ator = atorDaMensagemRecebida(CANAL_A);
+  const decisaoDeCriar = { acao: "criar", listId: LISTA } as const;
+
+  it("a Tarefa nasce com o nome do Contato, os Vínculos e SEM responsável, assinada pelo Canal e não pelo Membro que autorizou", () => {
+    const r = aplicarTarefaDaRecebida(state, decisaoDeCriar, { autorizadorId: THIAGO, ator, referencias: referencias() });
+    if (!r.ok || !r.value.task) throw new Error(r.ok ? "sem Tarefa" : r.error);
+    const task = r.value.task;
+    expect(task.title).toBe("Marina Duarte");
+    expect(task.assignees).toEqual([]);
+    expect(task.createdBy).toEqual(ator);
+    expect(state.tasks.find((t) => t.id === task.id)).toBe(task);
+    expect(vinculosDoCrmDaTarefa(state, task)).toEqual({ contatoId: CONTATO, conversaId: CONVERSA });
+    for (const vinculo of state.links.filter((l) => l.fromId === task.id)) expect(vinculo.createdBy).toEqual(ator);
+    const atividade = state.activity.filter((a) => a.objectId === task.id);
+    expect(atividade.length).toBeGreaterThan(0);
+    for (const registro of atividade) expect(registro.actor).toEqual(ator);
+    // Nada do que já existia foi reescrito.
+    expect(state.activity.some((a) => a.actor.kind === "member" && a.actor.id === THIAGO)).toBe(true);
+  });
+
+  it("o atribuído da Conversa vira o responsável quando é Membro ativo que alcança a Lista; um Convidado, não", () => {
+    const comResponsavel = aplicarTarefaDaRecebida(state, decisaoDeCriar, { autorizadorId: THIAGO, ator, responsavelId: "mem_maryane", referencias: referencias() });
+    if (!comResponsavel.ok || !comResponsavel.value.task) throw new Error("não criou");
+    expect(comResponsavel.value.task.assignees).toEqual([{ kind: "member", id: "mem_maryane" }]);
+
+    const convidado = state.members.find((m) => state.roles.find((r) => r.id === m.roleId)?.base === "convidado" && m.state === "ativo");
+    if (!convidado) return;
+    const semConvidado = aplicarTarefaDaRecebida(
+      state,
+      decisaoDeCriar,
+      { autorizadorId: THIAGO, ator, responsavelId: convidado.id, referencias: referencias({ conversaId: OUTRA_CONVERSA, contato: { id: "77777777-7777-4777-8777-777777777777", nome: "Outro" } }) },
+    );
+    if (!semConvidado.ok || !semConvidado.value.task) throw new Error("não criou");
+    expect(semConvidado.value.task.assignees).toEqual([]);
+  });
+
+  it("uma recusa do domínio (Canal desconectado) não deixa Tarefa, Vínculo nem Atividade", () => {
+    const antes = [state.tasks.length, state.links.length, state.activity.length];
+    const r = aplicarTarefaDaRecebida(state, decisaoDeCriar, {
+      autorizadorId: THIAGO,
+      ator,
+      referencias: referencias({ canal: { id: CANAL_A, nome: "Comercial", tipo: "whatsapp", conexao: "desconectada" } }),
+    });
+    expect(r.ok).toBe(false);
+    expect([state.tasks.length, state.links.length, state.activity.length]).toEqual(antes);
+  });
+
+  it("reabrir volta a Tarefa ao Status inicial e assina a Atividade da mudança; `nada` não grava", () => {
+    const criada = aplicarTarefaDaRecebida(state, decisaoDeCriar, { autorizadorId: THIAGO, ator, referencias: referencias() });
+    if (!criada.ok || !criada.value.task) throw new Error("não criou");
+    const task = criada.value.task;
+    const inicial = task.statusId;
+    const concluido = state.lists.find((l) => l.id === LISTA)?.statusSet?.definitions.find((d) => d.category === "concluido");
+    if (!concluido) throw new Error("falta Status concluído");
+    expect(changeTaskStatus(state, THIAGO, task.id, concluido.id).ok).toBe(true);
+    const atividadeAntes = state.activity.length;
+
+    const reaberta = aplicarTarefaDaRecebida(
+      state,
+      { acao: "reabrir", listId: LISTA, taskId: task.id, statusId: inicial },
+      { autorizadorId: THIAGO, ator, referencias: referencias() },
+    );
+    expect(reaberta.ok).toBe(true);
+    expect(state.tasks.find((t) => t.id === task.id)?.statusId).toBe(inicial);
+    const nova = state.activity.slice(0, state.activity.length - atividadeAntes);
+    expect(nova.length).toBeGreaterThan(0);
+    for (const registro of nova) expect(registro.actor).toEqual(ator);
+
+    const antes = state.activity.length;
+    expect(aplicarTarefaDaRecebida(state, { acao: "nada" }, { autorizadorId: THIAGO, ator, referencias: referencias() }).ok).toBe(true);
+    expect(state.activity).toHaveLength(antes);
+  });
+});
+
+describe("autorizadorDaTarefaDaRecebida", () => {
+  it("vale o preferido quando ele pode escrever na Lista", () => {
+    expect(autorizadorDaTarefaDaRecebida(state, LISTA, "mem_maryane")).toBe("mem_maryane");
+  });
+
+  it("sem preferido, ou com um que não pode, cai no Proprietário e depois no Administrador", () => {
+    const sem = autorizadorDaTarefaDaRecebida(state, LISTA);
+    expect(sem).toBeDefined();
+    if (!sem) return;
+    expect(listWriteRefusal(state, sem, LISTA)).toBeUndefined();
+    const base = state.roles.find((r) => r.id === state.members.find((m) => m.id === sem)?.roleId)?.base;
+    expect(["proprietario", "administrador"]).toContain(base);
+    expect(autorizadorDaTarefaDaRecebida(state, LISTA, "mem_que_nao_existe")).toBe(sem);
+  });
+
+  it("um Membro suspenso ou Convidado nunca autoriza; sem ninguém que possa, devolve undefined", () => {
+    for (const m of state.members) m.state = "suspenso";
+    expect(autorizadorDaTarefaDaRecebida(state, LISTA)).toBeUndefined();
   });
 });
 

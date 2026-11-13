@@ -543,6 +543,9 @@ export function criarStore(opcoes: {
     }
 
     let verificando = false;
+    // 5.1.6: um aviso que chega com a pergunta em voo (a Mensagem e depois a Tarefa que o servidor criou por ela) não se
+    // perde: a pergunta em voo repete uma vez ao terminar, já sabendo da revisão nova.
+    let repetirVerificacao = false;
 
     /**
      * Roda `operation` numa cópia; se a cópia aceita, ela vira o `data` na hora
@@ -623,7 +626,11 @@ export function criarStore(opcoes: {
       },
 
       verificarRevisao: async () => {
-        if (!transporte.revisaoAtual || verificando || get().pendentes > 0) return false;
+        if (!transporte.revisaoAtual || get().pendentes > 0) return false;
+        if (verificando) {
+          repetirVerificacao = true;
+          return false;
+        }
         verificando = true;
         try {
           const noServidor = await transporte.revisaoAtual();
@@ -633,6 +640,10 @@ export function criarStore(opcoes: {
           return true;
         } finally {
           verificando = false;
+          if (repetirVerificacao) {
+            repetirVerificacao = false;
+            void get().verificarRevisao().catch(() => undefined);
+          }
         }
       },
 
@@ -669,13 +680,14 @@ export function StoreProvider({
   /*
     O SSE de `GET /eventos` (16-08, D-16-01) SOMA à releitura da revisão: o `AcompanhanteDaRevisao` continua perguntando
     a revisão do Espaço a cada 5 s (o que não é CRM só chega por ali), e o `AcompanhanteDoTempoReal` revalida as listas
-    e o fio do CRM quando a api avisa. Um não substitui o outro.
+    e o fio do CRM quando a api avisa, e pede a revisão na hora quando o aviso é de Mensagem ou Conversa (5.1.6: a Tarefa
+    que o servidor criou mora em `registros`). Um não substitui o outro.
   */
   return createElement(
     StoreContext.Provider,
     { value: store },
     createElement(AcompanhanteDaRevisao, { store }),
-    createElement(AcompanhanteDoTempoReal),
+    createElement(AcompanhanteDoTempoReal, { aoPrecisarDaRevisao: () => void store.getState().verificarRevisao().catch(() => undefined) }),
     children,
   );
 }

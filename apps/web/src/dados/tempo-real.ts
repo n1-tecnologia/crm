@@ -14,7 +14,7 @@
  * D-16-02: um evento só revalida listas e o fio. Nenhuma notificação, som nem mexida no título da aba.
  */
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { lerEventoParaATela, SILENCIO_MAXIMO_DO_FLUXO_MS, type EventoParaATela } from "@n1/dominio/crm/eventos";
 import { clienteDoNavegador } from "@/autenticacao/cliente-navegador";
 import { invalidarCrmComArrays } from "./crm/cliente-crm";
@@ -92,6 +92,16 @@ export function chavesDoEvento(evento: EventoParaATela): readonly string[] {
     case "conversa.mudou":
       return [CAMINHO_DAS_CONVERSAS, CAMINHO_DO_RESUMO];
   }
+}
+
+/**
+ * 5.1.6 — o evento depois do qual a TELA pergunta a revisão do Espaço. A Tarefa que a mensagem cria (ou reabre) mora em
+ * `plataforma.registros`, não nas tabelas do CRM: nenhuma chave SWR a traz, só a releitura do estado (`verificarRevisao`
+ * do store). `mensagem.nova` cobre o caso em que a Tarefa já estava criada; `conversa.mudou` é o que a api manda DEPOIS de
+ * criar ou reabrir a Tarefa. `mensagem.status` (o tique) e `canal.mudou` não mexem em Tarefa nenhuma.
+ */
+export function eventoPedeRevisao(evento: EventoParaATela): boolean {
+  return evento.tipo === "mensagem.nova" || evento.tipo === "conversa.mudou";
 }
 
 /** As chaves de vários eventos, unidas e sem repetir. */
@@ -289,8 +299,24 @@ async function tokenDaSessao(): Promise<string | undefined> {
  * montam o `StoreProvider` com `NEXT_PUBLIC_API_URL` e um `fetch` falso que conta os pedidos, e um `GET /eventos` a
  * mais em cada um quebraria a contagem sem que o tempo real tivesse nada a ver com o que eles provam. Os testes
  * deste módulo passam `ativo` de propósito.
+ *
+ * `aoPrecisarDaRevisao` (5.1.6) é o `verificarRevisao()` do store: roda UMA vez por lote de eventos que mexem em
+ * Conversa ou Mensagem (`eventoPedeRevisao`), para a Tarefa que o servidor cria ou reabre aparecer na Lista em menos de
+ * 2 s em vez de esperar a releitura de 5 s. Sem ele (os testes deste módulo, que não montam store) só as chaves SWR
+ * são revalidadas.
  */
-export function AcompanhanteDoTempoReal({ ativo = process.env.NODE_ENV !== "test" }: { readonly ativo?: boolean }): null {
+export function AcompanhanteDoTempoReal({
+  ativo = process.env.NODE_ENV !== "test",
+  aoPrecisarDaRevisao,
+}: {
+  readonly ativo?: boolean;
+  readonly aoPrecisarDaRevisao?: () => void;
+}): null {
+  // Numa ref para o callback novo de cada renderização não derrubar e reabrir a conexão.
+  const revisao = useRef(aoPrecisarDaRevisao);
+  useEffect(() => {
+    revisao.current = aoPrecisarDaRevisao;
+  }, [aoPrecisarDaRevisao]);
   useEffect(() => {
     const urlBase = process.env.NEXT_PUBLIC_API_URL;
     if (!ativo || !urlBase) return undefined;
@@ -299,6 +325,7 @@ export function AcompanhanteDoTempoReal({ ativo = process.env.NODE_ENV !== "test
       obterToken: tokenDaSessao,
       aoEventos: (eventos) => {
         for (const chave of chavesDosEventos(eventos)) void invalidarCrmComArrays(chave);
+        if (eventos.some(eventoPedeRevisao)) revisao.current?.();
       },
       aoReler: () => {
         for (const chave of CHAVES_DE_BASE) void invalidarCrmComArrays(chave);

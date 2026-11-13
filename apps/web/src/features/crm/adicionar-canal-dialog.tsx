@@ -16,10 +16,13 @@
  *
  * A conta `desconectada` que a Lista ainda não usa aparece, mas não se escolhe:
  * a Conversa não nasceria por ela (a mesma regra da seção de Canais da Lista).
+ * Idem a que já atende em OUTRA Lista conversacional (5.1.2: um Canal, uma Lista):
+ * quem chamou diz o motivo em `ocupadoEm`.
  */
 
 import Link from "next/link";
 import { useState } from "react";
+import type { Canal } from "@n1/dominio/crm/canais";
 import { useCanais } from "@/dados/crm/canais";
 import { usePodeNoCrm } from "@/dados/crm/sessao";
 import { CHANNEL_TYPE_LABEL } from "@/features/shell/format";
@@ -34,6 +37,7 @@ export function AdicionarCanalDialog({
   onClose,
   jaLigados,
   onEscolher,
+  ocupadoEm,
 }: {
   /** O tipo já escolhido (a linha que pediu); sem ele, todas as contas ativas. */
   readonly tipo?: string;
@@ -43,6 +47,8 @@ export function AdicionarCanalDialog({
   readonly jaLigados: readonly string[];
   /** O id do Canal escolhido; quem chamou o marca na Lista. */
   readonly onEscolher: (canalId: string) => void;
+  /** 5.1.2: o motivo de a conta não se escolher aqui (já atende em outra Lista), ou `undefined`. */
+  readonly ocupadoEm?: (canal: Canal) => string | undefined;
 }) {
   const canais = useCanais({ estado: "ativo", limite: 100 }, { pausado: !open });
   const recusaDeConectar = usePodeNoCrm("criar", "canal");
@@ -58,7 +64,7 @@ export function AdicionarCanalDialog({
   const ligados = new Set(jaLigados);
   const opcoes = (canais.data?.itens ?? []).filter((canal) => !ligados.has(canal.id) && (tipo === undefined || canal.tipo === tipo));
   const rotuloDoTipo = tipo ? (CHANNEL_TYPE_LABEL[tipo] ?? tipo) : "Canal";
-  const escolhivel = (id: string) => opcoes.some((canal) => canal.id === id && canal.conexao !== "desconectada");
+  const escolhivel = (id: string) => opcoes.some((canal) => canal.id === id && canal.conexao !== "desconectada" && ocupadoEm?.(canal) === undefined);
 
   const conectarNovo =
     recusaDeConectar === undefined ? (
@@ -98,18 +104,20 @@ export function AdicionarCanalDialog({
           {opcoes.map((canal) => {
             const marcado = canal.id === escolhido;
             const desconectado = canal.conexao === "desconectada";
+            const emOutraLista = ocupadoEm?.(canal);
+            const travado = desconectado || emOutraLista !== undefined;
             return (
               <li key={canal.id}>
                 <button
                   type="button"
                   role="radio"
                   aria-checked={marcado}
-                  aria-disabled={desconectado}
-                  title={desconectado ? DESCONECTADO : undefined}
+                  aria-disabled={travado}
+                  title={emOutraLista ?? (desconectado ? DESCONECTADO : undefined)}
                   onClick={() => {
-                    if (!desconectado) setEscolhido(canal.id);
+                    if (!travado) setEscolhido(canal.id);
                   }}
-                  className={`item-solto w-full text-left ${desconectado ? "opacity-60" : ""}`}
+                  className={`item-solto w-full text-left ${travado ? "opacity-60" : ""}`}
                   data-destacado={marcado ? "true" : undefined}
                 >
                   <span className="min-w-0 flex-1">
@@ -117,6 +125,7 @@ export function AdicionarCanalDialog({
                       {canal.nome}
                       {canal.conexao === "com_erro" ? <ConditionMarker tone="warning">Com erro</ConditionMarker> : null}
                       {desconectado ? <ConditionMarker tone="danger">Desconectado</ConditionMarker> : null}
+                      {emOutraLista ? <ConditionMarker tone="warning">Em outra Lista</ConditionMarker> : null}
                     </span>
                     <span className="app-sm block" style={{ color: "var(--texto-3)" }}>
                       {CHANNEL_TYPE_LABEL[canal.tipo] ?? canal.tipo} · <span className="app-numero">{canal.identificadorExterno}</span>

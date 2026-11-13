@@ -76,6 +76,20 @@ envio (`enviar`, que grava a Mensagem `pendente` e chama `enfileirarEnvio` na me
 três serviços de anexo e `reenviar` ("Tentar de novo") vivem aqui, atrás de `ServicoDeMensagens`. A recebida não passa
 por ele: entra por `crm/recebimento.ts` (`receberMensagem`), a única porta da recebida.
 
+### A Tarefa da Mensagem recebida (`crm/tarefa-da-mensagem.ts`, Sessão 5)
+
+`criarServicoDaTarefaDaMensagem({ pool }).aplicar({ workspaceId, canalId, contatoId, conversaId })` é o que o processador de
+entrada chama depois de gravar a Mensagem. Primeiro uma consulta barata (`registros`, coleção `lists`) vê se o Canal está numa
+Lista conversacional ativa; se não, devolve `sem_lista` sem travar o Espaço. Se está, roda um gesto misto
+(`gesto-misto.ts`): `lerDoCrm` decide por `tarefaDaRecebida` (domínio) e, só quando há o que fazer, trava o Contato e lê Canal,
+Conversa e Identificador; a operação é `aplicarTarefaDaRecebida`; `gravarNoCrm` avisa `conversa.mudou`, que faz a tela
+conferir a revisão do Espaço na hora (a Tarefa mora em `registros`). A decisão "nada" é uma recusa de `lerDoCrm`, que desfaz
+limpo e NÃO sobe a revisão: uma Mensagem que não mexeu em Tarefa não faz nenhuma aba reidratar.
+
+O Ator é o sistema, pelo Canal (`mensagem:<canalId>`). Quem AUTORIZA a escrita é um Membro que alcança a Lista (o atribuído da
+Conversa, ou o Proprietário/Administrador); o "Agente do pipeline" não serve, porque é Convidado e Convidado não cria Tarefa.
+O Canal conta como `conectada` para a Tarefa porque a Mensagem acabou de chegar por ele.
+
 ## CRM (`crm/`, Fase 7)
 
 Um serviço por recurso — `contatos.ts`, `empresas.ts`, `funis.ts`,

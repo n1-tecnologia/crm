@@ -162,6 +162,9 @@ export function ConversationThread({
   canalSelecionado,
   onCanalChange,
   onConversaAberta,
+  conversaFixaId,
+  canaisDaListaIds,
+  aoTrocarCanalDaTarefa,
   flush = false,
 }: {
   /** A Conversa que o fio segue; sem ela o fio escolhe a do Canal da aba. */
@@ -180,6 +183,21 @@ export function ConversationThread({
   readonly onCanalChange?: (channelId: Id) => void;
   /** Avisa a tela de que o fio abriu uma Conversa nova (a primeira Mensagem acabou de sair). */
   readonly onConversaAberta?: (conversaId: string) => void;
+  /**
+   * 5.2.1 — a Conversa da Tarefa (o Vínculo "conversa da Tarefa"), quando o fio é o da ficha da Tarefa. Com ela o fio fica
+   * PRESO àquela Conversa: a aba é a do Canal dela (as dos outros Canais saem da fileira), o envio vai por ela, e o
+   * "Responder por" deixa de ser só uma troca de aba (ver `aoTrocarCanalDaTarefa`). Sem ela (Caixa de Entrada, ficha do
+   * Contato) nada muda. Se a api não achar a Conversa, o fio volta a se comportar como sem ela.
+   */
+  readonly conversaFixaId?: string;
+  /** 5.2.1 — os Canais de atendimento da Lista da Tarefa: com `conversaFixaId`, o "Responder por" só oferece estes. */
+  readonly canaisDaListaIds?: readonly Id[];
+  /**
+   * 5.2.1 — com `conversaFixaId`, escolher no "Responder por" um Canal que não é o da Tarefa NÃO muda de aba: pede à ficha
+   * que troque o Canal DA TAREFA (a ficha confirma, pede a primeira Mensagem se o par não tem Conversa e troca o
+   * Vínculo). Sem este callback o seletor só oferece o Canal que a Tarefa já usa.
+   */
+  readonly aoTrocarCanalDaTarefa?: (canalId: Id) => void;
   /** Sem moldura: o thread É o painel, como na Caixa de Entrada. */
   readonly flush?: boolean;
 }) {
@@ -243,7 +261,7 @@ export function ConversationThread({
   const contatoQ = useContato(contatoId);
   const canaisQ = useCanais({ estado: "ativo", limite: LIMITES_CRM.paginaMaxima });
   const conversasQ = useConversas({ contatoId, estado: "ativo", limite: LIMITES_CRM.paginaMaxima });
-  const seguida = aberta ?? conversaId;
+  const seguida = conversaFixaId ?? aberta ?? conversaId;
   const pedidaQ = useConversa(seguida);
   const negociosQ = useNegocios({ contatoId, estado: "ativo", limite: LIMITES_CRM.paginaMaxima });
   const consentimentosQ = useConsentimentosDoContato(contatoId);
@@ -253,6 +271,8 @@ export function ConversationThread({
   const identificadores = contatoQ.data?.identificadores;
   const conversasDoContato = conversasQ.data?.itens;
   const pedida = pedidaQ.data?.conversa;
+  // 5.2.1: o fio é o da Tarefa enquanto a api não disser que a Conversa dela não existe (404, falha): aí cai no comportamento comum.
+  const fixa = conversaFixaId !== undefined && !pedidaQ.error;
   const fio = canais && identificadores ? canaisDoFioNasTabelas(canais, identificadores) : undefined;
 
   // Quem controla o Canal por fora (os atalhos da ficha) espera ver o chat ao
@@ -339,6 +359,8 @@ export function ConversationThread({
   const naFileira = (id: Id | null | undefined): Id | undefined =>
     id !== null && id !== undefined && fio?.some((c) => c.canal.id === id) ? id : undefined;
   const canalDaAba =
+    // 5.2.1: preso à Conversa da Tarefa, o Canal da aba é o dela; `canalSelecionado` e `canalAtivo` não mandam.
+    (fixa ? naFileira(pedida?.canalId) : undefined) ??
     naFileira(canalSelecionado) ??
     naFileira(canalAtivo) ??
     naFileira(pedida?.canalId) ??
@@ -468,6 +490,12 @@ export function ConversationThread({
     nasce com a primeira Mensagem.
   */
   const trocarCanalDeResposta = (canalId: Id) => {
+    // 5.2.1: na ficha da Tarefa escolher outro Canal é trocar o Canal DA TAREFA (a ficha confirma e troca o Vínculo): a aba
+    // e o compositor ficam onde estão até a Conversa da Tarefa mudar de fato.
+    if (fixa && canalId !== canal?.id) {
+      aoTrocarCanalDaTarefa?.(canalId);
+      return;
+    }
     const escolhido = canais?.find((ch) => ch.id === canalId);
     setCanalAtivo(canalId);
     onCanalChange?.(canalId);
@@ -609,7 +637,7 @@ export function ConversationThread({
     );
   }
 
-  if (!fio || !conversasDoContato) {
+  if (!fio || !conversasDoContato || (fixa && !pedida)) {
     return (
       <p role="status" className="app-sm p-3" style={{ color: "var(--texto-3)" }}>
         Carregando a conversa…
@@ -665,7 +693,8 @@ export function ConversationThread({
           Contato faz procurar a aba, e some justamente com a informação de que
           falta um Identificador.
         */}
-        {fio.map(({ canal: canalDaFileira, alcancavel }) => {
+        {/* 5.2.1: preso à Conversa da Tarefa, a fileira só mostra a aba do Canal dela. */}
+        {fio.filter(({ canal: canalDaFileira }) => !fixa || canalDaFileira.id === canal?.id).map(({ canal: canalDaFileira, alcancavel }) => {
           const IconeDoCanal = CHANNEL_ICON[canalDaFileira.tipo];
           const quantas = conversasDoContato.filter(
             (c) => c.canalId === canalDaFileira.id,
@@ -1312,6 +1341,7 @@ export function ConversationThread({
                   identificadores={identificadores ?? []}
                   canalId={canal?.id ?? null}
                   onTrocar={trocarCanalDeResposta}
+                  {...(fixa ? { apenas: aoTrocarCanalDaTarefa && canaisDaListaIds ? canaisDaListaIds : canal ? [canal.id] : [] } : {})}
                 />
               </div>
               {aviso ? (

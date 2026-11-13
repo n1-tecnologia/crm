@@ -108,6 +108,8 @@ function Rico({ texto }: { readonly texto: string }) {
  */
 function resolverNomeDoAtor(state: DataState, actor: ActorRef): string {
   if (actor.kind === "system" && actor.id.startsWith("formulario:")) return "sistema/Formulário";
+  // 5.1.5: a Tarefa que a Mensagem recebida cria ou reabre é assinada pelo Canal (`mensagem:<canalId>`), nunca por um Membro.
+  if (actor.kind === "system" && actor.id.startsWith("mensagem:")) return "sistema/Mensagem recebida";
   if (actor.kind === "member") {
     return state.members.find((m) => m.id === actor.id)?.displayName ?? "Membro removido";
   }
@@ -124,7 +126,7 @@ function resolverNomeDoAtor(state: DataState, actor: ActorRef): string {
 /** Rótulo textual do tipo de Ator, só quando não é Membro — "menções têm texto, não só cor" vale também aqui. */
 function rotuloDoTipo(actor: ActorRef): string | undefined {
   if (actor.kind === "member") return undefined;
-  if (actor.kind === "system" && actor.id.startsWith("formulario:")) return undefined; // já embutido no nome
+  if (actor.kind === "system" && (actor.id.startsWith("formulario:") || actor.id.startsWith("mensagem:"))) return undefined; // já embutido no nome
   return ACTOR_KIND_LABEL[actor.kind] ?? actor.kind;
 }
 

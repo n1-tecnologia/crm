@@ -853,6 +853,29 @@ describe("verificarRevisao() — a tela vê o que outro processo gravou (checkli
   it("(p) sem servidor (rotas públicas): nunca pergunta", async () => {
     expect(await store.getState().verificarRevisao()).toBe(false);
   });
+
+  it("(p2) um pedido que chega com a pergunta em voo não se perde: ela repete uma vez e vê a revisão nova (5.1.6)", async () => {
+    // A 1ª pergunta ainda vê a revisão 7; quando o 2º pedido chega, o servidor já está na 9.
+    let responder: (revisao: number) => void = () => {};
+    const respostas: Array<Promise<number>> = [new Promise<number>((resolve) => (responder = resolve)), Promise.resolve(9)];
+    const revisaoAtual = vi.fn(async () => respostas.shift());
+    const outro = { marcador: "a Tarefa que o servidor criou" } as unknown as DataState;
+    transporte.hidratarMock.mockResolvedValueOnce({ data: outro, revisao: 9, ordens: {}, memberId: "mem_maryane" });
+    const s = criarStore({
+      sessao: { memberId: "mem_maryane" },
+      estadoInicial: { data: state, revisao: 7, ordens },
+      transporte: { gravar: transporte.gravar, hidratar: transporte.hidratar, revisaoAtual },
+    });
+
+    const primeira = s.getState().verificarRevisao();
+    expect(await s.getState().verificarRevisao()).toBe(false);
+    expect(revisaoAtual).toHaveBeenCalledTimes(1);
+    responder(7);
+    expect(await primeira).toBe(false);
+    await vi.waitFor(() => expect(s.getState().revisaoDoServidor).toBe(9));
+    expect(revisaoAtual).toHaveBeenCalledTimes(2);
+    expect(s.getState().data).toBe(outro);
+  });
 });
 
 describe("revisão de código — corridas e falhas do envio", () => {

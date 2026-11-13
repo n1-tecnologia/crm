@@ -159,6 +159,9 @@ describe("leituras por id (3.3.2)", () => {
 
   beforeEach(() => {
     limpo = buildSeed();
+    // O demo atende a Pós-venda por `chn_wpp`, e um Canal só atende em uma Lista conversacional (5.1.2).
+    const posVenda = limpo.lists.find((l) => l.id === "lst_pos_venda");
+    if (posVenda) posVenda.canaisDeAtendimento = [];
     // A Lista conversacional que o teste usa nasce com um Canal da tabela (o que o servidor leria de `plataforma.canais`).
     const nasceu = createList(
       limpo,

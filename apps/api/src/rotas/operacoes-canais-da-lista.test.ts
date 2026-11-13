@@ -48,6 +48,13 @@ describeComBanco("POST /operacoes — os Canais da Lista conferidos em plataform
     return rows[0]?.canais ?? undefined;
   };
 
+  /** 5.1.2: um Canal atende em uma Lista conversacional só, então cada Lista que o teste cria pede o seu Canal. */
+  let sequencia = 0;
+  const canalNovo = (nome: string): Promise<string> => {
+    sequencia += 1;
+    return semearCanal(espaco.workspaceId, { nome, tipo: "whatsapp", provedor: "whatsapp-cloud", identificadorExterno: `+551192220${String(sequencia).padStart(4, "0")}` });
+  };
+
   beforeAll(async () => {
     await prepararBancoCrm();
     espaco = montarEspacoDeVazamento("canaislista");
@@ -120,11 +127,19 @@ describeComBanco("POST /operacoes — os Canais da Lista conferidos em plataform
   });
 
   it("createList de uma Lista conversacional com o Canal da tabela passa; com um Canal inexistente não cria nada", async () => {
+    const canalDoSuporte = await canalNovo("WhatsApp do suporte");
     const criada = corpo(
-      await chamar("createList", [{ name: "Suporte da loja", parentType: "space", parentId: "spc_com", modeloDeTarefa: "conversacional", canaisDeAtendimento: [canalId] }]),
+      await chamar("createList", [{ name: "Suporte da loja", parentType: "space", parentId: "spc_com", modeloDeTarefa: "conversacional", canaisDeAtendimento: [canalDoSuporte] }]),
     );
     expect(criada.ok, criada.error).toBe(true);
-    expect(criada.value?.canaisDeAtendimento).toEqual([canalId]);
+    expect(criada.value?.canaisDeAtendimento).toEqual([canalDoSuporte]);
+
+    // 5.1.2: o Canal que a Lista acabou de ganhar não vai para uma segunda Lista, e a recusa não deixa Lista para trás.
+    const repetida = corpo(
+      await chamar("createList", [{ name: "Suporte repetido", parentType: "space", parentId: "spc_com", modeloDeTarefa: "conversacional", canaisDeAtendimento: [canalDoSuporte] }]),
+    );
+    expect(repetida.ok).toBe(false);
+    expect(repetida.error).toBe("O Canal “WhatsApp do suporte” já atende na Lista “Suporte da loja”: um Canal só atende em uma Lista conversacional.");
 
     const recusada = corpo(
       await chamar("createList", [{ name: "Suporte fantasma", parentType: "space", parentId: "spc_com", modeloDeTarefa: "conversacional", canaisDeAtendimento: ["inexistente"] }]),
@@ -179,12 +194,13 @@ describeComBanco("POST /operacoes — os Canais da Lista conferidos em plataform
     });
 
     it("instancia a Lista com um Canal que só existe em plataforma.canais, com a projeção desligada", async () => {
-      const resposta = await instanciar("Atendimento instanciado", [canalId]);
+      const canalDaInstancia = await canalNovo("WhatsApp instanciado");
+      const resposta = await instanciar("Atendimento instanciado", [canalDaInstancia]);
       expect(resposta.statusCode, resposta.body.slice(0, 300)).toBe(200);
       const c = corpo(resposta);
       expect(c.ok, c.error).toBe(true);
-      expect(c.value?.canaisDeAtendimento).toEqual([canalId]);
-      expect(await canaisDaListaNoBanco(c.value!.id)).toEqual([canalId]);
+      expect(c.value?.canaisDeAtendimento).toEqual([canalDaInstancia]);
+      expect(await canaisDaListaNoBanco(c.value!.id)).toEqual([canalDaInstancia]);
     });
 
     it("um id de Canal que não existe em lugar nenhum é recusado, e nenhuma Lista nasce", async () => {
@@ -209,14 +225,22 @@ describeComBanco("POST /operacoes — os Canais da Lista conferidos em plataform
       expect(deOutro.error).toBe(FRASE_DE_CANAL_INVALIDO);
     });
 
-    it("instanciar o mesmo Template duas vezes cria duas Listas independentes, as duas conferidas pela tabela", async () => {
-      const a = corpo(await instanciar("Atendimento repetido A", [canalId]));
-      const b = corpo(await instanciar("Atendimento repetido B", [canalId]));
+    it("instanciar o mesmo Template duas vezes cria duas Listas independentes, as duas conferidas pela tabela, cada uma com o seu Canal", async () => {
+      const canalA = await canalNovo("WhatsApp repetido A");
+      const canalB = await canalNovo("WhatsApp repetido B");
+      const a = corpo(await instanciar("Atendimento repetido A", [canalA]));
+      const b = corpo(await instanciar("Atendimento repetido B", [canalB]));
       expect(a.ok, a.error).toBe(true);
       expect(b.ok, b.error).toBe(true);
       expect(a.value!.id).not.toBe(b.value!.id);
-      expect(await canaisDaListaNoBanco(a.value!.id)).toEqual([canalId]);
-      expect(await canaisDaListaNoBanco(b.value!.id)).toEqual([canalId]);
+      expect(await canaisDaListaNoBanco(a.value!.id)).toEqual([canalA]);
+      expect(await canaisDaListaNoBanco(b.value!.id)).toEqual([canalB]);
+
+      // 5.1.2: pedir o Canal da Lista A numa terceira Lista é recusado, e nenhuma Lista nasce.
+      const terceira = corpo(await instanciar("Atendimento repetido C", [canalA]));
+      expect(terceira.ok).toBe(false);
+      expect(terceira.error).toContain("já atende na Lista “Atendimento repetido A”");
+      expect(await listasComNome("Atendimento repetido C")).toBe(0);
     });
 
     it("mais de 100 itens em `canais` é 400 antes de tocar o banco (T-14-30)", async () => {

@@ -18,9 +18,20 @@
  * (D-07). Aqui só se grava o Vínculo para o id que ela devolveu.
  *
  * As operações antigas saíram no corte da Fase 15 (D-01); este é o único caminho.
+ *
+ * Sessão 5 (5.1.4): `tarefaDaRecebida` decide o que uma Mensagem recebida faz com a Tarefa da Lista conversacional
+ * do Canal, e `aplicarTarefaDaRecebida` a executa com um Ator de sistema. Quem lê o CRM e chama as duas é o servidor,
+ * no processador de entrada.
  */
 
-import { taskWriteRefusal } from "../derive";
+import {
+  effectiveLifecycleOfList,
+  effectiveLifecycleOfTask,
+  effectiveListConfig,
+  isTerminalCategory,
+  statusCategory,
+  taskWriteRefusal,
+} from "../derive";
 import { PAPEL_DO_VINCULO, listaConversacional, vinculosDoCrmDaTarefa } from "../derive-conversacional";
 import type { ConexaoDoCanal } from "../crm/canais";
 import type { TipoComProvedor } from "../provedores-de-canal";
@@ -28,7 +39,7 @@ import { fail, ok, type DataState, type OperationResult } from "../state";
 import type { ActorRef, Id, Priority, Task, TaskDate } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
 import { LISTA_SEM_CANAIS, canalForaDaListaNasTabelas } from "./canais";
-import { createTask, listWriteRefusal } from "./tasks";
+import { changeTaskStatus, createTask, listWriteRefusal } from "./tasks";
 
 const now = (): string => new Date().toISOString();
 
@@ -274,4 +285,147 @@ export function ligarNegocioNovoATarefaNasTabelas(
   if (vinculosDoCrmDaTarefa(state, alvo).negocioId !== undefined) return fail("Esta Tarefa já tem Negócio vinculado.");
   const ligada = vincularNegocioATarefaNasTabelas(state, actingMemberId, taskId, negocio);
   return ligada.ok ? ok(ligada.value, negocio.id) : ligada;
+}
+
+/* ───────────────────────── 5.1 — a Mensagem que chega mexe na Tarefa ───────────────────────── */
+
+/** O que a Mensagem recebida faz com a Tarefa da Lista conversacional do Canal. */
+export type DecisaoDaTarefaDaRecebida =
+  | { readonly acao: "nada" }
+  | { readonly acao: "criar"; readonly listId: Id }
+  /** A Tarefa concluída volta ao Status inicial da Lista (5.1.3, C). */
+  | { readonly acao: "reabrir"; readonly listId: Id; readonly taskId: Id; readonly statusId: Id };
+
+/** A Lista conversacional que atende pelo Canal; com mais de uma (dado de antes da regra 5.1.2) vale a primeira do estado. */
+function listaDoCanal(state: DataState, canalId: Id): Id | undefined {
+  return state.lists.find(
+    (l) =>
+      l.modeloDeTarefa === "conversacional" &&
+      (l.canaisDeAtendimento ?? []).includes(canalId) &&
+      effectiveLifecycleOfList(state, l.id) === "ativo",
+  )?.id;
+}
+
+/** O Status em que a Tarefa nasce: o primeiro `naoIniciado` do Conjunto efetivo da Lista (o mesmo de `createTask`). */
+function statusInicialDaLista(state: DataState, listId: Id): Id | undefined {
+  return [...(effectiveListConfig(state, listId)?.statusSet.definitions ?? [])]
+    .sort((a, b) => a.order - b.order)
+    .find((d) => d.category === "naoIniciado")?.id;
+}
+
+/**
+ * 5.1.1 a 5.1.4 — o que uma Mensagem RECEBIDA faz com a Tarefa. Pura: lê só o estado (a Tarefa vive nele) e os ids que
+ * o servidor conferiu nas tabelas. Idempotente, porque o processador de entrada pode repetir o passo (a fila volta a
+ * `pendente` se ele falha): o que decide é o estado das Tarefas, nunca "esta é a primeira vez".
+ *
+ *   - Canal fora de qualquer Lista conversacional ativa: nada (5.1.2, A: um Canal tem no máximo uma Lista).
+ *   - Contato com Tarefa aberta nessa Lista: nada. A Mensagem já aparece no cartão pelo resumo (a última Mensagem da
+ *     Conversa da Tarefa), então não há o que gravar (5.1.1, A).
+ *   - Contato sem Tarefa na Lista: cria.
+ *   - Só há Tarefas encerradas (concluída ou fechada), e uma delas é a da Conversa desta Mensagem: reabre essa. A
+ *     Conversa que reabriu na janela da Caixa, ou que nunca foi resolvida, é o mesmo atendimento (5.1.3, C: a Tarefa
+ *     segue a Conversa).
+ *   - Só há Tarefas encerradas, e nenhuma é a desta Conversa: cria. É a Conversa nova, que não tem Tarefa (5.1.3, C).
+ *
+ * Por isso não recebe se a Conversa nasceu ou reabriu agora: o Vínculo "conversa da Tarefa" diz o mesmo e sobrevive a uma
+ * segunda passada pelo mesmo webhook.
+ */
+export function tarefaDaRecebida(
+  state: DataState,
+  entrada: { readonly canalId: Id; readonly contatoId: Id; readonly conversaId: Id },
+): DecisaoDaTarefaDaRecebida {
+  const listId = listaDoCanal(state, entrada.canalId);
+  if (listId === undefined) return { acao: "nada" };
+
+  const doContato = state.tasks.filter(
+    (t) =>
+      t.listId === listId &&
+      t.parentTaskId === undefined &&
+      effectiveLifecycleOfTask(state, t.id) === "ativo" &&
+      vinculosDoCrmDaTarefa(state, t).contatoId === entrada.contatoId,
+  );
+  if (doContato.some((t) => !isTerminalCategory(statusCategory(state, t)))) return { acao: "nada" };
+
+  const daConversa = doContato.find((t) => vinculosDoCrmDaTarefa(state, t).conversaId === entrada.conversaId);
+  if (!daConversa) return { acao: "criar", listId };
+  const statusId = statusInicialDaLista(state, listId);
+  // Sem Status inicial a Lista está quebrada: nada a fazer aqui, e `createTask` diria o mesmo.
+  return statusId === undefined ? { acao: "nada" } : { acao: "reabrir", listId, taskId: daConversa.id, statusId };
+}
+
+/**
+ * Quem AUTORIZA a Tarefa que a Mensagem cria ou reabre. A Lista e a Tarefa pedem um Membro ativo que alcance a Lista e
+ * não seja Convidado (o "Agente do pipeline" é Convidado, então não serve). Vale o `preferido` (o atribuído da Conversa)
+ * se ele pode; senão o Proprietário, depois o Administrador, depois o Membro, em ordem de id. `undefined` quando
+ * ninguém pode: a Mensagem fica só na Caixa.
+ */
+export function autorizadorDaTarefaDaRecebida(state: DataState, listId: Id, preferido?: Id): Id | undefined {
+  const peso = (base: string | undefined): number => (base === "proprietario" ? 0 : base === "administrador" ? 1 : 2);
+  const baseDe = (memberId: Id): string | undefined => state.roles.find((r) => r.id === state.members.find((m) => m.id === memberId)?.roleId)?.base;
+  const ordenados = state.members
+    .map((m) => m.id)
+    .sort((a, b) => peso(baseDe(a)) - peso(baseDe(b)) || a.localeCompare(b));
+  const candidatos = preferido !== undefined ? [preferido, ...ordenados] : ordenados;
+  return candidatos.find((id) => listWriteRefusal(state, id, listId) === undefined);
+}
+
+/** O Ator das gravações que uma Mensagem recebida provoca: o sistema, pelo Canal por onde ela chegou. */
+export const atorDaMensagemRecebida = (canalId: Id): ActorRef => ({ kind: "system", id: `mensagem:${canalId}` });
+
+export interface AplicarTarefaDaRecebidaEntrada {
+  /** De `autorizadorDaTarefaDaRecebida`: autoriza as regras de escrita, mas não assina o Registro de Atividade. */
+  readonly autorizadorId: Id;
+  readonly ator: ActorRef;
+  /** O atribuído da Conversa, quando é um Membro: vira o responsável da Tarefa nova. Sem ele, a Tarefa nasce sem responsável. */
+  readonly responsavelId?: Id;
+  readonly referencias: ReferenciasDaTarefaConversacional;
+}
+
+/**
+ * Executa a decisão de `tarefaDaRecebida`. Reusa `criarTarefaConversacionalNasTabelas` e `changeTaskStatus`, que conferem
+ * Lista, Canal e Status como em qualquer outra Tarefa, e depois troca o Ator do que acabaram de gravar (a Tarefa, os
+ * Vínculos e a Atividade) pelo `ator`: quem escreveu foi a Mensagem, não o Membro que autorizou. Uma recusa desfaz tudo
+ * de `createTask`; a de `changeTaskStatus` não grava nada.
+ */
+export function aplicarTarefaDaRecebida(
+  state: DataState,
+  decisao: DecisaoDaTarefaDaRecebida,
+  entrada: AplicarTarefaDaRecebidaEntrada,
+): OperationResult<{ readonly task?: Task }> {
+  if (decisao.acao === "nada") return ok({});
+  const { autorizadorId, ator, referencias } = entrada;
+  const linksAntes = state.links.length;
+  const activityAntes = state.activity.length;
+  // `recordActivity` insere na frente: o que este gesto gravou são os primeiros registros.
+  const assinarRegistros = (): void => {
+    for (let i = 0; i < state.activity.length - activityAntes; i += 1) state.activity[i] = { ...state.activity[i]!, actor: ator };
+    for (let i = linksAntes; i < state.links.length; i += 1) state.links[i] = { ...state.links[i]!, createdBy: ator };
+  };
+
+  if (decisao.acao === "criar") {
+    const responsavel =
+      entrada.responsavelId !== undefined &&
+      state.members.some((m) => m.id === entrada.responsavelId && m.state === "ativo") &&
+      listWriteRefusal(state, entrada.responsavelId, decisao.listId) === undefined
+        ? [{ kind: "member" as const, id: entrada.responsavelId }]
+        : [];
+    const criada = criarTarefaConversacionalNasTabelas(
+      state,
+      autorizadorId,
+      { listId: decisao.listId, assignees: responsavel },
+      referencias,
+    );
+    if (!criada.ok) return criada;
+    assinarRegistros();
+    // `Task.createdBy` é só leitura: a Tarefa assinada pela Mensagem substitui a que o Membro autorizou.
+    const posicao = state.tasks.findIndex((t) => t.id === criada.value.task.id);
+    const task: Task = { ...criada.value.task, createdBy: ator };
+    state.tasks[posicao] = task;
+    return ok({ task }, task.id);
+  }
+
+  const movida = changeTaskStatus(state, autorizadorId, decisao.taskId, decisao.statusId);
+  if (!movida.ok) return movida;
+  assinarRegistros();
+  return ok({ task: movida.value }, movida.value.id);
 }
