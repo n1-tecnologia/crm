@@ -189,7 +189,8 @@ Vem antes de qualquer dado real de cliente (da Sessão 4 em diante). Hoje `GET /
 
 **Pronto quando:** Um teste em `apps/api/src/rotas/estado.test.ts`, com dois Membros reais no Postgres local, prova que nenhum recebe a Sessão de Chat, a pasta de chat, a Memória de Usuário nem a Visão pessoal do outro, e que um Membro sem administrar a Lista não recebe `publicShare.secret` nem `Form.secret`.
 
-- [ ] **1.1.1 Filtrar as Sessões de Chat e as pastas de chat no recorte de visibilidade** `domínio`
+- [x] **1.1.1 Filtrar as Sessões de Chat e as pastas de chat no recorte de visibilidade** `domínio` · *feito*
+  - **Andamento:** plano 09-01 e 09-02
   - **Hoje:** `visibilidadePara` devolve `state.chatSessions` e `state.chatFolders` inteiros (o comentário em `derive-visibilidade.ts:18-20` diz que IA não é recortada). Quem esconde é a tela: `apps/web/src/features/shell/app-shell.tsx:915-920` filtra por `ownerMemberId`, e a regra de quem pode ler uma Sessão (DO-CHT-09: só o dono e quem a recebeu compartilhada) mora só na página `apps/web/src/app/(shell)/ia/chat/[sessao]/page.tsx:126-132`.
   - **O que fazer:**
     1. Criar `membroVeSessaoDeChat(state, memberId, sessao)` em `packages/dominio/src/derive.ts`, com a regra da página: dono, ou `sharedWithMemberIds` contém o Membro, ou uma Equipe de `sharedWithTeamIds` o contém.
@@ -197,7 +198,8 @@ Vem antes de qualquer dado real de cliente (da Sessão 4 em diante). Hoje `GET /
     3. A página `ia/chat/[sessao]/page.tsx` passa a chamar `membroVeSessaoDeChat` em vez da conta própria.
   - **Pronto quando:** Teste em `packages/dominio/src/derive-visibilidade.test.ts`: o Membro A não recebe a Sessão do Membro B; recebe quando B a compartilha com A ou com uma Equipe de A; nunca recebe a pasta de chat de B.
   - **Atenção:** O diálogo de remover Membro (`apps/web/src/app/(shell)/configuracoes/membros/page.tsx`) usa `previewSuccession`, que conta as Sessões de Chat do outro Membro (`packages/dominio/src/operations/members.ts:93`). Com o recorte, a tela passa a contar zero: tirar esse número do texto do diálogo.
-- [ ] **1.1.2 Esconder a Memória de Usuário, os e-mails de convite e as Visões pessoais dos outros Membros** `domínio`
+- [x] **1.1.2 Esconder a Memória de Usuário, os e-mails de convite e as Visões pessoais dos outros Membros** `domínio` · *feito*
+  - **Andamento:** plano 09-02
   - **Hoje:** Cada `Member` vai com `userMemory` (`packages/dominio/src/types/workspace.ts:126`) e, se pendente, `invitedIdentity` (`:114`). O convite grava o e-mail também em `displayName` (`members.ts:521`), então esconder só `invitedIdentity` não basta. As Visões com `ownerKind: “member”` (Visão pessoal, `packages/dominio/src/types/structure.ts:113`) também vão para todos.
   - **O que fazer:**
     1. Criar `recortarRegistro(colecao, dados, state, memberId)` em `derive-visibilidade.ts`, que devolve uma cópia sem os campos que o Membro não pode ler.
@@ -205,29 +207,27 @@ Vem antes de qualquer dado real de cliente (da Sessão 4 em diante). Hoje `GET /
     3. Para `views`: tirar as Visões `ownerKind: “member”` de outro Membro e pôr os ids em `ocultos`.
     4. `visibilidadePara` aplica `recortarRegistro` a cada coleção antes de devolver.
   - **Pronto quando:** Teste em `derive-visibilidade.test.ts`: um Membro comum vê a própria `userMemory` com itens e a de outro vazia, não vê o e-mail de um convite pendente e não recebe a Visão pessoal de outro; um Administrador vê o e-mail do convite.
-- [ ] **1.1.3 Esconder os segredos dos links públicos de quem não administra a Lista** `domínio`
+- [x] **1.1.3 Esconder os segredos dos links públicos de quem não administra a Lista** `domínio` · *feito*
+  - **Andamento:** plano 09-02 e 09-08
   - **Hoje:** `Task.publicShare.secret` (`packages/dominio/src/types/structure.ts:349`) e `Form.secret` (`:148`) vão para todo Membro que vê a Tarefa ou para todos, no caso dos Formulários. Quem pode criar ou renovar esses links é quem administra a Lista (`containerAdminRefusal`, `packages/dominio/src/derive.ts:1053`, usado em `shareTaskPublicly`, `scale.ts:604`, e `rotateFormSecret`, `scale.ts:413`). Os Formulários de Listas que o Membro não alcança também vão.
   - **O que fazer:**
     1. Em `recortarRegistro`: para `tasks`, tirar `publicShare.secret` quando `containerAdminRefusal(state, memberId, “list”, task.listId)` recusa; para `forms`, fazer o mesmo com `secret`.
     2. Em `visibilidadePara`, tirar os Formulários cuja `listId` está em `ocultos`.
   - **Pronto quando:** Teste em `derive-visibilidade.test.ts`: um Membro de base Membro vê a Tarefa com link público, mas sem `publicShare.secret`; o Administrador da Lista vê o segredo; o Formulário de uma Lista privada não chega a quem não a alcança.
   - **Atenção:** Conferir antes, com `grep`, que nenhuma tela de quem não administra lê `publicShare.secret` ou `form.secret`; se ler, a tela precisa mostrar “Só quem administra a Lista vê o link”.
-- [ ] **1.1.4 O que mais o `GET /estado` deve esconder?** `decisão` `domínio` · *muda o produto*
-  - **Como é hoje:** Agentes, Automações, Documentos de Conhecimento, Coleções e o CRM antigo (`contacts`, `deals`, `conversations`) vão inteiros para todos, inclusive para Convidados. Não existe regra de quem vê um Agente ou Documento: a concessão de Coleção é dada a Agente, não a Membro (`CollectionGrant`, `packages/dominio/src/types/ai.ts:606`). O CRM antigo sai do código na Sessão 3.
-  - **Você decide:**
-    - (A) Convidado não recebe nenhuma coleção de IA (`agents`, `automations`, `documents`, `collections`, `skills`); os demais Papéis recebem tudo, como hoje
-    - (B) Criar agora uma regra de visibilidade por registro para Documentos e Agentes (dono, Equipe, compartilhamento)
-    - (C) Deixar como está até as Sessões 13 a 18 (IA)
-  - **O que muda depois:** (A) custa cerca de meio dia, em `visibilidadePara`. (B) custa cerca de 2 dias e pede que você diga quem vê cada Documento. (C) não custa nada agora, mas um Convidado continua lendo os Documentos de Conhecimento. Nas três, o CRM antigo fica como está até a Sessão 3 removê-lo.
-  - **Recomendo:** (A) agora, e a regra fina de (B) na Sessão 17 (Conhecimento indexado).
-- [ ] **1.1.5 Aplicar o mesmo recorte à resposta de `POST /operacoes`** `api` `domínio`
+- [x] **1.1.4 O que mais o `GET /estado` deve esconder?** `decisão` `domínio` · *decidida*
+  - **Decidido:** Escolha A: o Convidado não recebe `agents`, `automations`, `documents`, `collections` nem `skills`; os demais Papéis recebem tudo, como hoje. O CRM antigo fica como está até a Sessão 3 removê-lo, e a regra fina por registro (dono, Equipe, compartilhamento) vai para a Sessão 17.
+  - **O que muda no plano:** (A) custa cerca de meio dia, em `visibilidadePara`. (B) custa cerca de 2 dias e pede que você diga quem vê cada Documento. (C) não custa nada agora, mas um Convidado continua lendo os Documentos de Conhecimento. Nas três, o CRM antigo fica como está até a Sessão 3 removê-lo.
+- [x] **1.1.5 Aplicar o mesmo recorte à resposta de `POST /operacoes`** `api` `domínio` · *feito*
+  - **Andamento:** plano 09-02 e 09-07
   - **Hoje:** `apps/api/src/rotas/operacoes.ts:364-365` filtra o diff só por id (`filtrarDiferenca`, `derive-visibilidade.ts:109`), mas cada `gravados[]` carrega `dados` com o registro inteiro (`RegistroGravado`, `packages/dominio/src/diferenca.ts:17`). Gravar a própria Tarefa devolve o `publicShare.secret`; gravar qualquer coisa que toque outro Membro devolve a `userMemory` dele. E `inviteMember`, que passa por `SERVICOS` (`operacoes.ts:234`), volta sem recorte nenhum, porque `depois` fica indefinido (`operacoes.ts:302-303`). `GET /estado/revisao` devolve só um número e não precisa de recorte.
   - **O que fazer:**
     1. Criar `recortarDiferenca(diferenca, state, memberId)` em `derive-visibilidade.ts`: tira os ids de `ocultos` e passa cada `gravados[].dados` por `recortarRegistro`.
     2. Em `operacoes.ts`, trocar `filtrarDiferenca` por `recortarDiferenca`.
     3. No caminho de `SERVICOS`, recortar também: `convidarMembro` (`apps/api/src/servicos/convidar-membro.ts`) passa a devolver o estado depois da operação, e a rota aplica `recortarDiferenca`.
   - **Pronto quando:** Teste em `apps/api/src/rotas/operacoes.test.ts`: um Membro sem administrar a Lista grava um Campo de uma Tarefa com link público e a resposta não contém o segredo.
-- [ ] **1.1.6 Escrever o teste de vazamento de ponta a ponta** `api`
+- [x] **1.1.6 Escrever o teste de vazamento de ponta a ponta** `api` · *feito*
+  - **Andamento:** plano 09-07 e 09-15
   - **Hoje:** `apps/api/src/rotas/estado.test.ts:140` prova só o recorte da Estrutura (PRIV-03); não há teste de dado pessoal.
   - **O que fazer:** Em `estado.test.ts` (Postgres local, pula sem `DATABASE_URL`), semear dois Membros, cada um com Sessão de Chat, pasta de chat, item de Memória de Usuário e Visão pessoal, um convite pendente e uma Tarefa com link público; chamar `GET /estado` como cada um e procurar no corpo os ids e segredos do outro.
   - **Pronto quando:** O teste roda no `npm run check` e falha se qualquer um desses dados do outro Membro aparecer.
@@ -238,24 +238,28 @@ Vem antes de qualquer dado real de cliente (da Sessão 4 em diante). Hoje `GET /
 
 **Pronto quando:** Um Membro suspenso recebe 403 em qualquer `POST /operacoes`; um Convidado recebe `ok: false` em `trashContact`, `sendMessage` e `winDeal`; a tabela de quem confere o quê cobre todas as operações do registro.
 
-- [ ] **1.2.1 Barrar o Membro suspenso em `POST /operacoes`** `api`
+- [x] **1.2.1 Barrar o Membro suspenso em `POST /operacoes`** `api` · *feito*
+  - **Andamento:** plano 09-07
   - **Hoje:** O hook de autenticação deixa passar `ativo` e `suspenso` (`plugins/autenticacao.ts:85`), de propósito: o suspenso consulta. O CRM novo barra a escrita dele (`podeNoCrm`, `packages/dominio/src/crm/permissoes.ts:71`), mas as operações do registro que não olham o estado do Membro gravam, por exemplo `trashContact` (`packages/dominio/src/operations/contacts.ts:333`).
   - **O que fazer:** Em `apps/api/src/rotas/operacoes.ts`, logo depois de `ehNomeDeOperacao(nome)` (linha 252), responder 403 com “Seu acesso está suspenso: você consulta, mas não altera.” quando `request.membro.state !== “ativo”`. Toda operação do registro grava (regra de inclusão, `registro.ts:7-13`), então a recusa vale para todas.
   - **Pronto quando:** Teste em `operacoes.test.ts`: um Membro suspenso chama `trashContact` e recebe 403, e o Contato continua `ativo` no banco.
-- [ ] **1.2.2 Pôr a conferência nas operações do CRM antigo** `domínio`
+- [x] **1.2.2 Pôr a conferência nas operações do CRM antigo** `domínio` · *feito*
+  - **Andamento:** plano 09-03
   - **Hoje:** `contacts.ts` tem uma conferência de Papel em 19 operações (perto da linha 981); `conversations.ts`, uma em 11 (perto da linha 700); `deals.ts` tem `mayWriteDeal` (`deals.ts:34`) mas não o chama em `moveDealToStage` (`:131`), `winDeal` (`:194`), `loseDeal` (`:236`), `removeStage` e `migrateDealsToFunnel`. Exemplos sem nada: `trashContact` (`contacts.ts:333`), `addContactNote` (`contacts.ts:761`), `sendMessage` (`conversations.ts:164`), `resolveConversation` (`conversations.ts:257`). O plano anterior dizia que `collaboration.ts` não confere nada: confere, por `activeTask` (`collaboration.ts:15`), que chama `taskWriteRefusal`.
   - **O que fazer:**
     1. Mover `mayWriteDeal` para um arquivo novo `packages/dominio/src/operations/crm-antigo.ts`, com o nome `recusaDeEscritaNoCrmAntigo` (Membro `ativo` e Papel base diferente de Convidado, a mesma regra de `podeNoCrm` para escrita).
     2. Chamar essa recusa na primeira linha de toda operação de `contacts.ts`, `conversations.ts` e `deals.ts` que ainda não confere.
   - **Pronto quando:** Um teste por arquivo (`contacts.test.ts`, `conversations.test.ts`, `deals.test.ts`, criando os que não existem): um Convidado chama `trashContact`, `sendMessage` e `winDeal`, recebe `ok: false` e o estado não muda.
   - **Atenção:** A Sessão 3 apaga essas operações; isto custa cerca de meio dia e fecha a porta até lá.
-- [ ] **1.2.3 Pôr a conferência nas outras operações que gravam sem olhar quem chama** `domínio`
+- [x] **1.2.3 Pôr a conferência nas outras operações que gravam sem olhar quem chama** `domínio` · *feito*
+  - **Andamento:** plano 09-03
   - **Hoje:** Fora do CRM antigo, a varredura achou duas: `restoreList` (`packages/dominio/src/operations/tasks.ts:816`) restaura sem conferir quem chama, enquanto `restoreContainer` (`structure.ts:776`) e `restoreTask` (`tasks.ts:694`, via `mayWriteTask`) conferem; `createReceivableSeries` (`financeiro.ts:1807`) cria parcelas sem conferir escrita na Lista de Contas a receber.
   - **O que fazer:**
     1. `restoreList` passa a chamar `restoreContainer(state, actingMemberId, “list”, listId)` ou a mesma recusa que ele usa.
     2. `createReceivableSeries` passa a chamar `listWriteRefusal(state, actingMemberId, CR.listId)` (`tasks.ts:1373`) antes de criar.
   - **Pronto quando:** Dois testes: um Convidado chama cada uma e recebe `ok: false`.
-- [ ] **1.2.4 Escrever a tabela de quem confere o quê** `domínio`
+- [x] **1.2.4 Escrever a tabela de quem confere o quê** `domínio` · *feito*
+  - **Andamento:** plano 09-09 — A tabela "Quem pode" das 286 operações e o teste que a cobra.
   - **Hoje:** Não existe. A varredura rápida desta revisão olhou 167 das cerca de 200 operações; as outras têm assinatura que a busca não pegou.
   - **O que fazer:** Em `packages/dominio/CONTEXT.md`, uma seção “Quem pode” com uma linha por operação de `REGISTRO`: o arquivo, a função de recusa que ela chama (`taskWriteRefusal`, `containerAdminRefusal`, `listWriteRefusal`, `recusaDeEscritaNoCrmAntigo`, dono do registro) ou a justificativa de não ter.
   - **Pronto quando:** Toda chave de `REGISTRO` aparece na tabela, e nenhuma linha diz “sem conferência” sem justificativa.
@@ -266,7 +270,8 @@ Vem antes de qualquer dado real de cliente (da Sessão 4 em diante). Hoje `GET /
 
 **Pronto quando:** `select has_schema_privilege('anon','plataforma','USAGE')` e o mesmo para `authenticated` respondem `false`; o `apps/api` de produção conecta como `n1_api`; a `009` está aplicada.
 
-- [ ] **1.3.1 Conferir se o schema `plataforma` está exposto à chave pública** `infra` `você`
+- [x] **1.3.1 Conferir se o schema `plataforma` está exposto à chave pública** `infra` `você` · *feito*
+  - **Andamento:** plano 09-04 e 09-20 — A `009` fecha o schema `plataforma` para `anon`, `authenticated` e `public`; foi aplicada em produção em 28/10.
   - **Hoje:** A tela carrega a chave pública (`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `apps/web/.env.example:2`). Se `plataforma` estiver em “Exposed schemas” e `anon` tiver `USAGE` nele, qualquer pessoa com essa chave lê o banco pela API REST do Supabase. Não consegui conferir daqui: o conector do Supabase não tem permissão no projeto.
   - **O que fazer:**
     1. No SQL Editor do Supabase, rodar `select has_schema_privilege('anon','plataforma','USAGE') as anon, has_schema_privilege('authenticated','plataforma','USAGE') as autenticado;`.
@@ -274,14 +279,11 @@ Vem antes de qualquer dado real de cliente (da Sessão 4 em diante). Hoje `GET /
     3. Em Authentication › Sign In / Providers, desligar “Allow new users to sign up”: usuário só nasce por convite (Sessão 12).
   - **Pronto quando:** As duas colunas voltam `false`, e `curl` em `https://<ref>.supabase.co/rest/v1/registros` com a chave pública e o cabeçalho `Accept-Profile: plataforma` responde erro.
   - **Atenção:** É o item mais urgente do plano: leva minutos e vale fazer hoje, antes de começar a sessão.
-- [ ] **1.3.2 Como proteger o banco?** `decisão` · *arrumação: pode seguir a recomendação*
-  - **Como é hoje:** O banco confia em quem conecta. A mesma `DATABASE_URL`, do usuário `postgres`, serve o `apps/api` e roda as migrações no deploy (`apps/api/deploy/instalar-release.sh:42`).
-  - **Você decide:**
-    - (A) Banco fechado: revogar tudo de `anon` e `authenticated` no schema `plataforma` e criar um usuário de banco `n1_api`, sem superusuário, só com leitura e escrita nas tabelas de `plataforma`; as migrações seguem com o usuário dono, numa variável nova `DATABASE_URL_MIGRACAO`
-    - (B) Tudo de (A), mais RLS em todas as tabelas, com policy por `workspace_id` lido de `current_setting('app.workspace_id')`, que o `apps/api` fixa a cada transação
-  - **O que muda depois:** (A) custa cerca de 1 dia. (B) soma cerca de 2 dias: `executar` (`apps/api/src/persistencia/unidade-de-trabalho.ts`) e os repositórios do CRM passam a abrir toda transação com `set_config('app.workspace_id', …)`, e um erro de Espaço vira recusa do banco, não só do código.
-  - **Recomendo:** (A) agora; (B) quando houver mais de uma empresa no sistema (decisão 12.1 da Sessão 12).
-- [ ] **1.3.3 Escrever a migração `009`** `banco`
+- [x] **1.3.2 Como proteger o banco?** `decisão` · *decidida*
+  - **Decidido:** Escolha A: banco só fechado, com o usuário `n1_api`, e sem RLS nesta fase. A RLS por `workspace_id` fica adiada pela decisão 12.1 (mais de uma empresa no sistema), não esquecida.
+  - **O que muda no plano:** (A) custa cerca de 1 dia. (B) soma cerca de 2 dias: `executar` (`apps/api/src/persistencia/unidade-de-trabalho.ts`) e os repositórios do CRM passam a abrir toda transação com `set_config('app.workspace_id', …)`, e um erro de Espaço vira recusa do banco, não só do código.
+- [x] **1.3.3 Escrever a migração `009`** `banco` · *feito*
+  - **Andamento:** plano 09-04 e 09-20 — Aplicada em produção em 28/10.
   - **Hoje:** A `008` é a última e é imutável. O deploy aplica sozinho toda migração nova a cada merge na `main` (`instalar-release.sh:42`), então a `009` chega em produção no primeiro deploy depois do merge.
   - **O que fazer:**
     1. Criar `apps/api/migracoes/009-seguranca-e-cofre.sql` com: `revoke all on schema plataforma from public, anon, authenticated`; `revoke all on all tables in schema plataforma from anon, authenticated`; `alter default privileges in schema plataforma revoke all on tables from anon, authenticated`.
@@ -290,7 +292,8 @@ Vem antes de qualquer dado real de cliente (da Sessão 4 em diante). Hoje `GET /
     4. Criar o papel à mão, uma vez por banco, no SQL Editor: `create role n1_api login password '<senha forte>'`. A senha nunca entra no arquivo.
     5. Aplicar primeiro em homologação (tarefa 1.7) e só depois fazer o merge.
   - **Pronto quando:** `npm run migrar -w @n1/api -- --seco` lista `pendente 009-seguranca-e-cofre.sql`; depois de aplicada, `select has_table_privilege('n1_api','plataforma.registros','SELECT')` é `true` e o mesmo para `anon` é `false`.
-- [ ] **1.3.4 Trocar a conexão do `apps/api` para o usuário `n1_api`** `api` `infra`
+- [x] **1.3.4 Trocar a conexão do `apps/api` para o usuário `n1_api`** `api` `infra` · *feito*
+  - **Andamento:** plano 09-04 e 09-20 — Em produção a api roda como `n1_api` desde 28/10.
   - **Hoje:** `conexao.ts:135` lê só `DATABASE_URL`, e `migrar.cli.ts` usa o mesmo pool. Na VPS, o ambiente fica em `/opt/n1-crm/shared/api.env`. Em desenvolvimento, `DATABASE_SSL_INSECURE=true` desliga a verificação de TLS (decisão da Fase 2, `08-PROVAS.md` item 5); fora do notebook, `DATABASE_CA_CERT` ou `DATABASE_CA_PATH` é obrigatório.
   - **O que fazer:**
     1. Em `apps/api/src/persistencia/migrar.cli.ts`, usar `DATABASE_URL_MIGRACAO` quando existir, e `DATABASE_URL` quando não.
@@ -304,11 +307,13 @@ Vem antes de qualquer dado real de cliente (da Sessão 4 em diante). Hoje `GET /
 
 **Pronto quando:** Um teste grava uma credencial, lê de volta o mesmo valor e prova que a coluna no banco só tem bytes cifrados; nenhuma rota devolve o segredo.
 
-- [ ] **1.4.1 Criar a tabela `plataforma.credenciais` na `009`** `banco`
+- [x] **1.4.1 Criar a tabela `plataforma.credenciais` na `009`** `banco` · *feito*
+  - **Andamento:** plano 09-04
   - **Hoje:** Não existe. A única tabela de credencial é `plataforma.service_credentials` (`003-integracao-e-importacao.sql:99`), que guarda hash da credencial do `automation/`, não segredo que se lê de volta.
   - **O que fazer:** Na `009`: `plataforma.credenciais` com `id`, `workspace_id`, `dono_tipo` (`canal` ou `integracao`), `dono_id`, `tipo` (por exemplo `token_de_acesso`), `segredo_cifrado bytea`, `iv bytea`, `etiqueta bytea`, `versao_da_chave int`, `criado_em`, `atualizado_em`, `revogado_em`; índice único em (`workspace_id`, `dono_tipo`, `dono_id`, `tipo`) onde `revogado_em is null`.
   - **Pronto quando:** `\d plataforma.credenciais` no banco de homologação mostra as colunas e o índice.
-- [ ] **1.4.2 Cifrar e decifrar no `apps/api`** `api`
+- [x] **1.4.2 Cifrar e decifrar no `apps/api`** `api` · *feito*
+  - **Andamento:** plano 09-10 — Cofre com AES-256-GCM.
   - **Hoje:** Não há `createCipheriv` nem `pgcrypto` em nenhum lugar do repositório.
   - **O que fazer:**
     1. Criar `apps/api/src/servicos/cofre.ts` com `guardarCredencial(cliente, { workspaceId, donoTipo, donoId, tipo, segredo })` e `lerCredencial(cliente, …)`, usando AES-256-GCM do `node:crypto`, com IV novo a cada gravação.
@@ -323,13 +328,15 @@ Vem antes de qualquer dado real de cliente (da Sessão 4 em diante). Hoje `GET /
 
 **Pronto quando:** Uma chamada a `/v1/public/forms/<segredo>` não deixa o segredo nem no log do `apps/api` nem em `/var/log/nginx/n1-crm-api.access.log`.
 
-- [ ] **1.5.1 Configurar `redact` e mascarar a URL no logger do `apps/api`** `api`
+- [x] **1.5.1 Configurar `redact` e mascarar a URL no logger do `apps/api`** `api` · *feito*
+  - **Andamento:** plano 09-05
   - **Hoje:** `index.ts:97` passa `logger: true`; `app.ts:108` repassa ao Fastify. `LOG_LEVEL` está em `apps/api/.env.example:24`, mas nenhum código o lê.
   - **O que fazer:**
     1. Criar `apps/api/src/observabilidade/log.ts` com `opcoesDoLogger()`: `level` de `LOG_LEVEL` (padrão `info`); `redact` com `req.headers.authorization` e os caminhos `*.segredo`, `*.secret`, `*.token`, `*.senha`, censura “[oculto]”; serializador de `req` que troca o segmento depois de `/v1/public/forms/` e `/v1/public/tasks/` por `***`.
     2. `index.ts` passa `buildApp({ logger: opcoesDoLogger() })`, e `OpcoesDoApp.logger` (`app.ts:61`) passa a aceitar o objeto.
   - **Pronto quando:** Teste em `apps/api/src/observabilidade/log.test.ts`: com o logger escrevendo num fluxo de memória, `GET /v1/public/forms/abc123` produz linha sem `abc123`.
-- [ ] **1.5.2 Mascarar o segredo no log de acesso do nginx** `infra`
+- [x] **1.5.2 Mascarar o segredo no log de acesso do nginx** `infra` · *feito*
+  - **Andamento:** plano 09-06 e 09-20 — Provado em Docker (09-06) e aplicado no nginx da VPS (09-20, 28/10).
   - **Hoje:** `apps/api/deploy/nginx-n1-crm-api.conf` usa `access_log` com o formato padrão, que grava a URL inteira.
   - **O que fazer:**
     1. Num arquivo `conf.d` do nginx, criar um `map` sobre `$request_uri` que troca o segmento depois de `/v1/public/forms/` e `/v1/public/tasks/` por `***`, e um `log_format` próprio que usa a variável do `map` no lugar da URL.
@@ -343,7 +350,8 @@ Vem antes de qualquer dado real de cliente (da Sessão 4 em diante). Hoje `GET /
 
 **Pronto quando:** 50 chamadas seguidas do mesmo IP a `/v1/public/forms/x` recebem `429` a partir de cerca da 40ª.
 
-- [ ] **1.6.1 Pôr `limit_req` no nginx para `/v1/public/`** `infra`
+- [x] **1.6.1 Pôr `limit_req` no nginx para `/v1/public/`** `infra` · *feito*
+  - **Andamento:** plano 09-06 e 09-20 — Provado em Docker (09-06) e aplicado no nginx da VPS (09-20, 28/10).
   - **Hoje:** `criarLimiteDeTaxa` (`apps/api/src/servicos/limite-de-taxa.ts:43`) conta em memória: 30 por minuto por IP e 60 por segredo no Formulário (`formularios-publicos.ts:188-189`), 60 por minuto por IP na Tarefa pública (`tarefas-publicas.ts:48`). O `apps/api` roda num processo só (`n1-crm-api.service`).
   - **O que fazer:**
     1. Em `/etc/nginx/conf.d/n1-crm-limites.conf`: `limit_req_zone $binary_remote_addr zone=n1_publico:10m rate=30r/m;`.
@@ -351,7 +359,8 @@ Vem antes de qualquer dado real de cliente (da Sessão 4 em diante). Hoje `GET /
     3. Manter o limite em memória como segunda camada e corrigir o comentário de `limite-de-taxa.ts`.
   - **Pronto quando:** Um laço de 50 `curl` contra `https://crm-n1-api.85.155.186.214.nip.io/v1/public/forms/x` mostra `429` nas últimas respostas.
   - **Atenção:** Uma contagem no banco só vale a pena quando o `apps/api` rodar em mais de um processo.
-- [ ] **1.6.2 Documentar o `TRUST_PROXY`** `api`
+- [x] **1.6.2 Documentar o `TRUST_PROXY`** `api` · *feito*
+  - **Andamento:** plano 09-06
   - **Hoje:** `app.ts:106` lê `TRUST_PROXY`, e o serviço da VPS o fixa em `loopback` (`apps/api/deploy/n1-crm-api.service:23`), mas o `apps/api/.env.example` não tem a variável. Sem ela, o limite por IP conta o IP do nginx para todo mundo.
   - **O que fazer:** Acrescentar `TRUST_PROXY=` ao `.env.example`, explicando: vazio em desenvolvimento, `loopback` atrás do nginx.
   - **Pronto quando:** `grep TRUST_PROXY apps/api/.env.example` acha a linha com a explicação.
@@ -362,14 +371,11 @@ Vem antes de qualquer dado real de cliente (da Sessão 4 em diante). Hoje `GET /
 
 **Pronto quando:** Homologação no ar com login e banco próprios, uma restauração de backup feita e anotada, e um erro forçado em homologação chegando como alerta.
 
-- [ ] **1.7.1 Onde fica o banco de homologação?** `decisão` · *arrumação: pode seguir a recomendação*
-  - **Como é hoje:** Há um projeto Supabase (o de produção), com Postgres, Auth e Storage.
-  - **Você decide:**
-    - (A) Um segundo projeto Supabase só para homologação
-    - (B) O mesmo projeto, com um Espaço de Trabalho de teste (outro `WORKSPACE_ID`)
-  - **O que muda depois:** (A) custa a mensalidade de mais um projeto e separa banco, usuários e arquivos. (B) não custa nada, mas uma migração errada em homologação já é em produção, e a `009` não pode ser testada antes.
-  - **Recomendo:** (A).
-- [ ] **1.7.2 Subir o ambiente de homologação** `infra`
+- [x] **1.7.1 Onde fica o banco de homologação?** `decisão` · *decidida*
+  - **Decidido:** Escolha A: a homologação é um segundo projeto Supabase, na organização N1 e na mesma região de produção (`us-west-2`). Separa banco, Auth e Storage, e é nele que a `009`, o `n1_api` e a restauração de backup seriam provados antes de produção.
+  - **O que muda no plano:** (A) custa a mensalidade de mais um projeto e separa banco, usuários e arquivos. (B) não custa nada, mas uma migração errada em homologação já é em produção, e a `009` não pode ser testada antes.
+- [ ] **1.7.2 Subir o ambiente de homologação** `infra` · *em parte*
+  - **Andamento:** plano 09-11 — Os scripts por `AMBIENTE`, o usuário `n1crm-hml` e o job `homologacao` estão no repositório. O ambiente no ar não foi montado: 09-17 pulado por decisão sua em 23/10.
   - **Hoje:** Produção: serviço `n1-crm-api` em `127.0.0.1:3020`, código em `/opt/n1-crm`, site `crm-n1-api.85.155.186.214.nip.io` (`apps/api/deploy/CONTEXT.md`); a web lê `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
   - **O que fazer:**
     1. Criar o banco de homologação conforme a decisão anterior, rodar `npm run migrar -w @n1/api` e `npm run bootstrap:gestao -w @n1/api` nele.
@@ -377,21 +383,24 @@ Vem antes de qualquer dado real de cliente (da Sessão 4 em diante). Hoje `GET /
     3. Em `deploy-api.yml`, um job para a branch `homologacao` com `environment: homologacao` e os segredos desse ambiente.
     4. Na Vercel, as três variáveis `NEXT_PUBLIC_*` do ambiente Preview apontando para a homologação.
   - **Pronto quando:** Um push na branch `homologacao` publica a api; a URL de Preview da Vercel abre `/entrar`, aceita um login de homologação e carrega o Início.
-- [ ] **1.7.3 Ligar o backup diário e testar uma restauração** `infra`
+- [ ] **1.7.3 Ligar o backup diário e testar uma restauração** `infra` · *em parte*
+  - **Andamento:** plano 09-14 — Backup cifrado (age + rclone) e restauração provados em Docker. Ligar na VPS e provar a restauração no seu Mac ficou de fora: 09-18 pulado por decisão sua em 27/10.
   - **Hoje:** Não há script de backup nem registro de restauração no repositório. Não conferi o que o plano do Supabase guarda.
   - **O que fazer:**
     1. Conferir em Database › Backups o que o plano do Supabase guarda e por quantos dias.
     2. Na VPS, um `systemd timer` diário `n1-crm-backup` que roda `pg_dump --schema=plataforma` com `DATABASE_URL_MIGRACAO`, cifra o arquivo e o copia para fora da VPS, guardando 14 dias.
     3. Restaurar o último arquivo no banco de homologação.
   - **Pronto quando:** Depois da restauração, `select count(*) from plataforma.registros` em homologação bate com o número de produção na hora do backup, e a data fica anotada em `apps/api/deploy/CONTEXT.md`.
-- [ ] **1.7.4 Ligar o monitoramento de erros na api e na web** `api` `web` `infra`
+- [ ] **1.7.4 Ligar o monitoramento de erros na api e na web** `api` `web` `infra` · *em parte*
+  - **Andamento:** plano 09-13 e 09-16 — O Sentry está no código da api e da web e só liga com o DSN preenchido. A prova do alerta ficou em backlog (09-19), e a rota de erro de prova ainda precisa sair (09-22).
   - **Hoje:** Erro inesperado no `apps/api` só vai ao log do processo (`app.ts:137`, `request.log.error(erro)`); a web não registra erro em lugar nenhum.
   - **O que fazer:**
     1. No `apps/api`: `@sentry/node`, iniciado em `index.ts` antes de `buildApp`, com `SENTRY_DSN` do ambiente; `Sentry.captureException(erro)` no `setErrorHandler` de `app.ts`; `beforeSend` que apaga corpo, cabeçalhos e a parte da URL com segredo.
     2. Na web: `@sentry/nextjs` pelo arquivo de instrumentação do Next 16 (ler antes o guia em `node_modules/next/dist/docs/`).
     3. No Sentry, uma regra de alerta por e-mail para erro novo em produção e em homologação.
   - **Pronto quando:** Um erro forçado em homologação (uma rota de teste que lança, removida depois) gera alerta por e-mail em até 5 minutos.
-- [ ] **1.7.5 Preparar o servidor da Evolution API** `infra` `você`
+- [ ] **1.7.5 Preparar o servidor da Evolution API** `infra` `você` · *em parte*
+  - **Andamento:** plano 09-14 — Os arquivos da Evolution API estão no repositório. O servidor no ar continua aberto (09-19).
   - **Hoje:** O `automation/` do `financeiro-tria` já usa uma instância própria da Evolution para os avisos do Financeiro (Sessão 4, decisão 4.3). Não há servidor da Evolution para o CRM N1.
   - **O que fazer:**
     1. Escolher o servidor: a mesma Evolution do `automation/`, a VPS compartilhada (Docker, com Postgres e Redis próprios) ou uma VPS nova.
@@ -423,70 +432,68 @@ Fecha a Estrutura de Trabalho (Espaço, Pasta, Lista e Tarefa) antes da mensager
 
 **Pronto quando:** Você abre a Lista, o Espaço, a Pasta e as Configurações e aprova cada uma; a página da Lista fica abaixo de 1.000 linhas.
 
-- [ ] **2.1.1 Tirar o botão “Rodar agenda da Lista (hoje)” e o item “Rodar automações por vencimento (hoje)”** `web`
+- [x] **2.1.1 Tirar o botão “Rodar agenda da Lista (hoje)” e o item “Rodar automações por vencimento (hoje)”** `web` · *feito*
+  - **Andamento:** plano 10-16 — Saíram o botão "Rodar agenda" da Lista, o item "Rodar automações por vencimento" do menu do Financeiro e o texto de ajuda que mandava apertá-lo. Um teste (`sem-rodar-agenda.test.ts`) impede a volta dos dois rótulos. O PR #2 do `n1-tecnologia/crm` entrou na `main` em 04/11 (`2adf633`) depois do D-04 fechado (2.1.3); o `check` e o `seguranca` ficaram verdes e a Vercel publicou a web. Não precisou publicar a API: o PR só mexeu em `apps/web`.
   - **Hoje:** `RunScheduledButton` (`apps/web/src/features/estrutura/bulk-status-bar.tsx:189`) aparece em duas barras da página da Lista (`listas/[lista]/page.tsx:716`, Lista conversacional, e `:784`, Lista comum) sempre que a Lista tem Automação por vencimento ou Tarefa recorrente por calendário. Ele roda `runScheduledAutomations` e `runCalendarRecurrences` na hora, pelo navegador. No Financeiro, o menu “Automatizar” tem o mesmo gesto (`features/estrutura/financeiro/contas-view.tsx:381`). O agendador do servidor (`apps/api/src/automacoes/scheduler-worker.ts`) já roda as duas coisas sozinho.
   - **O que fazer:**
     1. Cumprir antes a decisão abaixo, para nenhuma Lista perder a recorrência.
     2. Apagar `RunScheduledButton` de `bulk-status-bar.tsx` e as duas chamadas em `listas/[lista]/page.tsx`.
     3. Apagar o item “Rodar automações por vencimento (hoje)” do menu “Automatizar” em `contas-view.tsx`; se o menu ficar vazio, apagar o menu.
   - **Pronto quando:** Numa Lista com Tarefa recorrente por calendário, o botão não aparece; `grep -rn 'Rodar agenda' apps/web/src` e `grep -rn 'Rodar automações por vencimento' apps/web/src` não acham nada.
-- [ ] **2.1.2 O que roda a recorrência das Listas sem Automação depois que o botão sair?** `decisão` `api` · *muda o produto*
-  - **Como é hoje:** O agendador só visita as Listas que têm uma Automação publicada com gatilho `condicaoTemporal` (`scheduler-worker.ts:268–302`). Uma Lista que só tem Tarefa recorrente por calendário (`recurrence.triggerMode = porCalendario`) depende do botão para gerar a próxima ocorrência. A Sessão 19 (19.1, “Lixeira e recorrência em todas as Listas”) resolve isso, mas vem bem depois.
-  - **Você decide:**
-    - (A) Trazer para cá a subtarefa da 19.1: o agendador passa a visitar também as Listas com Tarefa recorrente por calendário e as com Tarefa vencida na lixeira
-    - (B) Tirar o botão da barra e deixá-lo só no menu “…” da Lista, para quem administra, até a Sessão 19
-    - (C) Tirar o botão e aceitar que a recorrência por calendário fique parada nessas Listas até a Sessão 19
-  - **O que muda depois:** (A) soma cerca de meio dia aqui e tira meio dia da 19.1: muda a consulta que monta os pares (Espaço de Trabalho, Lista) em `scheduler-worker.ts`. (B) custa uma hora e deixa um gesto manual escondido. (C) não custa nada, mas Tarefas recorrentes deixam de nascer sem aviso.
-  - **Recomendo:** (A): é a mesma consulta que a 19.1 mudaria, e o botão sai de vez.
-- [ ] **2.1.3 Confirmar que o agendador está ligado em produção** `infra` `você`
+- [x] **2.1.2 O que roda a recorrência das Listas sem Automação depois que o botão sair?** `decisão` `api` · *decidida*
+  - **Decidido:** Escolha A: o servidor cuida. O agendador passa a visitar também as Listas com Tarefa recorrente por calendário e as que têm Tarefa vencida na lixeira, além das que já visita. Listas que só têm recorrência nascem direto, sem o ensaio da primeira volta; as com Automação por vencimento (Financeiro, Contas a receber) mantêm o ensaio. Essa parte do agendador sai da Sessão 19 e foi feita aqui.
+  - **O que muda no plano:** (A) soma cerca de meio dia aqui e tira meio dia da 19.1: muda a consulta que monta os pares (Espaço de Trabalho, Lista) em `scheduler-worker.ts`. (B) custa uma hora e deixa um gesto manual escondido. (C) não custa nada, mas Tarefas recorrentes deixam de nascer sem aviso.
+- [x] **2.1.3 Confirmar que o agendador está ligado em produção** `infra` `você` · *feito*
+  - **Andamento:** plano 10-16 — O agendador está ligado em produção desde 29/10, só no `ws_n1` (`AUTOMACOES_ESPACO_ID=ws_n1`, `AUTOMACOES_LISTA_ID` e `AUTOMACOES_ATOR_MEMBER_ID` vazias, `AGENTE_CONTAS_A_PAGAR_ATIVO` ausente). Em 04/11, `npm run automacoes:previa -w @n1/api -- ws_n1 --agenda --dias 7` (só leitura, banco de produção) listou 30 voltas, de 29/10 a 04/11, todas `concluido`: 0 falhou, 0 `SEM_ATOR`, 0 recusas. As Listas só de recorrência (Lista 1 e Lista do subgrupo) fecham sem ensaio; Contas a pagar tem uma volta por dia; Contas a receber só tem a de 29/10, porque a primeira volta de uma Lista com Automação por vencimento é um ensaio e as seguintes esperam `npm run automacoes:liberar`. Você aceitou o ator humano (Q1) em 29/10. O D-04 está fechado em `10-PROVAS.md`.
   - **Hoje:** O agendador só sobe com `AUTOMACOES_WORKER_ATIVO=true` (`apps/api/src/index.ts:192`); o exemplo de ambiente traz `false` (`apps/api/.env.example:101`). A primeira volta de cada Lista roda em ensaio e não grava até alguém liberar (`scheduler-worker.ts:39`).
   - **O que fazer:**
     1. Conferir no ambiente de produção do `apps/api` que `AUTOMACOES_WORKER_ATIVO=true`.
     2. Liberar cada Lista em ensaio com `npm run automacoes:liberar -w @n1/api -- <workspaceId> <listId>`.
   - **Pronto quando:** O log de produção do `apps/api` mostra “scheduler de Automações ativo” (`apps/api/src/index.ts:217`) e, no dia seguinte, uma linha nova em `plataforma.automacao_agenda` para cada Lista com agenda.
-- [ ] **2.1.4 Juntar as duas barras de seleção em lote numa só** `web`
+- [x] **2.1.4 Juntar as duas barras de seleção em lote numa só** `web` · *feito*
+  - **Andamento:** plano 10-06
   - **Hoje:** `BulkStatusBar` é montada em dois lugares da página da Lista: dentro da barra do Financeiro, no lugar de `FinanceToolbar`, só com itens marcados (`listas/[lista]/page.tsx:795`), e no corpo da página nas outras Listas (`:849`). O botão “Selecionar várias” está escrito duas vezes (`:702` e `:770`), e a lente financeira tem um terceiro botão, “Sair da seleção” (`:805`).
   - **O que fazer:**
     1. Criar `apps/web/src/features/estrutura/selecao-em-lote.tsx` com o componente `SelecaoEmLote`: recebe `tasks`, `definitions`, `selecionadas`, `onSelecionar`, `onRelatorio` e `report`; desenha o botão “Selecionar várias” / “Sair da seleção” e, com itens marcados, a `BulkStatusBar`.
     2. A página monta `SelecaoEmLote` uma vez, logo abaixo das abas, nas três lentes (comum, conversacional e financeira). A barra do Financeiro passa a mostrar sempre `FinanceToolbar`.
     3. O relatório do lote continua guardado fora da seleção (`relatorioDeLote`, `page.tsx:173`), como hoje.
   - **Pronto quando:** Os testes de `bulk-status-bar.test.tsx` passam; na Lista comum e em Contas a pagar, marcar duas Tarefas mostra a mesma barra no mesmo lugar; `listas/[lista]/page.tsx` não importa mais `BulkStatusBar`.
-- [ ] **2.1.5 Tirar da Lista as frases de explicação e o botão que nasce desligado** `web`
+- [x] **2.1.5 Tirar da Lista as frases de explicação e o botão que nasce desligado** `web` · *feito*
+  - **Andamento:** plano 10-06
   - **Hoje:** A página da Lista tem: a nota sob o Quadro “Arrastar altera o Status. As validações da Lista continuam valendo…” (`listas/[lista]/page.tsx:1268`); o complemento “— o filtro vale em todas as Visualizações” depois da contagem filtrada (`:893`); as frases de ajuda ao lado do botão principal nas Listas de Meus negócios (`:680`) e na conversacional (`:697`); e o botão “De modelo” da Lista conversacional, que nasce sempre desligado com o motivo `TAREFA_SEM_CONTATO` (`:698`).
   - **O que fazer:**
     1. Apagar a nota do Quadro e as duas frases de ajuda.
     2. Trocar a frase da contagem por “Mostrando X de Y Tarefas.”
     3. Apagar o botão “De modelo” da barra conversacional.
   - **Pronto quando:** Na Lista conversacional (Pós-venda) a barra mostra só “Nova Tarefa” e “Selecionar várias”; no Quadro de qualquer Lista não há texto abaixo das colunas.
-- [ ] **2.1.6 Tirar `Quadro`, `Tabela` e as barras de criação de dentro da página da Lista** `web`
+- [x] **2.1.6 Tirar `Quadro`, `Tabela` e as barras de criação de dentro da página da Lista** `web` · *feito*
+  - **Andamento:** plano 10-06 — A página da Lista caiu de 1.407 para menos de 1.000 linhas.
   - **Hoje:** As funções `Quadro` (`listas/[lista]/page.tsx:1175`, cerca de 100 linhas) e `Tabela` (`:1282`, cerca de 120 linhas) moram no arquivo da página. As três barras de criação (Meus negócios, conversacional e comum, `:668–788`) estão escritas em sequência no JSX.
   - **O que fazer:**
     1. Mover `Quadro` para `apps/web/src/features/estrutura/quadro-de-tarefas.tsx` e `Tabela` para `apps/web/src/features/estrutura/tabela-plana.tsx`, sem mudar o comportamento.
     2. Mover as três barras de criação para `apps/web/src/features/estrutura/barra-de-criacao.tsx`, um componente `BarraDeCriacao` que recebe a lente (`comum`, `conversacional`, `espelhoComercial`, `financeira`) e os callbacks que a página já tem (`create`, `setNovaConversacional`, `setIniciandoConversa`).
   - **Pronto quando:** `wc -l` da página dá menos de 1.000; `npm run check` passa; criar uma Tarefa pela barra e arrastar um cartão no Quadro funcionam como antes.
-- [ ] **2.1.7 Manter as abas Lista e Tabela separadas?** `decisão` `web` · *muda o produto*
-  - **Como é hoje:** As 6 abas da Lista (`listas/[lista]/page.tsx:658`): Lista (`TabelaDeTarefas`, `tabela-de-tarefas.tsx`: grupos por Status, “+” por grupo, seleção e ações rápidas; no Financeiro, `FinanceTable` e `FinanceCards`); Quadro (colunas por Status, arrastar muda o Status; na conversacional, `QuadroNegocios`); Calendário (`CalendarioMensal`); Tabela (`Tabela`: lista plana com 6 colunas fixas — Título, Status, Categoria, Prioridade, Vencimento, Responsáveis — e edição na linha de Status, Prioridade e Vencimento, sem Campos); Linha do tempo (`LinhaDoTempo`, `planning-views.tsx`); Carga (sai na 2.5). A Lista financeira esconde a Carga; a conversacional esconde a Carga e a Linha do tempo (`:660–662`). Lista e Tabela mostram quase o mesmo.
-  - **Você decide:**
-    - (A) Manter as duas como estão
-    - (B) Tirar a aba Tabela
-    - (C) Fazer a Tabela virar planilha: sem grupos, uma coluna por Campo da Lista, editável na célula, como a visualização Tabela do ClickUp
-  - **O que muda depois:** (A) não custa nada. (B) custa uma hora; as Visualizações salvas do tipo `tabela` passam a abrir na aba Lista. (C) custa cerca de 1,5 dia e entraria na 2.7 ou numa sessão própria.
-  - **Recomendo:** (A) nesta sessão; (C) depois, se você sentir falta dos Campos na Tabela durante os testes.
-- [ ] **2.1.8 Organizar as Configurações do contêiner em abas** `web`
+- [x] **2.1.7 Manter as abas Lista e Tabela separadas?** `decisão` `web` · *decidida*
+  - **Decidido:** Escolha A: manter as abas Lista e Tabela separadas, como estão. A Tabela virar planilha (uma coluna por Campo, editável na célula, cerca de 1,5 dia) fica para depois, se você sentir falta dos Campos durante os testes.
+  - **O que muda no plano:** (A) não custa nada. (B) custa uma hora; as Visualizações salvas do tipo `tabela` passam a abrir na aba Lista. (C) custa cerca de 1,5 dia e entraria na 2.7 ou numa sessão própria.
+- [x] **2.1.8 Organizar as Configurações do contêiner em abas** `web` · *feito*
+  - **Andamento:** plano 10-08
   - **Hoje:** `ContainerSettings` (`apps/web/src/features/estrutura/container-settings.tsx:91`) empilha tudo numa rolagem só, nesta ordem: a tabela “Aspectos configuráveis” (`:220`, 6 linhas com a explicação da regra e as colunas “Neste nível”, “Origem do valor” e “Como compõe”); a grade com Conjunto de Status efetivo, Funcionalidades efetivas, Definições de Campo acumuladas, Formulários (só Lista) e Tipos de Tarefa acumulados (`:274–364`); Modelo de Tarefa (só Lista, `:370`); Canais de atendimento (só Lista conversacional, `:400`); e, por último, Identidade e Ciclo de vida (`:430`). A tabela lista Visualizações padrão e Automações, que não têm editor nesta tela.
   - **O que fazer:**
     1. Trocar a rolagem por `Abas` (`features/shell/ui`), com a aba ativa na URL (`?aba=`): Geral (Identidade, Privado, quem criou e Ciclo de vida), Status, Funcionalidades, Campos, Tipos de Tarefa, Visualizações (o editor nasce na 2.6) e, só na Lista, Formulários e “Modelo e canais”.
     2. Apagar a tabela “Aspectos configuráveis”, a constante `ASPECTS` e `REGRA_DOS_MODOS`.
     3. No topo de cada aba de aspecto, uma linha curta: “Herdado de Espaço Comercial” ou “Definido aqui”. Se um ancestral bloqueia o aspecto, “Bloqueado por Pasta X” e os editores desligados com esse motivo. O botão de bloquear nasce na 2.6.
   - **Pronto quando:** Abrir `/estrutura/listas/<id>/configuracoes?aba=campos` cai direto na aba Campos; o texto “Aspectos configuráveis” não aparece em nenhuma tela.
-- [ ] **2.1.9 Deixar a página do Espaço no mesmo formato da página da Pasta** `web`
+- [x] **2.1.9 Deixar a página do Espaço no mesmo formato da página da Pasta** `web` · *feito*
+  - **Andamento:** plano 10-09
   - **Hoje:** A página do Espaço (`apps/web/src/app/(shell)/estrutura/espacos/[espaco]/page.tsx`) usa caixas (`Painel`): Listas diretas e atalhos, Pastas, Painéis (sempre, mesmo vazio, com a dica “Um Painel é criado em Painéis…”) e o painel lateral “Atributos” (`:147`), que só mostra Criado por e Privado. Não tem botão de criar. A página da Pasta (`pastas/[pasta]/page.tsx`) já usa seções com `ReguaDeSecao`, mostra as Tarefas abertas de cada Lista e tem o menu “Criar” (`useCreateContainerDialog`).
   - **O que fazer:**
     1. Reescrever a página do Espaço no formato da Pasta: seções Listas (com os atalhos e a contagem de abertas) e Pastas, e o menu “Criar” com Pasta e Lista, pelo `openCreate` de `useCreateContainerDialog`.
     2. Apagar o painel “Atributos”: Privado vira um selo ao lado do título (`Pilula` “Privado”), e Criado por vai para a aba Geral das Configurações.
     3. Mostrar a seção Painéis só quando houver Painel ancorado no Espaço.
   - **Pronto quando:** Num Espaço sem Painel, a página mostra só Listas e Pastas; “Criar › Lista” abre o diálogo com o Espaço já escolhido.
-- [ ] **2.1.10 Tirar os códigos de regra dos textos da Estrutura** `web` `domínio`
+- [x] **2.1.10 Tirar os códigos de regra dos textos da Estrutura** `web` `domínio` · *feito*
+  - **Andamento:** plano 10-14 — Os 13 textos ficaram sem código, e um teste de varredura impede a volta.
   - **Hoje:** Há 9 códigos em texto visível em `apps/web/src/features/estrutura`: `create-container-dialog.tsx:383` (A3.4), `:428` (B38), `:441` (RN-ESP-03) e `:442` (B25); `tarefa-completa.tsx:1496` (INV-CP-01), `:1524` (RN-CR-02) e `:1537` (RN-CR-07); `financeiro/serie-dialog.tsx:117` (RN-CR-01) e `:150` (RN-CR-07). Mais 4 em recusas do domínio que chegam às telas da Estrutura: `packages/dominio/src/operations/structure.ts:430` (B47) e `operations/financeiro.ts:1810`, `:1824` e `:1827`. O de `pastas/[pasta]/page.tsx:167` está num comentário e não aparece.
   - **O que fazer:**
     1. Apagar o código entre parênteses de cada um dos 13 textos, sem mudar o resto da frase.
@@ -499,7 +506,8 @@ Fecha a Estrutura de Trabalho (Espaço, Pasta, Lista e Tarefa) antes da mensager
 
 **Pronto quando:** Os tempos de `createList`, `updateContainer`, `trashContainer` e `changeTaskStatus` medidos em produção antes e depois estão anotados; criar uma Lista aparece na árvore antes da resposta do servidor; duas gravações simultâneas no mesmo Espaço de Trabalho não hidratam de novo.
 
-- [ ] **2.2.1 Medir quanto leva cada etapa de uma gravação** `api` `banco`
+- [x] **2.2.1 Medir quanto leva cada etapa de uma gravação** `api` `banco` · *feito*
+  - **Andamento:** plano 12-01 e 12-02 — A medição por etapa entrou em `executar()` e o comando `npm run gravacao:medir` roda os quatro gestos na VPS, contra o banco de produção, em loopback. O "antes" (código `5a74ee7`), mediana de `pedidoMs`: 551,0 ms em `createList`, 531,9 em `updateContainer`, 526,1 em `trashContainer` e 535,5 em `changeTaskStatus`; `hidratar` direto, 147,5 ms. Cada ida ao banco custa cerca de 52 ms (o `select 1` mediu 51,7).
   - **Hoje:** `executar()` (`apps/api/src/persistencia/unidade-de-trabalho.ts:116`) faz, por tentativa: `hidratar` (um `select` de todo `plataforma.registros` do Espaço de Trabalho, `repositorio.ts:63`), `syncIdSequence`, a operação, o `update plataforma.workspaces set revisao = revisao + 1 where revisao = $2` e `gravar` (diff por JSON canônico de todos os registros, `repositorio.ts:161`). Nada disso é medido. O único número é o comentário de `repositorio.ts:9`, “cerca de 900 registros e 475 KB”, de antes do Financeiro e do CRM.
   - **O que fazer:**
     1. Em `executar()`, medir com `performance.now()` a duração de `hidratar`, da operação, da trava da revisão e de `gravar`, mais o número de tentativas e de linhas lidas, e devolver isso num campo `medicao` de `ResultadoTransacao`.
@@ -507,15 +515,11 @@ Fecha a Estrutura de Trabalho (Espaço, Pasta, Lista e Tarefa) antes da mensager
     3. Rodar em produção, 10 vezes cada: criar Lista, renomear Lista, enviar à lixeira um Espaço com Listas e mudar o Status de uma Tarefa. Anotar mediana e pior caso de cada etapa.
     4. Rodar no banco de produção: `select colecao, count(*), pg_size_pretty(sum(pg_column_size(dados))::bigint) from plataforma.registros where workspace_id = '<id>' group by colecao order by sum(pg_column_size(dados)) desc;` e anotar o total.
   - **Pronto quando:** Uma tabela com os quatro gestos e as etapas (hidratar, operação, trava, gravar, tentativas), mais o tamanho real de `plataforma.registros`, anotada nesta tarefa antes da decisão abaixo.
-- [ ] **2.2.2 Como otimizar?** `decisão` `banco` `api` `web` · *muda o produto*
-  - **Como é hoje:** Gravar um contêiner custa o mesmo que gravar uma Tarefa: hidratar tudo, operar e comparar tudo. Mas contêiner se edita pouco; o que se grava o tempo todo é Tarefa. As operações de contêiner também escrevem fora dele: `createSpace` cria Tipo de Tarefa, Pasta e concessões (`structure.ts:103–135`); `trashContainer` e `archiveContainer` fecham cronômetros das Tarefas abaixo (`structure.ts:552`). E 23 arquivos do domínio e cerca de 22 da tela leem `state.spaces`, `state.folders` e `state.lists` direto do `DataState`.
-  - **Você decide:**
-    - (A) Tabelas próprias só para Espaço, Pasta e Lista, com rotas REST como as do CRM e uma projeção que os devolve ao `DataState`
-    - (B) Ficar em `plataforma.registros` e cortar o custo onde ele está: travar no começo em vez de repetir, encadear as chamadas de um gesto e mostrar a mudança na hora
-    - (C) Tabelas próprias para a Estrutura inteira (contêineres e Tarefas), numa sessão nova depois desta
-  - **O que muda depois:** (A) custa 4 a 5 dias: migração, repositório, serviço, rotas, projeção de leitura e escrita (como a dos Canais) e troca das telas. Só acelera a gravação de contêiner, que é rara; a de Tarefa continua igual. (B) custa cerca de 2 dias e vale para toda gravação, Tarefa inclusive. (C) é o que resolve de vez, mas são 8 a 10 dias e mexe na maior parte do domínio.
-  - **Recomendo:** (B) agora. Se a medição mostrar `hidratar` acima de 300 ms na mediana, planejar (C) como sessão própria. (A) não compensa: paga o preço de uma migração para acelerar o gesto menos usado.
-- [ ] **2.2.3 Travar o Espaço de Trabalho no começo da transação em vez de repetir a gravação** `api`
+- [x] **2.2.2 Como otimizar?** `decisão` `banco` `api` `web` · *decidida*
+  - **Decidido:** Escolha B: ficar em `plataforma.registros` e cortar o custo onde ele está: travar no começo, encadear as chamadas de um gesto e mostrar a mudança na hora. `hidratar` direto mediu 147,5 ms na mediana, abaixo do limite de 300 ms, então a sessão C (tabelas próprias para a Estrutura inteira) não entrou no ROADMAP. A meta é que o ganho que o B der basta, sem alvo numérico por gesto: você aceitou a recomendação em 02/11. As subtarefas 2.2.6 a 2.2.9, do caminho A, ficam dispensadas.
+  - **O que muda no plano:** (A) custa 4 a 5 dias: migração, repositório, serviço, rotas, projeção de leitura e escrita (como a dos Canais) e troca das telas. Só acelera a gravação de contêiner, que é rara; a de Tarefa continua igual. (B) custa cerca de 2 dias e vale para toda gravação, Tarefa inclusive. (C) é o que resolve de vez, mas são 8 a 10 dias e mexe na maior parte do domínio.
+- [x] **2.2.3 Travar o Espaço de Trabalho no começo da transação em vez de repetir a gravação** `api` · *feito*
+  - **Andamento:** plano 12-04 — `executar()` trava a linha do Espaço no começo da transação e grava com uma tentativa só; as importações longas ficam no regime otimista, para não segurar o `ws_n1`. Duas gravações simultâneas no mesmo Espaço hidratam 2 vezes, não 3 (`unidade-de-trabalho-concorrencia.test.ts`, Postgres 16 local).
   - **Hoje:** `executar()` lê a revisão, hidrata, roda a operação e só no fim tenta `update plataforma.workspaces … where revisao = $2` (`unidade-de-trabalho.ts:162`). Se outra gravação entrou no meio, desfaz e recomeça, até 3 vezes: quem perde hidrata o Espaço de Trabalho de novo, e no terceiro conflito a tela recebe 409 e re-hidrata tudo por `GET /estado` (`apps/web/src/dados/store.ts:172`).
   - **O que fazer:**
     1. Logo depois de `inicioDaTransacao()`, rodar `select revisao from plataforma.workspaces where workspace_id = $1 for update` e só então `hidratar`.
@@ -523,14 +527,16 @@ Fecha a Estrutura de Trabalho (Espaço, Pasta, Lista e Tarefa) antes da mensager
     3. Atualizar a seção “Os prazos do servidor e a trava esgotada” do `CONTEXT.md` da persistência.
   - **Pronto quando:** Um teste novo em `unidade-de-trabalho-trava.test.ts` dispara duas `executar()` ao mesmo tempo no mesmo Espaço de Trabalho: as duas gravam com uma tentativa cada e `hidratar` roda exatamente 2 vezes (pula sem `DATABASE_URL`, como os outros).
   - **Atenção:** Só com (B).
-- [ ] **2.2.4 Aplicar todas as respostas de um gesto com várias chamadas, sem re-hidratar** `web`
+- [x] **2.2.4 Aplicar todas as respostas de um gesto com várias chamadas, sem re-hidratar** `web` · *feito*
+  - **Andamento:** plano 12-05 — `gravar` devolve a lista de respostas, uma por chamada, e `enviar` aplica as diferenças em ordem, sem re-hidratar.
   - **Hoje:** Quando um `run` chama mais de uma operação, `transporteHttp.gravar` (`apps/web/src/dados/transporte.ts:171`) manda as chamadas em sequência, todas com a mesma `pedido.revisao`, e devolve só a última resposta. O store compara a `revisaoAnterior` dessa última com a sua (`store.ts:129`), elas não batem, e ele re-hidrata o Espaço de Trabalho inteiro. O caso conhecido é `(shell)/page.tsx` (cria a Sessão de Chat e manda a mensagem). A ação em lote de Status não entra aqui: é uma operação só, `alterarStatusEmLote`.
   - **O que fazer:**
     1. `gravar` passa a devolver a lista de respostas, uma por chamada, parando na primeira que não for `diferenca`.
     2. `enviar` (`store.ts:123`) aplica as diferenças em ordem: cada uma só se a `revisaoAnterior` dela for a revisão atual do store; se uma não encaixar, aí sim re-hidrata.
   - **Pronto quando:** Um teste em `apps/web/src/dados/store.test.ts` com transporte falso: um `run` com duas chamadas aplica as duas diferenças e não chama `hidratar`.
   - **Atenção:** Só com (B).
-- [ ] **2.2.5 Mostrar a mudança na tela antes da resposta do servidor** `web`
+- [x] **2.2.5 Mostrar a mudança na tela antes da resposta do servidor** `web` · *feito*
+  - **Andamento:** plano 12-06 a 12-09 — A mudança aparece na hora e a recusa do servidor a tira; os pedidos saem um de cada vez, na ordem do clique. O item novo aparece "Salvando…" e sem link até o servidor confirmar o id, o clique numa âncora com id pendente é cancelado e fechar a aba com gravação pendente pergunta antes. A web e a API estão em produção desde 02/11. Provado por teste; você deu a subtarefa por concluída em 04/11. Os testes 1 e 3 de `12-UAT.md` (ver na tela de produção e a linha `gravacao medida`) seguem como bloqueados no registro, e `12-VERIFICATION.md` segue `human_needed`.
   - **Hoje:** `rodarNaCopia` (`apps/web/src/dados/store.ts:205`) roda a operação numa cópia, manda as chamadas e descarta a cópia: o `data` real só muda quando a diferença volta (`store.ts:142`). Criar uma Lista pelo diálogo (`features/estrutura/create-container-dialog.tsx:217`) espera essa volta para navegar.
   - **O que fazer:**
     1. O store guarda dois estados: `confirmado` (o que o servidor já devolveu) e `data` (o que a tela mostra). Uma operação aceita localmente vira o novo `data` na hora.
@@ -539,7 +545,8 @@ Fecha a Estrutura de Trabalho (Espaço, Pasta, Lista e Tarefa) antes da mensager
     4. O diálogo de criação continua esperando o id do servidor para navegar (`runConfirmado`), mas a árvore (`StructureTree`, `features/shell/app-shell.tsx:600`) já mostra a Lista nova.
   - **Pronto quando:** Um teste em `store.test.ts` com transporte lento: depois de `run(createList)`, `data.lists` já tem a Lista antes de o transporte responder; se o transporte devolver `ok: false`, a Lista some e `lastResult.error` traz a mensagem.
   - **Atenção:** Só com (B). O empurrão de mudanças entre telas abertas (trocar a pergunta a cada 5 s por tempo real) é da 3.4.
-- [ ] **2.2.6 Criar as tabelas de Espaço, Pasta e Lista** `banco`
+- [ ] **2.2.6 Criar as tabelas de Espaço, Pasta e Lista** `banco` · *dispensada*
+  - **Andamento:** plano decisão 2.2.2 — Fazia parte do caminho A (tabelas próprias de Espaço, Pasta e Lista). A 2.2.2 seguiu pelo B, então não será feita.
   - **Hoje:** Espaço, Pasta e Lista são linhas de `plataforma.registros` com `colecao` igual a `spaces`, `folders` ou `lists` e o objeto inteiro em `dados` (jsonb).
   - **O que fazer:**
     1. Migração nova com `plataforma.espacos`: `workspace_id`, `id`, `nome`, `descricao`, `icone`, `cor`, `ordem` (double precision), `privado` (boolean), `estado` (`ativo`, `arquivado`, `naLixeira`), `estado_antes_da_lixeira`, `arquivado_em`, `na_lixeira_em`, `modos` (jsonb), `bloqueios` (jsonb), `conjunto_de_status` (jsonb, obrigatório), `funcionalidades` (jsonb), `visualizacoes_padrao` (jsonb), `atalhos` (jsonb), `campos_herdados_fora` (jsonb), `proveniencia` (jsonb), `criado_por` (jsonb), `criado_em`, `atualizado_em`, chave `(workspace_id, id)`.
@@ -549,7 +556,8 @@ Fecha a Estrutura de Trabalho (Espaço, Pasta, Lista e Tarefa) antes da mensager
     5. Copiar os dados de `plataforma.registros` para as três tabelas e apagar as linhas copiadas na mesma migração.
   - **Pronto quando:** `npm run migrar -w @n1/api -- --seco` lista a migração; aplicada em homologação, `select count(*)` de cada tabela bate com o de `plataforma.registros` antes dela.
   - **Atenção:** Só com (A).
-- [ ] **2.2.7 Criar o serviço e as rotas REST de contêiner** `api`
+- [ ] **2.2.7 Criar o serviço e as rotas REST de contêiner** `api` · *dispensada*
+  - **Andamento:** plano decisão 2.2.2 — Fazia parte do caminho A. A 2.2.2 seguiu pelo B, então não será feita.
   - **Hoje:** Tudo passa por `POST /operacoes/:nome` com `createSpace`, `createFolder`, `createList`, `updateContainer`, `archiveContainer`, `unarchiveContainer`, `trashContainer` e `restoreContainer` (`apps/api/src/rotas/esquemas/estrutura.ts:92–99`).
   - **O que fazer:**
     1. `apps/api/src/repositorios/estrutura/conteineres.ts`: o SQL das três tabelas, no padrão de `repositorios/crm/funis.ts`.
@@ -558,21 +566,24 @@ Fecha a Estrutura de Trabalho (Espaço, Pasta, Lista e Tarefa) antes da mensager
     4. Tirar as 8 operações de `POST /operacoes/:nome`: o nome devolve 404 dizendo a rota nova.
   - **Pronto quando:** Testes em `apps/api/src/rotas/estrutura/*.test.ts` no padrão dos do CRM: criar, editar, arquivar e enviar à lixeira cada um, e `POST /operacoes/createList` devolve 404.
   - **Atenção:** Só com (A).
-- [ ] **2.2.8 Projetar os contêineres das tabelas no `DataState`** `api`
+- [ ] **2.2.8 Projetar os contêineres das tabelas no `DataState`** `api` · *dispensada*
+  - **Andamento:** plano decisão 2.2.2 — Fazia parte do caminho A. A 2.2.2 seguiu pelo B, então não será feita.
   - **Hoje:** Os Canais da 008 fazem isso (`apps/api/src/persistencia/canais-projetados.ts`): entram em `GET /estado` e em `executar()`, nunca em `hidratar()`.
   - **O que fazer:**
     1. Criar `apps/api/src/persistencia/conteineres-projetados.ts` no mesmo formato: carregar as três tabelas para `state.spaces`, `state.folders` e `state.lists` em `rotas/estado.ts` e em `executar()`.
     2. Ao contrário dos Canais, a projeção também escreve: `overrideStatusSet`, `setContainerFeature`, `alterarModeloDaLista` e `definirCanaisDaLista` mudam o contêiner por `POST /operacoes`. Comparar a fotografia de antes com a de depois e gravar o que mudou nas tabelas, e tirar os projetados do estado antes de `gravar()`.
   - **Pronto quando:** Um teste prova que `setContainerFeature` por `POST /operacoes` grava em `plataforma.listas` e que nenhuma linha `colecao = 'lists'` volta para `plataforma.registros`.
   - **Atenção:** Só com (A).
-- [ ] **2.2.9 Trocar as telas de contêiner para as rotas novas** `web`
+- [ ] **2.2.9 Trocar as telas de contêiner para as rotas novas** `web` · *dispensada*
+  - **Andamento:** plano decisão 2.2.2 — Fazia parte do caminho A. A 2.2.2 seguiu pelo B, então não será feita.
   - **Hoje:** O diálogo de criação (`create-container-dialog.tsx:217`) e a Identidade e o Ciclo de vida (`identidade-e-ciclo-de-vida.tsx:68`, `:206`, `:217`, `:241`, `:262`) chamam as operações por `run`/`runConfirmado`.
   - **O que fazer:**
     1. Criar `apps/web/src/dados/estrutura/conteineres.ts` com `criarEspaco`, `criarPasta`, `criarLista`, `editarConteiner`, `arquivar`, `desarquivar`, `enviarParaLixeira` e `restaurar`, sobre um `chamarApi` igual a `chamarCrm` (`dados/crm/cliente-crm.ts:50`).
     2. As duas telas passam a chamá-las; depois de cada uma, o store aplica o registro devolvido em `data` (uma função nova `aplicarRegistro` em `store.ts`).
   - **Pronto quando:** Criar uma Lista pela tela grava uma linha em `plataforma.listas` e nenhuma em `plataforma.registros`.
   - **Atenção:** Só com (A).
-- [ ] **2.2.10 Medir de novo depois da mudança** `api`
+- [x] **2.2.10 Medir de novo depois da mudança** `api` · *feito*
+  - **Andamento:** plano 12-10 — Mesmo comando, na VPS (código `37c1cab`). Mediana de `pedidoMs` de um pedido isolado: 611,9 ms em `createList` (antes, 551,0), 612,1 em `updateContainer` (531,9), 614,4 em `trashContainer` (526,1) e 611,0 em `changeTaskStatus` (535,5), de 11% a 17% a mais, porque a trava no começo custa uma ida e volta (cerca de 51 ms). Você aceitou isso no teste 4 da UAT: o ganho está na tela, que muda na hora, e sob disputa, onde a gravação faz uma tentativa só em vez de até três. A linha `gravacao medida` do serviço real (D-03) ainda não foi observada em produção.
   - **Hoje:** Os números de antes ficam anotados na primeira subtarefa.
   - **O que fazer:** Repetir as mesmas medições, com os mesmos quatro gestos, depois do que a decisão escolheu.
   - **Pronto quando:** A tabela desta tarefa tem as colunas “antes” e “depois” preenchidas.
@@ -583,7 +594,8 @@ Fecha a Estrutura de Trabalho (Espaço, Pasta, Lista e Tarefa) antes da mensager
 
 **Pronto quando:** Arrastar uma Lista para outra Pasta na árvore leva as Tarefas junto, pede o mapeamento de Status quando o Conjunto muda, e a ordem nova continua depois de recarregar.
 
-- [ ] **2.3.1 Criar a operação `moveContainer` para Pasta e Lista** `domínio`
+- [x] **2.3.1 Criar a operação `moveContainer` para Pasta e Lista** `domínio` · *feito*
+  - **Andamento:** plano 10-03 e 10-18
   - **Hoje:** Não existe. `parentType` e `parentId` são `readonly` em `Folder` e `List` (`packages/dominio/src/types/structure.ts:221` e `:232`).
   - **O que fazer:**
     1. Tirar `readonly` de `parentType` e `parentId` em `Folder` e `List`.
@@ -594,14 +606,16 @@ Fecha a Estrutura de Trabalho (Espaço, Pasta, Lista e Tarefa) antes da mensager
     6. Uma Pasta que vai para o Espaço vira Pasta de nível 1 (“Subpasta promovida a Pasta”); uma Pasta sem Subpastas que vai para outra Pasta vira Subpasta (“Pasta rebaixada a Subpasta”). Cada caso grava a Atividade com esse nome; os outros gravam “Lista movida” ou “Pasta movida”, com origem e destino em `before` e `after`.
     7. Registrar em `operations/registro.ts`, `operations/index.ts` e no esquema `apps/api/src/rotas/esquemas/estrutura.ts` (sem esquema o `satisfies EsquemasCompletos` não compila).
   - **Pronto quando:** Um teste novo `packages/dominio/src/operations/mover-conteiner.test.ts` cobre: Lista para outra Pasta com o mesmo Conjunto (as Tarefas ficam e não mudam de Status); para um Espaço com outro Conjunto sem mapeamento (recusa) e com mapeamento (Status trocados); Campo que deixa de valer (Valor arquivado); Pasta com Subpastas para dentro de Pasta (recusa); promoção e rebaixamento (Atividade com o nome certo); destino que bloqueia Status sobrescrito no movido (recusa).
-- [ ] **2.3.2 Criar a operação `reorderContainers`** `domínio`
+- [x] **2.3.2 Criar a operação `reorderContainers`** `domínio` · *feito*
+  - **Andamento:** plano 10-04
   - **Hoje:** `order` nasce como o número de irmãos na criação (`structure.ts:93`, `:227`, `:352`) e nenhuma operação a muda. A árvore ordena por `order` (`features/shell/app-shell.tsx:645`).
   - **O que fazer:**
     1. Criar `reorderContainers(state, actingMemberId, pai: { type: "workspace" | "space" | "folder", id }, ids: Id[])` em `structure.ts`: recebe a permutação completa dos irmãos (Pastas e Listas do mesmo pai, ou os Espaços do Espaço de Trabalho), como `PUT /funis/:id/etapas/ordem` faz com as Etapas.
     2. Recusar se faltar ou sobrar id, se faltar `editar` no pai, ou se o pai não estiver ativo; gravar uma Atividade “Ordem alterada” no pai.
     3. Registrar em `registro.ts`, `index.ts` e `esquemas/estrutura.ts`.
   - **Pronto quando:** Teste em `mover-conteiner.test.ts`: reordenar três Listas de uma Pasta grava `order` 0, 1 e 2 na ordem pedida, e uma lista de ids incompleta é recusada.
-- [ ] **2.3.3 Arrastar e soltar na árvore e “Mover para…” no menu** `web`
+- [x] **2.3.3 Arrastar e soltar na árvore e “Mover para…” no menu** `web` · *feito*
+  - **Andamento:** plano 10-12, 10-13 e 10-19 — Arrastar e soltar nativo (sem biblioteca nova), "Mover para…" e "Subir/Descer" no menu.
   - **Hoje:** A árvore (`StructureTree`, `features/shell/app-shell.tsx:600`, com `TreeSpace` `:667`, `TreeFolder` `:764`, `TreeList` `:840` e o menu de cada item em `TreeRow` `:1040`, com o `ActionMenu` em `:1140`) não arrasta nada. A árvore de Chat ao lado já move Sessão entre pastas (`moveChatSessionToFolder`, `app-shell.tsx:931`).
   - **O que fazer:**
     1. Arrastar uma Lista ou Pasta sobre outro item da árvore: soltar no meio de um Espaço ou Pasta chama `moveContainer`; soltar entre dois irmãos chama `reorderContainers`.
@@ -615,14 +629,16 @@ Fecha a Estrutura de Trabalho (Espaço, Pasta, Lista e Tarefa) antes da mensager
 
 **Pronto quando:** Numa Lista com Subtarefas, converter um item cria a Subtarefa e o aviso leva até ela; numa Lista sem Subtarefas ou numa Tarefa no último nível, o botão não aparece.
 
-- [ ] **2.4.1 Criar no domínio a recusa da conversão antes do clique** `domínio`
+- [x] **2.4.1 Criar no domínio a recusa da conversão antes do clique** `domínio` · *feito*
+  - **Andamento:** plano 11-01 — `conversaoDeItemRecusada`, em `derive.ts`, devolve o motivo; a recusa de `convertChecklistItem` usa a mesma mensagem.
   - **Hoje:** As recusas só aparecem depois da confirmação: `convertChecklistItem` (`packages/dominio/src/operations/tasks.ts:590`) recusa o item de segundo nível (`:606`) e o nível acima de `state.workspace.maxSubtaskDepth` (`:612`), e quem recusa a Lista sem Subtarefas é o `createTask` chamado por dentro (`tasks.ts:137`, “Esta Lista não usa Subtarefas.”).
   - **O que fazer:**
     1. Criar `conversaoDeItemRecusada(state, actingMemberId, taskId)` em `packages/dominio/src/derive.ts`, devolvendo o motivo ou `undefined`: sem escrita na Tarefa, `features.subtarefas` desligada na Lista, ou `taskLevel(state, task) + 1 > state.workspace.maxSubtaskDepth` (`derive.ts:307`).
     2. `convertChecklistItem` passa a chamar essa função primeiro.
     3. Trocar a mensagem de `tasks.ts:614` (“Escolha outra Tarefa pai ou converta a partir de um nível acima.”) por “Esta Tarefa já está no nível N, o último permitido. O item não pode virar Subtarefa aqui.”
   - **Pronto quando:** Teste em `packages/dominio/src/operations/operations.test.ts`: `conversaoDeItemRecusada` devolve o motivo para Lista sem Subtarefas e para Tarefa no nível máximo, e `undefined` numa Tarefa de primeiro nível com Subtarefas ligadas; a mensagem nova aparece na recusa de `convertChecklistItem`.
-- [ ] **2.4.2 Mostrar o botão só quando a conversão é possível, na cor normal** `web`
+- [x] **2.4.2 Mostrar o botão só quando a conversão é possível, na cor normal** `web` · *feito*
+  - **Andamento:** plano 11-07 — "Converter em Subtarefa" some em Lista sem Subtarefas e em Tarefa no último nível, e fica na cor normal. Converter mostra o aviso com "Abrir", que leva à Subtarefa nova. Aprovado por você em 29/10.
   - **Hoje:** Em `apps/web/src/features/estrutura/tarefa-completa.tsx:1783` o botão “Converter em Subtarefa” aparece sempre que a Tarefa é editável, com `style={{ color: "var(--erro)" }}` (`:1789`). A confirmação é `destructive` (`:802`), exige digitar o texto do item (`:803–820`) e, ao converter, usa `run` e mostra “Item convertido em Subtarefa: X” sem caminho até ela (`:410–416`).
   - **O que fazer:**
     1. Mostrar o botão só se `conversaoDeItemRecusada` devolver `undefined`.
@@ -630,28 +646,15 @@ Fecha a Estrutura de Trabalho (Espaço, Pasta, Lista e Tarefa) antes da mensager
     3. Trocar `run` por `runConfirmado` e pôr no aviso o link “Abrir” para a Subtarefa, com o id que o servidor devolveu.
     4. A confirmação por texto digitado segue a decisão abaixo.
   - **Pronto quando:** Numa Lista sem Subtarefas o botão não aparece; numa com Subtarefas ele aparece na cor normal, converter mostra o aviso com “Abrir”, e o link abre a Subtarefa nova.
-- [ ] **2.4.3 Manter a confirmação por nome digitado?** `decisão` `web` · *muda o produto*
-  - **Como é hoje:** Para converter, a pessoa digita o texto inteiro do item (`tarefa-completa.tsx:803`). A conversão não tem volta, mas não apaga nada: o item fica marcado como convertido, com o link para a Subtarefa. No ClickUp, converter é um clique no menu do item.
-  - **Você decide:**
-    - (A) Manter a digitação do nome
-    - (B) Confirmar com um clique, sem digitar, com o aviso de que não há volta
-    - (C) Converter direto, sem confirmação
-  - **O que muda depois:** (A) não muda nada. (B) e (C) custam minutos. Com (C), um clique errado deixa uma Subtarefa a mais para enviar à lixeira.
-  - **Recomendo:** (B).
-- [ ] **2.4.4 O que fazer com os subitens de checklist?** `decisão` `domínio` `web` · *muda o produto*
-  - **Como é hoje:** O tipo prevê subitem (`ChecklistItem.parentItemId`, `types/structure.ts:282`), e `convertChecklistItem` leva os subitens para um Checklist da Subtarefa nova (`tasks.ts:627`). Mas nenhuma operação cria subitem (`addChecklistItem`, `tasks.ts:896`, não aceita pai), nenhum seed tem subitem, e a Tarefa completa esconde os que existirem (`tarefa-completa.tsx:1693`). Na prática, subitem não existe.
-  - **Você decide:**
-    - (A) Criar subitens: `addChecklistItem` aceita `parentItemId`, a tela mostra o subitem recuado sob o item, e um subitem também pode virar Subtarefa
-    - (B) Deixar subitens fora: tirar `parentItemId` do tipo e a migração de subitens de `convertChecklistItem`
-  - **O que muda depois:** (A) custa cerca de 1 dia (domínio, esquema da API e tela) e entra nesta tarefa. (B) custa uma hora e simplifica o modelo; se um dia quiser subitens, eles voltam como trabalho novo.
-  - **Recomendo:** (B) nesta sessão: ninguém usa subitem hoje, e o checklist de um nível cobre os seus testes.
-- [ ] **2.4.5 Converter também pelo cartão do Quadro?** `decisão` `web` · *arrumação: pode seguir a recomendação*
-  - **Como é hoje:** Só dá para converter com a Tarefa aberta (página, popup ou drawer, todos pela `tarefa-completa.tsx`). O cartão do Quadro (`features/estrutura/cartao-de-tarefa.tsx`) não mostra os itens do checklist.
-  - **Você decide:**
-    - (A) Sim: o cartão ganha um menu com os itens do checklist e “Converter em Subtarefa”
-    - (B) Não: só com a Tarefa aberta
-  - **O que muda depois:** (A) custa cerca de meio dia de tela. (B) não custa nada.
-  - **Recomendo:** (B): para converter a pessoa precisa ver o item no contexto, e a Tarefa aberta dá esse contexto.
+- [x] **2.4.3 Manter a confirmação por nome digitado?** `decisão` `web` · *decidida*
+  - **Decidido:** Escolha B: a conversão confirma com um clique, com o aviso de que não há volta. A digitação do nome do item e a cor de perigo saem.
+  - **O que muda no plano:** (A) não muda nada. (B) e (C) custam minutos. Com (C), um clique errado deixa uma Subtarefa a mais para enviar à lixeira.
+- [x] **2.4.4 O que fazer com os subitens de checklist?** `decisão` `domínio` `web` · *decidida*
+  - **Decidido:** Escolha B: subitens ficam fora do modelo. O checklist tem um nível só, que cobre os seus testes; ninguém usava subitem.
+  - **O que muda no plano:** (A) custa cerca de 1 dia (domínio, esquema da API e tela) e entra nesta tarefa. (B) custa uma hora e simplifica o modelo; se um dia quiser subitens, eles voltam como trabalho novo.
+- [x] **2.4.5 Converter também pelo cartão do Quadro?** `decisão` `web` · *decidida*
+  - **Decidido:** Escolha B: converter só com a Tarefa aberta (página, popup ou gaveta). O cartão do Quadro não ganha menu, porque para converter a pessoa precisa ver o item no contexto.
+  - **O que muda no plano:** (A) custa cerca de meio dia de tela. (B) não custa nada.
 
 ### 2.5 Remover a visualização de carga
 
@@ -659,37 +662,37 @@ Fecha a Estrutura de Trabalho (Espaço, Pasta, Lista e Tarefa) antes da mensager
 
 **Pronto quando:** Nenhuma Lista oferece a Carga; a API recusa salvar uma Visualização do tipo `carga`; nenhuma Visualização gravada tem esse tipo.
 
-- [ ] **2.5.1 Tirar o tipo `carga` e o cálculo `workload` do domínio** `domínio`
+- [x] **2.5.1 Tirar o tipo `carga` e o cálculo `workload` do domínio** `domínio` · *feito*
+  - **Andamento:** plano 10-07
   - **Hoje:** `View.kind` aceita `carga` (`packages/dominio/src/types/structure.ts:111`). `workload()` e `WorkloadCell` estão em `packages/dominio/src/derive.ts:1196–1227`. O teste “Carga: estimativa cai na semana do vencimento…” está em `operations/operations.test.ts:3361`.
   - **O que fazer:**
     1. Tirar `carga` da união `View.kind`.
     2. Apagar `workload` e `WorkloadCell` de `derive.ts`. `weekStartOf` (`derive.ts:1173`) fica: a Linha do tempo usa (`planning-views.tsx:71`).
     3. Apagar do teste de `operations.test.ts:3361` a parte da carga; a parte de capacidade segue a decisão abaixo.
   - **Pronto quando:** `npm run check` passa; `grep -rn workload packages apps --include='*.ts' --include='*.tsx'` não acha nada fora de `node_modules`.
-- [ ] **2.5.2 Tirar `carga` do esquema da API** `api`
+- [x] **2.5.2 Tirar `carga` do esquema da API** `api` · *feito*
+  - **Andamento:** plano 10-07
   - **Hoje:** `VIEW_KIND` em `apps/api/src/rotas/esquemas/escala.ts:12` aceita `carga`, e a linha `:104` confere que o esquema é igual ao tipo do domínio.
   - **O que fazer:** Tirar `carga` de `VIEW_KIND`; a conferência de `:104` passa a valer sozinha.
   - **Pronto quando:** Um teste em `apps/api/src/rotas/esquemas/escala.test.ts` prova que `saveView` com `kind: carga` é recusado com 400.
-- [ ] **2.5.3 Trocar as Visualizações gravadas do tipo `carga` para `lista`** `banco`
+- [x] **2.5.3 Trocar as Visualizações gravadas do tipo `carga` para `lista`** `banco` · *feito*
+  - **Andamento:** plano 10-17 — Migração `010` aplicada em produção em 29/10 (16h27, pelo dono). Antes e depois: 0 Visualizações do tipo `carga` em todos os Espaços de Trabalho; `--seco` com 0 pendentes.
   - **Hoje:** Uma Visualização salva com a aba Carga aberta guarda `kind: carga` em `plataforma.registros` (`colecao = 'views'`). Depois da mudança, `abaDaView` (`apps/web/src/features/estrutura/tipo-de-visualizacao.ts:22`) devolveria uma aba que não existe.
   - **O que fazer:**
     1. Contar antes: `select count(*) from plataforma.registros where colecao = 'views' and dados->>'kind' = 'carga';`.
     2. Migração nova (só dados): `update plataforma.registros set dados = jsonb_set(dados, '{kind}', '"lista"') where colecao = 'views' and dados->>'kind' = 'carga';`. Pode ser a mesma migração de dados da 2.6 (Listas sem `blocks`).
   - **Pronto quando:** Depois da migração, a contagem acima dá 0.
-- [ ] **2.5.4 Tirar a aba Carga da tela** `web`
+- [x] **2.5.4 Tirar a aba Carga da tela** `web` · *feito*
+  - **Andamento:** plano 10-07
   - **Hoje:** A aba está em `listas/[lista]/page.tsx:658` (com os filtros das lentes em `:660` e `:662`) e desenha `CargaDeTrabalho` (`:993`; componente em `features/estrutura/planning-views.tsx:293`). `TipoDeAba` e `ROTULO_DA_ABA` têm `carga` (`tipo-de-visualizacao.ts:11` e `:19`). Não há teste de tela da Carga.
   - **O que fazer:**
     1. Tirar `carga` de `TipoDeAba` e de `ROTULO_DA_ABA`.
     2. Tirar `carga` do array de abas da página e simplificar os dois filtros: a financeira deixa de filtrar; a conversacional filtra só `linha`.
     3. Apagar `CargaDeTrabalho` de `planning-views.tsx` e os imports que sobrarem (`workload`, `memberCapacityMinutes`).
   - **Pronto quando:** A Lista mostra 5 abas (Lista, Quadro, Calendário, Tabela, Linha do tempo); a Lista conversacional mostra 4.
-- [ ] **2.5.5 A capacidade semanal do Membro sai junto?** `decisão` `domínio` `web` · *arrumação: pode seguir a recomendação*
-  - **Como é hoje:** Cada Membro tem `weeklyCapacityMinutes` (`packages/dominio/src/types/workspace.ts:128`), editado por `setMemberCapacity` (`operations/planning.ts:42`) no `CapacityEditor` (`app/(shell)/configuracoes/membros/page.tsx:468`) e mostrado na coluna “Capacidade/sem” (`:346`). Só a Carga lê esse número.
-  - **Você decide:**
-    - (A) Sai junto: tipo, operação, esquema da API, editor e coluna
-    - (B) Fica, para um uso futuro
-  - **O que muda depois:** (A) custa cerca de uma hora: tira `weeklyCapacityMinutes`, `memberCapacityMinutes`, `setMemberCapacity` (de `planning.ts`, `registro.ts`, `index.ts` e `apps/api/src/rotas/esquemas/planejamento.ts`), o `CapacityEditor`, a coluna e o trecho de capacidade do teste de `operations.test.ts:3373–3376`. (B) deixa um campo na tela de Membros que não muda nada.
-  - **Recomendo:** (A).
+- [x] **2.5.5 A capacidade semanal do Membro sai junto?** `decisão` `domínio` `web` · *decidida*
+  - **Decidido:** Escolha A: a capacidade semanal do Membro sai junto com a Carga. O valor já gravado em cada Membro é ignorado, não migrado.
+  - **O que muda no plano:** (A) custa cerca de uma hora: tira `weeklyCapacityMinutes`, `memberCapacityMinutes`, `setMemberCapacity` (de `planning.ts`, `registro.ts`, `index.ts` e `apps/api/src/rotas/esquemas/planejamento.ts`), o `CapacityEditor`, a coluna e o trecho de capacidade do teste de `operations.test.ts:3373–3376`. (B) deixa um campo na tela de Membros que não muda nada.
 
 ### 2.6 Fechar as lacunas do modelo da Estrutura
 
@@ -697,7 +700,8 @@ Fecha a Estrutura de Trabalho (Espaço, Pasta, Lista e Tarefa) antes da mensager
 
 **Pronto quando:** Mudar as Visualizações no Espaço muda as abas das Listas abaixo; bloquear os Status num Espaço impede uma Lista de mudá-los; uma menção na descrição avisa a pessoa; o histórico mostra o texto anterior da descrição; e a Tarefa e o seu editor de tempo mostram o mesmo total.
 
-- [ ] **2.6.1 Criar as Visualizações padrão no Espaço, herdadas pelas Listas** `domínio` `api`
+- [x] **2.6.1 Criar as Visualizações padrão no Espaço, herdadas pelas Listas** `domínio` `api` · *feito*
+  - **Andamento:** plano 10-01
   - **Hoje:** `defaultViews` existe só como nome de aspecto (`ConfigurableAspect`, `types/structure.ts:84`) e como linha da tabela das Configurações; não há campo nem operação. Hoje a Lista abre na Visualização salva marcada `isDefault` dela, ou na aba Lista (`listas/[lista]/page.tsx:121–124`), e as abas são fixas. A ontologia diz que o Espaço define “quais tipos de Visualização estão disponíveis e qual é a inicial nas Listas descendentes que herdam” (`ontologia/02-estrutura-de-trabalho/espaco.md:94`), e que o aspecto substitui (RN-ESP-08).
   - **O que fazer:**
     1. Em `types/structure.ts`: `type TipoDeVisualizacao = View["kind"]` e `interface VisualizacoesPadrao { disponiveis: TipoDeVisualizacao[]; inicial: TipoDeVisualizacao }`; campo opcional `defaultViews?: VisualizacoesPadrao` em `StructuralContainerBase`; campo `views: VisualizacoesPadrao` em `EffectiveListConfig`.
@@ -707,14 +711,16 @@ Fecha a Estrutura de Trabalho (Espaço, Pasta, Lista e Tarefa) antes da mensager
     5. `saveView` (`operations/scale.ts:117`) recusa salvar uma Visualização de tipo que a Lista não tem disponível.
     6. Registrar em `registro.ts`, `index.ts` e `apps/api/src/rotas/esquemas/configuracao.ts`.
   - **Pronto quando:** Teste novo `packages/dominio/src/operations/visualizacoes-padrao.test.ts`: o Espaço tira o Calendário e as Listas abaixo deixam de tê-lo; uma Pasta sobrescreve e a Lista dela segue a Pasta; `null` volta ao Espaço; `inicial` fora de `disponiveis` é recusado; `saveView` de tipo indisponível é recusado.
-- [ ] **2.6.2 Usar as Visualizações padrão na Lista e editá-las nas Configurações** `web`
+- [x] **2.6.2 Usar as Visualizações padrão na Lista e editá-las nas Configurações** `web` · *feito*
+  - **Andamento:** plano 10-10
   - **Hoje:** As abas são uma lista fixa em `listas/[lista]/page.tsx:658`, filtrada só pela lente (financeira, conversacional). Não há editor.
   - **O que fazer:**
     1. A página monta as abas de `config.views.disponiveis`, ainda filtradas pela lente.
     2. A aba inicial passa a ser: a Visualização salva `isDefault` da Lista, se o tipo dela estiver disponível; senão, `config.views.inicial`.
     3. Aba “Visualizações” nas Configurações (a da 2.1): uma caixa por tipo e a escolha da inicial, chamando `setContainerDefaultViews`, com “Voltar a herdar” quando o contêiner tem definição própria.
   - **Pronto quando:** Desmarcar “Calendário” nas Configurações do Espaço Entrega faz a aba sumir de todas as Listas dele; escolher “Quadro” como inicial faz as Listas sem Visualização padrão própria abrirem no Quadro.
-- [ ] **2.6.3 Tirar o bloqueio da Lista** `domínio` `banco`
+- [x] **2.6.3 Tirar o bloqueio da Lista** `domínio` `banco` · *feito*
+  - **Andamento:** plano 10-17 (parte feita no 10-20) — Migração `010` aplicada em produção em 29/10. Antes e depois: 0 Listas com a chave `blocks` em todos os Espaços de Trabalho.
   - **Hoje:** `blocks` está em `StructuralContainerBase` (`types/structure.ts:184`), herdado também por `List`, e `createList` grava `blocks: {}` (`operations/structure.ts:358`). Bloquear impede os níveis ABAIXO de sobrescrever; abaixo da Lista só há Tarefa, que nunca define nada (ontologia, `espaco.md:344`). Bloqueio na Lista não tem efeito.
   - **O que fazer:**
     1. Mover `blocks` de `StructuralContainerBase` para `Space` e `Folder`.
@@ -722,13 +728,15 @@ Fecha a Estrutura de Trabalho (Espaço, Pasta, Lista e Tarefa) antes da mensager
     3. Em `blockedAbove` (`configuration.ts:42`) e em `instantiateListTemplate` (`operations/planning.ts:391`), ler `blocks` só de Espaço e Pasta.
     4. Na migração de dados da 2.5: `update plataforma.registros set dados = dados - 'blocks' where colecao = 'lists';`.
   - **Pronto quando:** `npm run check` passa (o tipo não deixa escrever `blocks` numa Lista); depois da migração, `select count(*) from plataforma.registros where colecao = 'lists' and dados ? 'blocks'` dá 0.
-- [ ] **2.6.4 Tirar o modo `bloqueado` que ninguém grava** `domínio` `web`
+- [x] **2.6.4 Tirar o modo `bloqueado` que ninguém grava** `domínio` `web` · *feito*
+  - **Andamento:** plano 10-20
   - **Hoje:** `InheritanceMode` tem `herdado`, `sobrescrito` e `bloqueado` (`types/structure.ts:73`), e o bloqueio também mora em `blocks`. Nenhum código grava `modes[…] = "bloqueado"`; só `container-settings.tsx` lê, para pintar a etiqueta. Um contêiner pode sobrescrever e bloquear ao mesmo tempo, coisa que um modo único não expressa.
   - **O que fazer:**
     1. Tirar `bloqueado` de `InheritanceMode`; o bloqueio fica só em `blocks`.
     2. Tirar `MODE_LABEL.bloqueado` de `container-settings.tsx` (a tabela já sai na 2.1).
   - **Pronto quando:** `grep -rn 'bloqueado' packages/dominio/src/types/structure.ts` não acha nada; `npm run check` passa.
-- [ ] **2.6.5 Criar a operação `setContainerBlock` e o botão de bloquear** `domínio` `api` `web`
+- [x] **2.6.5 Criar a operação `setContainerBlock` e o botão de bloquear** `domínio` `api` `web` · *feito*
+  - **Andamento:** plano 10-02 e 10-11
   - **Hoje:** `blockedAbove` confere o bloqueio ao sobrescrever Status (`configuration.ts:660`), ao criar Campo (`:146`), ao criar Tipo de Tarefa (`:737`), ao mudar Funcionalidade (`:838`) e ao instanciar Template de Lista (`planning.ts:389`). Não confere ao criar Automação (`criarAutomacao`, `operations/ia/automacoes-editor.ts:194`). Nenhuma operação grava `blocks`: só o seed (`seed.ts:290`).
   - **O que fazer:**
     1. Criar `setContainerBlock(state, actingMemberId, tipo: "space" | "folder", id, aspecto, bloqueado: boolean)` em `configuration.ts`: exige administrar e contêiner ativo.
@@ -739,7 +747,8 @@ Fecha a Estrutura de Trabalho (Espaço, Pasta, Lista e Tarefa) antes da mensager
     6. Registrar em `registro.ts`, `index.ts` e `esquemas/configuracao.ts`.
     7. Nas abas de aspecto das Configurações de Espaço e Pasta (2.1), um interruptor “Bloquear para os níveis abaixo”; com sobrescritas abaixo, ele fica desligado e mostra a lista delas, cada uma com link para as Configurações dela.
   - **Pronto quando:** Teste novo `packages/dominio/src/operations/bloqueio-de-aspecto.test.ts`: bloquear Status num Espaço sem sobrescrita abaixo funciona e `overrideStatusSet` numa Lista dele passa a ser recusado; com uma Pasta que sobrescreve, o bloqueio é recusado e a mensagem nomeia a Pasta; bloquear Campos deixa os existentes e recusa um novo; bloquear Automações recusa `criarAutomacao` numa Lista abaixo.
-- [ ] **2.6.6 Aceitar menções na descrição da Tarefa** `domínio` `api` `web`
+- [x] **2.6.6 Aceitar menções na descrição da Tarefa** `domínio` `api` `web` · *feito*
+  - **Andamento:** plano 11-02 e 11-05 — `Task.descriptionMentions`: `updateTask` grava a menção e recusa Membro inexistente. Na tela, "@" na descrição abre o menu de Membros (o mesmo hook do Comentário) e o nome fica destacado.
   - **Hoje:** A descrição é texto simples, editada em `TaskTitleDescriptionEditor` (`apps/web/src/features/estrutura/task-editors.tsx:41`) e mostrada em `tarefa-completa.tsx:963–976`. Menção existe só no Comentário: `Comment.mentions` (`types/primitives.ts:189`), o menu do “@” do `CommentComposer` (`task-editors.tsx:471–520`) e `pendingMentions` (`derive.ts:1071`), que alimenta “Menções a você” em `app/(shell)/notificacoes/page.tsx:77`.
   - **O que fazer:**
     1. Campo `descriptionMentions?: { type: "member"; id: Id }[]` em `Task` (`types/structure.ts`).
@@ -748,20 +757,18 @@ Fecha a Estrutura de Trabalho (Espaço, Pasta, Lista e Tarefa) antes da mensager
     4. Na Tarefa completa, o nome mencionado aparece destacado na descrição.
     5. O aviso à pessoa mencionada segue a decisão abaixo.
   - **Pronto quando:** Teste em `operations.test.ts`: `updateTask` com descrição “@Júlia revisar” e a menção grava `descriptionMentions`; Membro inexistente é recusado. Na tela, digitar “@Jú” na descrição abre o menu de Membros.
-- [ ] **2.6.7 Uma menção na descrição avisa a pessoa?** `decisão` `domínio` `web` · *muda o produto*
-  - **Como é hoje:** A menção num Comentário aparece em Notificações › “Menções a você” até a conversa ser resolvida (`pendingMentions`, `derive.ts:1071`). A descrição não tem “resolvido”, e não existe registro de “já vi”.
-  - **Você decide:**
-    - (A) Não avisa: a menção só destaca o nome
-    - (B) Avisa em “Menções a você” enquanto o nome estiver na descrição e a Tarefa estiver aberta (fora de categoria terminal)
-  - **O que muda depois:** (A) não custa nada além da subtarefa acima. (B) custa cerca de 2 horas: `pendingMentions` passa a ler também `descriptionMentions`, e a tela de Notificações mostra o trecho da descrição.
-  - **Recomendo:** (B): é o que o ClickUp faz, e a regra sai do dado, sem guardar estado novo.
-- [ ] **2.6.8 Guardar o texto anterior a cada edição da descrição** `domínio` `web`
+- [x] **2.6.7 Uma menção na descrição avisa a pessoa?** `decisão` `domínio` `web` · *decidida*
+  - **Decidido:** Escolha B: a menção na descrição avisa a pessoa em Notificações › "Menções a você", enquanto o nome estiver na descrição e a Tarefa estiver aberta (fora de categoria terminal). A regra sai do dado, sem guardar estado novo.
+  - **O que muda no plano:** (A) não custa nada além da subtarefa acima. (B) custa cerca de 2 horas: `pendingMentions` passa a ler também `descriptionMentions`, e a tela de Notificações mostra o trecho da descrição.
+- [x] **2.6.8 Guardar o texto anterior a cada edição da descrição** `domínio` `web` · *feito*
+  - **Andamento:** plano 11-02 e 11-06 — A Atividade "Descrição alterada" grava `before` e `after`, cortados em 2.000 caracteres com "…". No Feed e na Timeline, "Ver alteração" abre os dois textos embaixo da linha; as edições antigas ficam como estavam, sem o botão.
   - **Hoje:** `updateTask` grava só “Descrição alterada”, sem `before` nem `after` (`packages/dominio/src/operations/tasks.ts:1458`). O Título grava os dois (`:1453`). A linha do tempo mostra `(antes → depois)` no meio da frase (`apps/web/src/features/tarefa/timeline.tsx:294`), o que não serve para um texto longo.
   - **O que fazer:**
     1. Em `tasks.ts:1458`, gravar `before` e `after` com a descrição antiga e a nova, cortadas em 2.000 caracteres com “…” no fim.
     2. Em `timeline.tsx`, para a ação “Descrição alterada”, mostrar só “Descrição alterada” e um botão “Ver alteração”, que abre o texto anterior e o novo, um embaixo do outro.
   - **Pronto quando:** Teste em `operations.test.ts`: editar a descrição de “A” para “B” grava uma Atividade com `before: "A"` e `after: "B"`; uma descrição de 3.000 caracteres grava 2.000 e “…”. Na tela, “Ver alteração” mostra os dois textos.
-- [ ] **2.6.9 Calcular o tempo registrado no domínio** `domínio` `web`
+- [x] **2.6.9 Calcular o tempo registrado no domínio** `domínio` `web` · *feito*
+  - **Andamento:** plano 11-03 e 11-07 — `tempoRegistrado`, em `derive.ts`, soma só os lançamentos fechados e marca `emAndamento` quando há cronômetro aberto. A linha "Rastrear tempo" e o editor `TaskTime` mostram o mesmo número.
   - **Hoje:** Há duas somas diferentes na tela: `tarefa-completa.tsx:1199` soma `durationMinutes` de todos os lançamentos (o aberto conta 0) e o editor `TaskTime` soma só os fechados (`features/estrutura/collaboration-editors.tsx:199`). Painéis e IA não têm de onde ler.
   - **O que fazer:**
     1. Criar `tempoRegistrado(state, taskId)` em `packages/dominio/src/derive.ts`, devolvendo `{ minutos, lancamentos, emAndamento, minutosComSubtarefas }`: soma os fechados, diz se há cronômetro aberto e soma também as Subtarefas.
@@ -774,7 +781,7 @@ Fecha a Estrutura de Trabalho (Espaço, Pasta, Lista e Tarefa) antes da mensager
 
 **Pronto quando:** Cada item aprovado por você.
 
-_Nenhuma subtarefa ainda._
+**Concluída em 04/11/2026.** Você deu a tarefa por concluída em 04/11. Se algo novo aparecer nos testes, entra aqui como subtarefa.
 
 **A sessão fica pronta quando:** Você aprova as telas da Lista, do Espaço, da Pasta e das Configurações depois da limpeza; os tempos de gravação antes e depois estão anotados na 2.2; mover uma Lista para outra Pasta funciona pela árvore; nenhuma Lista oferece a Carga; e `npm run check` passa com os testes novos de bloqueio, visualizações padrão, menções na descrição e tempo registrado.
 
@@ -802,36 +809,20 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
 
 **Pronto quando:** As quatro decisões têm resposta escrita e a migração nova está aplicada em homologação.
 
-- [ ] **3.1.1 Como fazer o corte?** `decisão` · *muda o produto*
-  - **Como é hoje:** Há duas bases de Contatos, Empresas, Negócios, Funis, Canais e Conversas. Uma Conversa aberta pelo fio da Caixa (`startConversation`, `packages/dominio/src/operations/conversations.ts:694`) ou por “Iniciar conversa” em Meus negócios (`iniciarConversa`, `packages/dominio/src/operations/iniciar-conversa.ts:52`) grava na base antiga; uma aberta por `POST /conversas` grava na nova.
-  - **Você decide:**
-    - (A) De uma vez: preparar tudo, rodar o script de migração (3.5) em homologação e trocar todas as telas no mesmo deploy
-    - (B) Tela por tela, com as duas bases convivendo
-  - **O que muda depois:** (A) concentra o risco num dia, mas não precisa de ponte nova e acaba logo. (B) exige que cada tela traduza ids antigos e novos enquanto a outra base ainda grava: cerca de +2 dias de pontes que depois são jogadas fora.
-  - **Recomendo:** (A), primeiro em homologação. A produção nasce sem dados de demonstração (`bootstrap:gestao`), então o que há de real no modelo antigo deve ser pouco; o modo `--seco` do script conta antes.
-- [ ] **3.1.2 O que o modelo novo precisa ganhar antes de o antigo sair?** `decisão` · *muda o produto*
-  - **Como é hoje:** As fichas novas avisam o que a 007 não guarda (`apps/web/src/features/crm/ficha-de-contato.tsx:11`, `ficha-de-negocio.tsx:8`): Tags, Consentimentos, Comentários, Anexos, mesclagem, temperatura, vários Contatos por Negócio com papel e histórico de Etapas. A Conversa da 008 não tem estrela, leitura, rascunho nem Tags. Tudo isso existe no modelo antigo, e alguma tela usa.
-  - **Você decide:**
-    - (A) Trazer tudo antes do corte
-    - (B) Trazer só o que a Caixa usa no dia a dia ou que a mensageria exige: notas do Contato, consentimento, mesclagem, transferir Identificador, mover Conversa, atribuir, estrela, leitura e lixeira da Conversa
-    - (C) Não trazer nada: as telas perdem esses recursos
-  - **O que muda depois:** (A) cerca de +4 dias. (B) cerca de +2 dias; Tags, vários Contatos por Negócio, histórico de Etapas, Requisitos de Etapa e Anexos de Empresa e Negócio somem da tela até uma sessão própria. (C) +0, mas a porta de entrada vai criar Contatos duplicados sem jeito de juntá-los.
-  - **Recomendo:** (B). As subtarefas da 3.2 e a migração abaixo estão escritas para (B).
-- [ ] **3.1.3 Quando a Conversa de Grupo e as Mensagens de Flow saem do modelo antigo?** `decisão` · *arrumação: pode seguir a recomendação*
-  - **Como é hoje:** As Ferramentas acham a Conversa do Grupo por `groupIdentifier` (`conversaDoGrupo`, `packages/dominio/src/derive-ferramentas.ts:145`) e contam envios e respostas de Flow pelas Mensagens antigas (`enviosDoFlow`, `:275`; `respostasDoFlow`, `:287`; `receiveMessage` em `operations/ferramentas/flows.ts:922`). A 008 não aceita Conversa sem Contato (`contato_id not null`) e a Mensagem nova não tem campo de Flow.
-  - **Você decide:**
-    - (A) Migração nova: `conversas.contato_id` aceita nulo quando há `identificador_de_grupo`, e `mensagens` ganha `flow` e `resposta_de_flow` (jsonb); as Ferramentas passam inteiras para as tabelas
-    - (B) Conversas de Grupo e Mensagens de Flow ficam no modelo antigo até as Sessões 6 e 7, que já refazem essas telas com o provedor real; aqui só os Contatos e Canais das Ferramentas passam para os ids novos
-  - **O que muda depois:** (A) cerca de +1,5 dia aqui, e o modelo antigo sai por inteiro nesta sessão. (B) +0 aqui; um resto de `Conversation` (só Grupo e Flow) vive até a Sessão 7. Com (B), a Sessão 6 decide como guardar a Conversa de Grupo nas tabelas novas (6.6.5) e a leva para lá, e a Sessão 7 faz o mesmo com as Mensagens de Flow.
-  - **Recomendo:** (B): as Sessões 6 e 7 vão reescrever Grupos e Flows; fazer duas vezes é desperdício.
-- [ ] **3.1.4 Meus negócios continua como Listas espelho?** `decisão` · *muda o produto*
-  - **Como é hoje:** A Pasta “Meus negócios” tem uma Lista por Funil antigo, achada pelo formato do id (`funilDaLista`: `lst_funil_<x>` ↔ `fnl_<x>`, `operations/iniciar-conversa.ts:30`), e cada Negócio aparece como Tarefa espelho no quadro (`QuadroNegocios`, `apps/web/src/features/estrutura/quadro-negocios.tsx:32`), com a `DealScreen` antiga embutida (`app/(shell)/estrutura/listas/[lista]/page.tsx:1131`). O CRM novo já tem quadro próprio em `/crm/funis/[funil]` (`features/crm/quadro-do-funil.tsx`). Os Funis novos têm id UUID: a regra do formato do id quebra.
-  - **Você decide:**
-    - (A) Manter as Listas espelho: a Lista ganha o campo `funilId` (id de `plataforma.funis`) e a Tarefa espelho aponta para o Negócio novo
-    - (B) Aposentar as Listas espelho: “Meus negócios” vira o quadro de `/crm/funis/[funil]` com o filtro “meus”, e as Reuniões continuam como Tarefas ligadas ao Negócio novo
-  - **O que muda depois:** (A) cerca de +1 dia e mantém duas telas para o mesmo Negócio. (B) cerca de +0,5 dia e some uma tela; quem trabalha pela Lista muda de lugar.
-  - **Recomendo:** (B), se a equipe já usa o quadro do Funil novo; (A), se o dia a dia é pela Lista.
-- [ ] **3.1.5 Escrever a migração nova com o que as decisões pedirem** `banco`
+- [x] **3.1.1 Como fazer o corte?** `decisão` · *decidida*
+  - **Decidido:** Escolha A: de uma vez. Preparar tudo, ensaiar a migração num Postgres local com uma cópia dos dados reais (não há homologação) e trocar todas as telas no mesmo deploy. Sem pontes que traduzam id antigo e novo.
+  - **O que muda no plano:** (A) concentra o risco num dia, mas não precisa de ponte nova e acaba logo. (B) exige que cada tela traduza ids antigos e novos enquanto a outra base ainda grava: cerca de +2 dias de pontes que depois são jogadas fora.
+- [x] **3.1.2 O que o modelo novo precisa ganhar antes de o antigo sair?** `decisão` · *decidida*
+  - **Decidido:** Escolha B: só o essencial. Somem da tela até uma sessão própria: Tags, vários Contatos por Negócio com papel, histórico de Etapas, Requisitos de Etapa e Anexos de Empresa e Negócio. Continuam guardados em `registros_crm_antigo`; nada é apagado.
+  - **O que muda no plano:** (A) cerca de +4 dias. (B) cerca de +2 dias; Tags, vários Contatos por Negócio, histórico de Etapas, Requisitos de Etapa e Anexos de Empresa e Negócio somem da tela até uma sessão própria. (C) +0, mas a porta de entrada vai criar Contatos duplicados sem jeito de juntá-los.
+- [x] **3.1.3 Quando a Conversa de Grupo e as Mensagens de Flow saem do modelo antigo?** `decisão` · *decidida*
+  - **Decidido:** Escolha B: Conversas de Grupo e Mensagens de Flow ficam no modelo antigo até as Sessões 6 e 7. Aqui só os Contatos e Canais das Ferramentas passam para os ids novos. O modelo antigo não sai por inteiro na Fase 15.
+  - **O que muda no plano:** (A) cerca de +1,5 dia aqui, e o modelo antigo sai por inteiro nesta sessão. (B) +0 aqui; um resto de `Conversation` (só Grupo e Flow) vive até a Sessão 7. Com (B), a Sessão 6 decide como guardar a Conversa de Grupo nas tabelas novas (6.6.5) e a leva para lá, e a Sessão 7 faz o mesmo com as Mensagens de Flow.
+- [x] **3.1.4 Meus negócios continua como Listas espelho?** `decisão` · *decidida*
+  - **Decidido:** Escolha B: aposentar as Listas espelho. "Meus negócios" vira o quadro de `/crm/funis/[funil]` com o filtro "meus"; as Reuniões continuam como Tarefas ligadas ao Negócio novo.
+  - **O que muda no plano:** (A) cerca de +1 dia e mantém duas telas para o mesmo Negócio. (B) cerca de +0,5 dia e some uma tela; quem trabalha pela Lista muda de lugar.
+- [x] **3.1.5 Escrever a migração nova com o que as decisões pedirem** `banco` · *feito*
+  - **Andamento:** plano 14-01 e 14-19 — A `011` (`011-crm-o-que-faltava.sql`) foi ensaiada em 05/11 sobre uma cópia de 2.128 registros do CRM antigo (18 Espaços): contagens iguais antes e depois, tabelas novas vazias e `hidratar` sem falha. Foi aplicada em produção no mesmo dia, depois de um backup manual do schema `plataforma`. Traz `mesclado` no Contato, `contato_consentimentos`, `contato_notas`, `conversa_marcacoes`, `na_lixeira_em` na Conversa, `crm_de_para` e `registros_crm_antigo`.
   - **Hoje:** A 007 e a 008 estão aplicadas e são imutáveis. `contatos_estado_ck` (007) não aceita `mesclado`; não há tabela de consentimento, de nota, de marcação de Conversa, de fila de entrada nem de de-para de ids.
   - **O que fazer:**
     1. `plataforma.contatos`: colunas `mesclado_em_id text` e `mesclado_em timestamptz`; recriar `contatos_estado_ck` aceitando `mesclado`.
@@ -849,7 +840,8 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
 
 **Pronto quando:** Cada operação tem a regra em `packages/dominio/src/crm/`, a rota no `apps/api` e teste de serviço contra o Postgres real.
 
-- [ ] **3.2.1 Criar o caminho para gestos que gravam nas tabelas do CRM e em `plataforma.registros` no mesmo commit** `api`
+- [x] **3.2.1 Criar o caminho para gestos que gravam nas tabelas do CRM e em `plataforma.registros` no mesmo commit** `api` · *feito*
+  - **Andamento:** plano 14-03 — `executarGestoMisto` e `lerDoCrm` (`apps/api/src/servicos/crm/gesto-misto.ts`): o CRM e `plataforma.registros` gravam no mesmo commit, com tudo ou nada provado em Postgres local. Gesto com `aoConfirmar` sai do caminho de duas idas da Fase 13 (aceito: gestos raros).
   - **Hoje:** As rotas do CRM gravam por `comTransacao` (`apps/api/src/servicos/crm/transacao.ts`) e as operações do Espaço por `executar()` (`apps/api/src/persistencia/unidade-de-trabalho.ts:116`): são duas transações. Mesclar Contatos (que move Vínculos de Tarefa) e criar Tarefa conversacional (Tarefa em `registros`, Conversa em `plataforma.conversas`) precisam das duas juntas.
   - **O que fazer:**
     1. Criar `apps/api/src/servicos/crm/gesto-misto.ts` com `executarGestoMisto(workspaceId, { lerDoCrm, operacao, gravarNoCrm })`.
@@ -858,7 +850,8 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
     4. Os ids das linhas novas do CRM são gerados antes (`randomUUID`), para a operação pura já gravar o Vínculo com o id certo.
     5. Erro em `gravarNoCrm` desfaz tudo; um `23505` (unicidade) vira 409 com a frase do domínio.
   - **Pronto quando:** Teste em `apps/api/src/servicos/crm/gesto-misto.test.ts`: forçar erro em `gravarNoCrm` deixa `plataforma.registros` e `plataforma.conversas` sem nenhuma linha nova.
-- [ ] **3.2.2 Mesclar Contatos no modelo novo** `domínio` `api` `web`
+- [x] **3.2.2 Mesclar Contatos no modelo novo** `domínio` `api` `web` · *feito*
+  - **Andamento:** plano 14-04, 14-09 e 14-11 — `POST /contatos/:id/mesclar`, o Contato absorvido some das listas e a ficha dele redireciona para o sobrevivente. Colisão de Conversa segue RN-CXE-10 (fica a de Mensagem mais recente), não "a do absorvido". O diálogo de "Mesclar com…" está na ficha nova; a prova de tela é a que está sendo feita em produção.
   - **Hoje:** `mergeContacts` (`packages/dominio/src/operations/contacts.ts:143`) mexe só em `state.contacts` e nos Vínculos. O diálogo `apps/web/src/features/crm/merge-contacts-dialog.tsx` só abre na ficha antiga (`features/crm/legado/ficha-de-contato-legado.tsx:171`).
   - **O que fazer:**
     1. Domínio: `validarMesclagem(sobrevivente, absorvido)` em `packages/dominio/src/crm/contatos.ts`: os dois diferentes, `ativo` ou `arquivado`, nenhum `mesclado`. Com teste das recusas.
@@ -867,7 +860,8 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
     4. Web: ação “Mesclar com…” em `features/crm/ficha-de-contato.tsx`, reaproveitando `merge-contacts-dialog.tsx` com o seletor de Contato de `dados/crm/contatos.ts` (`useContatos`).
   - **Pronto quando:** Mesclar A em B pela ficha: as Conversas e Negócios de A aparecem em B, a Tarefa conversacional de A mostra B e abrir `/crm/contatos/<A>` leva a B. Um teste de serviço cobre a colisão de Conversa aberta no mesmo Canal.
   - **Atenção:** “Restaurar cópia” de um mesclado (`restoreMergedCopy`, `contacts.ts:403`) e “marcar como distintos” (`markContactsAsDistinct`, `:713`) não são trazidos: só a ficha antiga os oferece.
-- [ ] **3.2.3 Transferir um Identificador para outro Contato** `domínio` `api` `web`
+- [x] **3.2.3 Transferir um Identificador para outro Contato** `domínio` `api` `web` · *feito*
+  - **Andamento:** plano 14-06 e 14-11 — `POST /contatos/:id/identificadores/:identificadorId/transferir`; as Conversas passadas ficam na origem. Ação "Transferir" na ficha nova.
   - **Hoje:** `transferContactIdentifier` (`packages/dominio/src/operations/contacts.ts:93`) muda só quem recebe as próximas mensagens (DO-CON-12): as Conversas passadas ficam no Contato de origem. Só a ficha antiga oferece (`features/crm/transfer-identifier-dialog.tsx`).
   - **O que fazer:**
     1. Rota `POST /contatos/:id/identificadores/:identificadorId/transferir` com `{ paraContatoId }` em `apps/api/src/rotas/crm/contatos.ts`, chamando o método novo `transferirIdentificador` de `servicos/crm/contatos.ts`.
@@ -875,7 +869,8 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
     3. Recusa destino `mesclado` ou na lixeira, com a frase em `packages/dominio/src/crm/contatos.ts`.
     4. Na ficha nova, ação “Transferir” na linha do Identificador, reaproveitando o diálogo.
   - **Pronto quando:** Teste de serviço: depois de transferir o WhatsApp de A para B, uma recebida desse número (3.6) cai numa Conversa de B, e a Conversa antiga continua em A.
-- [ ] **3.2.4 Registrar e respeitar consentimento** `domínio` `api` `web`
+- [x] **3.2.4 Registrar e respeitar consentimento** `domínio` `api` `web` · *feito*
+  - **Andamento:** plano 14-08 e 14-11 — `GET` e `POST /contatos/:id/consentimentos`, só inserção; a regra `SEM_CONSENTIMENTO` está pronta e testada para os modelos da Sessão 7. Finalidade conferida no Catálogo em `registros`.
   - **Hoje:** O consentimento é uma lista no Contato antigo (`ConsentRecord`, `packages/dominio/src/types/crm.ts:59`), lida por `marketingConsentMissing` (`packages/dominio/src/derive.ts:443`), que `sendMessage` e o fio (`features/crm/conversation-thread.tsx:352`) usam para barrar modelo de marketing. Não existe operação que registre consentimento: só o seed preenche.
   - **O que fazer:**
     1. Domínio: `consentimentoVigente(registros, finalidadeId, tipoDeCanal)` em `packages/dominio/src/crm/consentimentos.ts` (novo), com a mesma conta de `marketingConsentMissing`: vale o registro mais recente da finalidade para o tipo do Canal ou para `todos`.
@@ -883,27 +878,31 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
     3. `ServicoDeMensagens.enviar` (`servicos/crm/mensagens.ts:91`) recusa com 409 `SEM_CONSENTIMENTO` quando o modelo usado é de marketing e não há consentimento vigente. Os modelos chegam na Sessão 7; a regra já fica pronta e testada.
     4. Web: seção “Consentimentos” na ficha nova, com o histórico e o botão de registrar.
   - **Pronto quando:** Teste de domínio dos casos concedido, revogado depois e “todos”; registrar pela ficha grava uma linha em `plataforma.contato_consentimentos`.
-- [ ] **3.2.5 Mover uma Conversa para outro Contato** `api` `web`
+- [x] **3.2.5 Mover uma Conversa para outro Contato** `api` `web` · *feito*
+  - **Andamento:** plano 14-05, 15-06 e 15-24 — `POST /conversas/:id/mover` com e sem Conversa aberta no destino (14-05) e, na Fase 15, o diálogo da Caixa passou a chamá-la (`moverConversa`), sem a operação antiga. Telas: aceite do dono em bloco no UAT de 07/11, sem observação em navegador.
   - **Hoje:** `moveConversationToContact` (`packages/dominio/src/operations/conversations.ts:495`) troca o Contato e recusa se o destino já tem Conversa não resolvida no mesmo Canal, a menos que ela seja resolvida no mesmo ato. A tela é `features/crm/move-conversation-dialog.tsx`, aberta em `app/(shell)/crm/caixa-de-entrada/[conversa]/page.tsx:360`.
   - **O que fazer:**
     1. Rota `POST /conversas/:id/mover` com `{ contatoId, resolverExistente }` em `apps/api/src/rotas/crm/conversas.ts`.
     2. No serviço, numa transação: destino `ativo`; se ele tem Conversa aberta no mesmo Canal, resolvê-la quando `resolverExistente`, senão 409 `CONVERSA_JA_ABERTA`; trocar `conversas.contato_id`. As Mensagens e o Canal não mudam (INV-CXE-04).
     3. O diálogo passa a chamar a rota.
   - **Pronto quando:** Testes de serviço dos dois caminhos, com e sem Conversa aberta no destino.
-- [ ] **3.2.6 Dar à Conversa nova os gestos da Caixa que faltam** `api`
+- [x] **3.2.6 Dar à Conversa nova os gestos da Caixa que faltam** `api` · *feito*
+  - **Andamento:** plano 14-05 e 14-07 — Atribuir, lixeira, restaurar, estrela e leitura por Membro, e `GET /conversas` com `atribuidoId`, `filaId`, `comEstrela`, `q`, `naoLidas` e o nome do Contato. Não gravam Registro de Atividade.
   - **Hoje:** Para a Conversa da 008 só há abrir, resolver e reabrir. A Caixa antiga também atribui (`assignConversation`, `[conversa]/page.tsx:157`), manda para a lixeira (`trashConversation`, `:391`), restaura (`restoreConversation`, `app/(shell)/configuracoes/lixeira/page.tsx:189`) e marca estrela (`toggleConversationStar`, `features/crm/inbox-columns.tsx:420`).
   - **O que fazer:**
     1. Rotas em `apps/api/src/rotas/crm/conversas.ts`: `POST /conversas/:id/atribuir` com `{ tipo: 'membro' | 'agente', id }` ou `null`; `POST /conversas/:id/lixeira` (só Conversa resolvida, `conversas_lixeira_ck`); `POST /conversas/:id/restaurar`; `PUT /conversas/:id/marcacao` com `{ estrela?, lidaAte? }`, gravando em `conversa_marcacoes` do Membro da sessão.
     2. `GET /conversas` ganha os filtros `atribuidoId`, `filaId`, `comEstrela` e `q` (título), e cada item traz `naoLidas` (recebidas depois de `lida_ate`) e o nome do Contato.
   - **Pronto quando:** Testes de rota de cada gesto; uma Conversa na lixeira não aparece em `GET /conversas?estado=ativo`.
   - **Atenção:** Rascunhos (`Draft`, inclusive os que um Agente sugere, e `discardDraft` em `conversation-thread.tsx:482`) ficam para a Sessão 16, que define o Agente na Caixa.
-- [ ] **3.2.7 Guardar as notas do Contato nas tabelas** `api` `web`
+- [x] **3.2.7 Guardar as notas do Contato nas tabelas** `api` `web` · *feito*
+  - **Andamento:** plano 14-06, 14-11, 15-15, 15-20 e 15-25 — `GET` e `POST /contatos/:id/notas` sobre `plataforma.contato_notas`, a seção Notas da ficha nova e, na Fase 15, o fio da Caixa e a Reunião passaram a gravar por essa rota; `addContactNote` saiu do código. Telas: aceite do dono em bloco no UAT de 07/11, sem observação em navegador.
   - **Hoje:** `addContactNote` (`packages/dominio/src/operations/contacts.ts:761`) é chamado pelo fio (`features/crm/conversation-thread.tsx:768`) e pela Reunião (`app/(shell)/crm/reunioes/[reuniao]/page.tsx:738`) e grava no Contato antigo.
   - **O que fazer:**
     1. Rotas `GET` e `POST /contatos/:id/notas` sobre `plataforma.contato_notas`.
     2. O fio e a Reunião passam a chamar `POST /contatos/:id/notas`; a ficha nova mostra as notas.
   - **Pronto quando:** Uma nota escrita no fio aparece na ficha nova do Contato e grava uma linha em `plataforma.contato_notas`.
-- [ ] **3.2.8 Passar ao sucessor o que o Membro removido tem nas tabelas** `api` `web`
+- [x] **3.2.8 Passar ao sucessor o que o Membro removido tem nas tabelas** `api` `web` · *feito*
+  - **Andamento:** plano 14-10 e 14-16 — Contatos, Empresas e Negócios do Membro removido passam ao Sucessor no mesmo commit; `GET /membros/:id/sucessao-no-crm` alimenta o diálogo de remoção. As Conversas atribuídas a ele ficam sem Atribuído (liberadas), diferente do texto da subtarefa: ver as perguntas em aberto em `14-PROVAS.md`.
   - **Hoje:** `previewSuccession` (`packages/dominio/src/operations/members.ts:23`) e `removeMember` (`:217`) passam ao sucessor os Contatos, Empresas, Negócios e Conversas ANTIGOS. Nas tabelas, `proprietario_id` e `atribuido_id` continuam apontando para quem saiu.
   - **O que fazer:**
     1. Em `apps/api/src/rotas/operacoes.ts`, a chamada de `removeMember` passa um `aoConfirmar` que, no mesmo cliente, troca `proprietario_id` em `contatos`, `empresas` e `negocios` e `atribuido_id` nas `conversas` abertas para o sucessor.
@@ -916,14 +915,11 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
 
 **Pronto quando:** Criar, trocar o Canal e ligar ou criar o Negócio de uma Tarefa conversacional não grava nada em `registros` nas coleções `conversations` e `deals`, e o cartão da Lista mostra Contato, Canal e última Mensagem vindos da api.
 
-- [ ] **3.3.1 A Conversa da Tarefa pode nascer sem Mensagem?** `decisão` · *muda o produto*
-  - **Como é hoje:** `criarTarefaConversacional` abre a Conversa com `startConversation`, que cria uma Conversa vazia ou reaproveita a aberta. O serviço novo (`criar`, `apps/api/src/servicos/crm/conversas.ts:158`) exige a primeira Mensagem (INV-CXE-05) e recusa com 409 `CONVERSA_JA_ABERTA` se já existe uma aberta no par (Contato, Canal).
-  - **Você decide:**
-    - (A) O diálogo pede a primeira Mensagem quando não há Conversa aberta; havendo, reaproveita sem mensagem nova
-    - (B) Abrir Conversa vazia só por este caminho, como exceção a INV-CXE-05
-  - **O que muda depois:** (A) mantém a regra da 008 e acrescenta um campo ao diálogo; no WhatsApp oficial, fora da janela, essa primeira Mensagem terá de ser modelo (Sessão 7). (B) não muda o diálogo, mas põe Conversas mudas na Caixa.
-  - **Recomendo:** (A).
-- [ ] **3.3.2 Trocar as leituras da Tarefa conversacional por ids** `domínio`
+- [x] **3.3.1 A Conversa da Tarefa pode nascer sem Mensagem?** `decisão` · *decidida*
+  - **Decidido:** Escolha A: o diálogo pede a primeira Mensagem quando não há Conversa aberta; havendo uma, reaproveita sem mensagem nova. Mantém INV-CXE-05 e, no WhatsApp oficial fora da janela, essa Mensagem terá de ser modelo (Sessão 7).
+  - **O que muda no plano:** (A) mantém a regra da 008 e acrescenta um campo ao diálogo; no WhatsApp oficial, fora da janela, essa primeira Mensagem terá de ser modelo (Sessão 7). (B) não muda o diálogo, mas põe Conversas mudas na Caixa.
+- [x] **3.3.2 Trocar as leituras da Tarefa conversacional por ids** `domínio` · *feito*
+  - **Andamento:** plano 14-02 e 14-17 — `vinculosDoCrmDaTarefa` lê só os Vínculos, `alvoConferido` entra no nascimento e `derive-conversacional.test.ts` passa com o CRM antigo esvaziado do estado. As leituras antigas que o fio ainda usa (`contatoDaTarefa`, `canalDaTarefa`, `negocioDaTarefa` e vizinhas) ficam até a Fase 15.
   - **Hoje:** `contatoDaTarefa` (`packages/dominio/src/derive-conversacional.ts:70`), `conversaDaTarefa` (`:83`), `canalDaTarefa` (`:94`), `negocioDaTarefa` (`:105`) e `ultimaMensagemDaTarefa` (`:120`) seguem o Vínculo e buscam o registro em `state.contacts`, `state.conversations`, `state.channels` e `state.deals`. `vinculoRefusal` (`operations/tasks.ts:70`) confere os alvos de Vínculo nessas mesmas coleções.
   - **O que fazer:**
     1. Criar `vinculosDoCrmDaTarefa(state, task)` → `{ contatoId?, conversaId?, negocioId? }`, que só lê `state.links`, com as mesmas regras de hoje (Subtarefa lê a raiz; o papel “… da Tarefa” vem primeiro).
@@ -931,7 +927,8 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
     3. `canaisDaLista` (`:166`) e `canaisDaListaQueAlcancam` (`:175`) passam a receber `canais: readonly Canal[]` (tipo de `crm/canais.ts`) em vez de ler `state.channels`.
     4. `VinculoDeNascimento` (`operations/tasks.ts:61`) ganha `alvoConferido: true`, preenchido por quem já conferiu o alvo na tabela; `vinculoRefusal` deixa de procurar em `state.contacts`, `state.conversations` e `state.deals`.
   - **Pronto quando:** `packages/dominio/src/derive-conversacional.test.ts`, reescrito, passa com um estado de teste sem `contacts`, `conversations`, `channels` e `deals`.
-- [ ] **3.3.3 Criar a leitura em lote das Tarefas conversacionais** `api` `web`
+- [x] **3.3.3 Criar a leitura em lote das Tarefas conversacionais** `api` `web` · *feito*
+  - **Andamento:** plano 14-13 e 14-15 — `POST /tarefas-conversacionais/resumo` (até 200 Tarefas numa chamada) e `useResumoDasTarefas` no cartão, na tabela, no cartão de Reunião e na ficha. Perdas conscientes por não haver ponte: Empresa, temperatura, qualificação e estado/Atribuído da Conversa saíram do cartão e da ficha. A prova de tela está sendo feita em produção.
   - **Hoje:** O cartão (`apps/web/src/features/estrutura/cartao-conversacional.tsx:42-45`), a tabela (`tabela-de-tarefas.tsx:290`), o cartão de Reunião (`cartao-de-tarefa.tsx:53`) e a ficha (`tarefa-completa.tsx:336-339`) montam Contato, Canal, Negócio e última Mensagem a partir do `DataState` em memória.
   - **O que fazer:**
     1. Rota `POST /tarefas-conversacionais/resumo` em `apps/api/src/rotas/crm/tarefas-conversacionais.ts` (novo), recebendo `{ vinculos: [{ taskId, contatoId?, conversaId?, negocioId? }] }` (até 200).
@@ -939,7 +936,8 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
     3. Web: `apps/web/src/dados/crm/tarefas-conversacionais.ts` com `useResumoDasTarefas(tarefas)` (SWR), usado pelo cartão, pela tabela, pelo cartão de Reunião e pela ficha.
     4. A página da Lista (`app/(shell)/estrutura/listas/[lista]/page.tsx:496`) conta Contatos distintos pelos ids dos Vínculos, sem chamar a api.
   - **Pronto quando:** Abrir uma Lista conversacional com 50 Tarefas faz uma chamada só ao resumo; um teste de rota prova que um id de outro Espaço volta vazio.
-- [ ] **3.3.4 Trocar a criação da Tarefa conversacional para as tabelas novas** `domínio` `api` `web`
+- [x] **3.3.4 Trocar a criação da Tarefa conversacional para as tabelas novas** `domínio` `api` `web` · *feito*
+  - **Andamento:** plano 14-13 e 14-16 — `POST /tarefas-conversacionais` grava a Tarefa em `registros` e a Conversa em `plataforma.conversas` no mesmo commit; a operação antiga saiu de `OPERACOES` (14-17). O diálogo antigo da Caixa e da ficha antiga do Contato passam ids antigos, que a rota nova recusa com 404 até a migração dos dados (Fase 15).
   - **Hoje:** `criarTarefaConversacional` (`packages/dominio/src/operations/tarefas-conversacionais.ts:154`) procura o Contato em `state.contacts` e o Canal em `state.channels`, abre a Conversa com `startConversation` (grava em `plataforma.registros`) e cria a Tarefa com Vínculos para esses ids antigos. É chamada pelo diálogo da Lista (`features/estrutura/nova-tarefa-conversacional-dialog.tsx:134`) e pelo fio da Caixa (`features/crm/conversation-thread.tsx:834`).
   - **O que fazer:**
     1. Extrair de `criar` (`servicos/crm/conversas.ts:158`) a função `abrirConversaNoCliente(cliente, membro, entrada, id?)`, usada por `POST /conversas` e pela rota nova.
@@ -947,13 +945,15 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
     3. No domínio, `criarTarefaConversacional(state, membro, input, referencias)` recebe `{ contato: { id, nome }, canal: { id, nome, conexao }, conversaId, negocio? }` e deixa de chamar `startConversation`.
     4. O diálogo e o botão do fio passam a chamar a rota; o seletor de Contato usa `useContatos` e o de Canal usa `useCanais` (`dados/crm/canais.ts`).
   - **Pronto quando:** Criar uma Tarefa pela Lista grava uma linha em `plataforma.conversas` e nenhuma Conversa nova em `plataforma.registros`; um teste em `apps/api` prova isso, e outro prova que uma recusa da Tarefa não deixa Conversa nova.
-- [ ] **3.3.5 Trocar o Canal da Tarefa pela api** `domínio` `api` `web`
+- [x] **3.3.5 Trocar o Canal da Tarefa pela api** `domínio` `api` `web` · *feito*
+  - **Andamento:** plano 14-14 e 14-16 — `POST /tarefas-conversacionais/:taskId/canal`: reaproveita a Conversa aberta no Canal novo ou abre uma; a Conversa antiga continua na Caixa. A ficha sempre abre um diálogo de confirmação.
   - **Hoje:** `trocarCanalDaTarefa` (`operations/tarefas-conversacionais.ts:255`) abre a Conversa no Canal novo com `startConversation` e troca o Vínculo. A ficha chama em `features/estrutura/tarefa-completa.tsx:1288`.
   - **O que fazer:**
     1. Rota `POST /tarefas-conversacionais/:taskId/canal` com `{ canalId, mensagem? }`, por `executarGestoMisto`: reaproveita a Conversa aberta do Contato no Canal novo ou abre uma; a operação pura só troca o Vínculo “conversa da Tarefa”.
     2. A Conversa anterior continua na Caixa, sem mudança.
   - **Pronto quando:** Trocar de WhatsApp para E-mail na ficha deixa a Conversa antiga na Caixa e o Vínculo apontando para uma Conversa de `plataforma.conversas`; teste de rota.
-- [ ] **3.3.6 Ligar e criar o Negócio da Tarefa pela api** `domínio` `api` `web`
+- [x] **3.3.6 Ligar e criar o Negócio da Tarefa pela api** `domínio` `api` `web` · *feito*
+  - **Andamento:** plano 14-14 e 14-16 — `/negocio` (ligar ou desligar) e `/negocio/novo` (criar na 1ª Etapa); um Vínculo recusado não deixa Negócio. O Negócio cujo dono é a Empresa do Contato não aparece para ligar.
   - **Hoje:** `vincularNegocioATarefa` (`operations/tarefas-conversacionais.ts:306`) confere o Negócio em `state.deals` pelos `contactLinks` (`negocioDoContato`, `:148`); `criarNegocioDaTarefa` (`:362`) cria pelo `createDeal` antigo. A ficha chama em `tarefa-completa.tsx:728` e `:1398`.
   - **O que fazer:**
     1. Rota `POST /tarefas-conversacionais/:taskId/negocio` com `{ negocioId }` ou `null`: a api confere em `plataforma.negocios` que o Negócio está `ativo` e que `contato_id` é o Contato da Tarefa (a 007 tem um Contato só por Negócio, `negocios_dono_ck`); o domínio troca o Vínculo.
@@ -961,7 +961,8 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
     3. O seletor de Negócio da ficha usa `useNegocios({ contatoId })` (`dados/crm/negocios.ts`).
   - **Pronto quando:** Criar Negócio pela ficha grava uma linha em `plataforma.negocios` e o Vínculo “Negócio da Tarefa” com esse id; se o Vínculo for recusado, o Negócio não fica (teste).
   - **Atenção:** Um Negócio cujo dono é a Empresa do Contato não aparece para ligar. Se isso fizer falta, é decisão à parte.
-- [ ] **3.3.7 Conferir os Canais da Lista conversacional na tabela** `domínio` `api` `web`
+- [x] **3.3.7 Conferir os Canais da Lista conversacional na tabela** `domínio` `api` `web` · *feito*
+  - **Andamento:** plano 14-12 — O servidor lê `plataforma.canais` dentro da transação (`LER_DO_CRM`) e descarta o `canais` que o navegador mandar. Pendência: `instantiateListTemplate` chama `createList` sem `canais` (`planning.ts:364`) e precisa de entrada em `LER_DO_CRM` antes da 3.5.4.
   - **Hoje:** `definirCanaisDaLista` (`operations/tarefas-conversacionais.ts:102`) chama `validarCanaisDeAtendimento` (`operations/canais.ts:133`), que procura os ids em `state.channels`; só funciona porque `executar()` projeta os Canais novos (`unidade-de-trabalho.ts:137`). O mesmo vale para `canalForaDaLista` (`canais.ts:150`) e `nomesDosCanais` (`operations/structure.ts:406`). A tela é `features/estrutura/canais-de-atendimento.tsx`.
   - **O que fazer:**
     1. As três funções passam a receber `canais: readonly Canal[]`.
@@ -975,13 +976,15 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
 
 **Pronto quando:** Nenhum arquivo de `apps/web/src` lê `contacts`, `companies`, `deals`, `funnels`, `channels` ou `conversations` do store (salvo Grupos e Flows, se a decisão for (B)).
 
-- [ ] **3.4.1 Caixa de Entrada: lista e gestos da Conversa** `web`
+- [x] **3.4.1 Caixa de Entrada: lista e gestos da Conversa** `web` · *feito*
+  - **Andamento:** plano 15-06, 15-11 e 15-24 — A lista, os contadores das abas, a estrela, atribuir, resolver, reabrir, mover e lixeira da Conversa leem e gravam `plataforma.conversas` por `/conversas`. A linha da Conversa perdeu a prévia da última Mensagem. A Conversa de Grupo segue pelo modelo antigo (F14-D-05). Telas: aceite do dono em bloco no UAT de 07/11, sem observação em navegador.
   - **Hoje:** `app/(shell)/crm/caixa-de-entrada/page.tsx:22` filtra `data.conversations`; `features/crm/inbox-columns.tsx` monta as colunas e a estrela (`:420`); `[conversa]/page.tsx` atribui (`:157`), reabre (`:321`), resolve (`:332`), manda para a lixeira (`:391`) e move (`:360`) com operações antigas.
   - **O que fazer:**
     1. Criar `apps/web/src/dados/crm/conversas.ts`, no molde de `dados/crm/contatos.ts`: `useConversas(filtro)`, `useConversa(id)`, `abrirConversa`, `resolverConversa`, `reabrirConversa`, `atribuirConversa`, `moverConversa`, `marcarConversa`, `conversaParaLixeira` e `restaurarConversa`.
     2. A lista e as colunas leem `useConversas`; a página da Conversa lê `useConversa`, e cada botão chama a função correspondente.
   - **Pronto quando:** Responder, resolver, reabrir, atribuir, mover e marcar estrela pela Caixa não muda `select count(*) from plataforma.registros where colecao = 'conversations'`; testes em `inbox-columns.test.tsx` com o cliente da api falso.
-- [ ] **3.4.2 Caixa de Entrada: fio e envio** `web` `domínio`
+- [x] **3.4.2 Caixa de Entrada: fio e envio** `web` `domínio` · *feito*
+  - **Andamento:** plano 15-20 e 15-25 — O fio recebe ids e lê Contato, Canais, Conversas e Mensagens pela api; responder é `POST /mensagens` e a Nota grava em `contato_notas`. Sem Rascunho de IA (D-15-11) e sem Mensagem de modelo: fora da janela de 24 h do WhatsApp oficial o envio desliga. Telas: aceite do dono em bloco no UAT de 07/11, sem observação em navegador.
   - **Hoje:** `features/crm/conversation-thread.tsx` abre Conversa com `startConversation` (`:371`, `:389`), envia com `sendMessage` (`:424`), descarta rascunho (`:482`), grava nota (`:768`), cria Tarefa (`:834`) e confere consentimento (`:352`), tudo no modelo antigo. As abas por Canal vêm de `canaisDoFio` (`derive-conversacional.ts:218`), que lê `state.channels`.
   - **O que fazer:**
     1. Criar `apps/web/src/dados/crm/mensagens.ts` com `useMensagens(conversaId)` (`GET /mensagens?conversaId=`) e `enviarMensagem` (`POST /mensagens`).
@@ -989,7 +992,8 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
     3. `canaisDoFio`, `canaisDeResposta` e `canalPadraoDeResposta` (`derive-conversacional.ts:271`) passam a receber os Canais de `useCanais` e os Identificadores do `ContatoDetalhado`.
     4. O descarte de rascunho sai do fio até a Sessão 16.
   - **Pronto quando:** Responder no fio grava uma linha em `plataforma.mensagens`; `conversation-thread.test.tsx` passa com o cliente da api falso e sem `conversations` no store.
-- [ ] **3.4.3 Caixa de Entrada: configurações, Filas e Canais** `web`
+- [x] **3.4.3 Caixa de Entrada: configurações, Filas e Canais** `web` · *feito*
+  - **Andamento:** plano 15-12 — A ficha do Canal lê `GET /canais/:id` e salva por `PATCH`; a Fila e as Configurações contam por `GET /conversas`. O popup "Adicionar Canal" das Listas só escolhe (D-15-12); o único caminho que cria Canal é a página de conectar. Telas: aceite do dono em bloco no UAT de 07/11, sem observação em navegador.
   - **Hoje:** `crm/caixa-de-entrada/configuracoes/page.tsx:145` conta Conversas antigas; `configuracoes/filas/[fila]/page.tsx` (`:43` a `:172`) lista Conversas e Contatos antigos da Fila; `configuracoes/canais/[canal]/page.tsx:127` salva com `configurarCanal` antigo; o popup legado das Listas (`features/crm/adicionar-canal-dialog.tsx:95`) cria Canal `conectada` em `registros` com `criarCanal` antigo.
   - **O que fazer:**
     1. As contagens e a lista da Fila usam `GET /conversas?filaId=`.
@@ -997,28 +1001,32 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
     3. O popup legado passa a usar `criarCanal` de `dados/crm/canais.ts:76` (nasce `desconectada`, como a página de conexão) ou leva o usuário para `/crm/caixa-de-entrada/configuracoes/canais/conectar`.
     4. Filas (`Queue`) e a Caixa (`Inbox`, com `reopenWindowHours`) continuam em `plataforma.registros`: são configuração, e a 008 guarda só o id da Fila (`fila_id`).
   - **Pronto quando:** Criar um Canal pelo popup das Listas grava em `plataforma.canais` e nada em `registros` na coleção `channels`.
-- [ ] **3.4.4 Fichas de Contato, Empresa e Negócio só no modelo novo** `web`
+- [x] **3.4.4 Fichas de Contato, Empresa e Negócio só no modelo novo** `web` · *feito*
+  - **Andamento:** plano 15-13 — As três fichas perderam o recuo para o modelo antigo: 404 da api é "não encontrado", e os arquivos do recuo (as fichas legadas de Contato e de Empresa, `deal-screen`, `restore-copy-dialog` e `import-contacts-dialog`) foram apagados. Telas: aceite do dono em bloco no UAT de 07/11, sem observação em navegador.
   - **Hoje:** Quando a api devolve 404, a página abre a ficha antiga: `crm/contatos/[contato]/page.tsx:27-30` (`FichaDeContatoLegado`), `crm/empresas/[empresa]/page.tsx:30` (`FichaDeEmpresaLegado`) e `crm/negocios/[negocio]/page.tsx:27-31` (`DealScreen`, que move, ganha, perde e reabre com operações antigas em `deal-screen.tsx:274-325`). `contact-card.tsx:176` grava a qualificação com `setContactCatalogValue`.
   - **O que fazer:**
     1. Tirar o caminho de reserva das três páginas: 404 mostra “não encontrado”.
     2. Apagar `features/crm/legado/ficha-de-contato-legado.tsx`, `legado/ficha-de-empresa-legado.tsx`, `deal-screen.tsx`, `restore-copy-dialog.tsx` e `import-contacts-dialog.tsx` (este último não é montado em lugar nenhum).
     3. `contact-card.tsx` grava a qualificação por `PATCH /contatos/:id` com `{ qualificacao }`.
   - **Pronto quando:** Abrir `/crm/contatos/<id antigo>` mostra “Contato não encontrado.”; os arquivos apagados não existem e `npm run check -w @n1/web` passa.
-- [ ] **3.4.5 Meus negócios e Reuniões** `web` `domínio`
+- [x] **3.4.5 Meus negócios e Reuniões** `web` `domínio` · *feito*
+  - **Andamento:** plano 15-15, 15-26, 15-40 e 15-41 — "Meus negócios" virou o filtro `?meus=1` de `/crm/negocios`; a Pasta virou uma Pasta comum e a Lista espelho saiu. A Reunião lê o Negócio novo e perdeu Diagnóstico, Roteiro e Temperatura (o Negócio novo não tem Campos personalizados). Telas: aceite do dono em bloco no UAT de 07/11, sem observação em navegador.
   - **Hoje:** `estrutura/listas/[lista]/page.tsx` monta `QuadroNegocios` (`:949`), `IniciarConversaDialog` (`:1089`) e a `DealScreen` embutida (`:1131`); `quadro-negocios.tsx` usa `DealCard` e `dealOfTask` (`:32`); `crm/reunioes/[reuniao]/page.tsx` lê `state.deals`, `contacts`, `companies` e `funnels` (`:138` a `:215`). `iniciarConversa` cria Negócio, Tarefa espelho e Conversa no modelo antigo.
   - **O que fazer:**
     1. Com (B) da decisão de Meus negócios: tirar a Pasta “Meus negócios” do seed e da navegação, apagar `QuadroNegocios`, `deal-card.tsx`, `iniciar-conversa-dialog.tsx` e `operations/iniciar-conversa.ts`, e pôr o filtro “meus” (`proprietario_id` = Membro da sessão) no quadro de `/crm/funis/[funil]`.
     2. Com (A): a Lista ganha `funilId`; `funilDaLista` lê esse campo; o quadro lê `useNegocios({ funilId })`; `iniciarConversa` vira rota `POST /negocios/iniciar-conversa` por `executarGestoMisto` (Negócio e Conversa nas tabelas, Tarefa espelho em `registros`).
     3. Nos dois casos, a Reunião lê Negócio, Contato e Empresa pela api (`useNegocio`, `useContato`) a partir do Vínculo.
   - **Pronto quando:** Abrir uma Reunião mostra o Negócio de `plataforma.negocios`; com (B), `/crm/meus-negocios` não existe mais; com (A), mover um cartão no quadro da Lista chama `POST /negocios/:id/mover`.
-- [ ] **3.4.6 Busca, Lixeira e Notificações** `web` `api`
+- [x] **3.4.6 Busca, Lixeira e Notificações** `web` `api` · *feito*
+  - **Andamento:** plano 15-14 — Contatos, Empresas, Negócios e Conversas vêm das rotas REST; o selo de Notificações soma o `total` de `GET /conversas`. A Busca de Conversa é pelo título. Telas: aceite do dono em bloco no UAT de 07/11, sem observação em navegador.
   - **Hoje:** `app/(shell)/buscar/page.tsx:112-153` procura em `state.contacts`, `companies`, `deals` e `conversations`; `configuracoes/lixeira/page.tsx:101-134` lista os antigos na lixeira e restaura com `restoreContact` (`:186`) e `restoreConversation` (`:189`); `notificacoes/page.tsx:139-144` mostra “Conversas atribuídas a você” das antigas.
   - **O que fazer:**
     1. Busca: `GET /contatos?q=`, `GET /empresas?q=` e `GET /negocios?q=` (já aceitam `q`) e `GET /conversas?q=` (novo, da 3.2).
     2. Lixeira: a mesma lista com `estado=na_lixeira` em cada rota; restaurar por `POST /contatos/:id/restaurar`, `/empresas/:id/restaurar`, `/negocios/:id/restaurar` e `/conversas/:id/restaurar`.
     3. Notificações: `GET /conversas?atribuidoId=<Membro>&situacao=aberta`.
   - **Pronto quando:** Buscar o nome de um Contato criado pela ficha nova o encontra; um Contato enviado à lixeira pela ficha nova aparece na Lixeira e volta ao restaurar.
-- [ ] **3.4.7 Início, Configurações e Painel** `web` `domínio`
+- [x] **3.4.7 Início, Configurações e Painel** `web` `domínio` · *feito*
+  - **Andamento:** plano 15-16, 15-18 e 15-23 — O Início soma no banco por `/crm/inicio/*`; o Painel lê as listas da api; `/configuracoes` lê o Funil padrão de `useFunis` (um Espaço novo nasce sem Funil, D-15-13). Os Painéis semeados abrem zerados até a Fonte apontar para um Funil novo (Sessão 20.3). Telas: aceite do dono em bloco no UAT de 07/11, sem observação em navegador.
   - **Hoje:** Início: `derive-resumo.ts:70`, `:134` e `:448`, `features/inicio/panorama-do-robo.ts:25-37` e `resumo-do-inicio.tsx:502` e `:561` leem Conversas e Contatos antigos. Configurações: `configuracoes/campos/page.tsx:102-107`, `tags/page.tsx:68-71` e `catalogos/page.tsx:54-55` contam uso nos registros antigos; `configuracoes/page.tsx:110` mostra `workspace.defaultFunnelId` (Funil antigo); `features/configuracoes/governance-access-dialog.tsx:221` concede acesso a Funil antigo. Painel: `widgetReading` (`derive.ts:744-760`) lê `state.deals`, `conversations` e `contacts`.
   - **O que fazer:**
     1. As funções de `derive-resumo.ts` e `widgetReading` passam a receber as linhas como argumento (`conversas`, `contatos`, `negocios`); a tela as busca com `useConversas`, `useContatos` e `useNegocios`.
@@ -1027,7 +1035,8 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
     4. O diálogo de acesso deixa de oferecer Funil: o Funil novo é governado por `privado` e pelo Papel (`podeNoCrm`).
   - **Pronto quando:** Início, Configurações e os Painéis de demonstração abrem sem `deals`, `contacts` e `conversations` no store, com os números vindos da api.
   - **Atenção:** Para o Painel, isto é uma ponte para ele não quebrar quando o CRM antigo sair. A Sessão 20 (tarefa 20.3) troca a ponte pela leitura no servidor.
-- [ ] **3.4.8 Ferramentas: Contatos e Canais pelos ids novos** `domínio` `web` `api`
+- [x] **3.4.8 Ferramentas: Contatos e Canais pelos ids novos** `domínio` `web` `api` · *feito*
+  - **Andamento:** plano 15-07, 15-17, 15-22 e 15-38 — Grupos, Comunidades e Flows conferem Canal e Contato nas tabelas; o servidor monta o `crm` e descarta o do navegador. O envio de Flow segue por Conversa 1:1 do modelo antigo (F14-D-05), que o corte esvazia: ver o aviso 73 do `WINDOWS.md`. Telas: aceite do dono em bloco no UAT de 07/11, sem observação em navegador.
   - **Hoje:** As operações de `packages/dominio/src/operations/ferramentas/` (`grupos.ts:110`, `:139`, `:256`, `:278`, `:296`, `participacoes.ts`, `comunidades.ts`, `permissoes.ts`, `provedor-simulado.ts`) acham Canal e Contatos dos Participantes em `state.channels` e `state.contacts`; `contatosComWhatsApp` (`derive-ferramentas.ts:318`) filtra `identidadeDeWhatsApp`. As telas em `apps/web/src/features/ferramentas/` (abas, popups, `criar-grupo-dialog.tsx`, `importar-grupos-dialog.tsx`, `participacoes.tsx`, `pedidos-de-entrada.tsx`) seguem o mesmo caminho.
   - **O que fazer:**
     1. As operações recebem `canais` e `contatos` já conferidos, pela opção `lerDoCrm` em `rotas/operacoes.ts` (como na 3.3).
@@ -1035,14 +1044,16 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
     3. `contatosComWhatsApp` vira `GET /contatos?comIdentificador=whatsapp` (filtro novo).
     4. Com (B) da decisão de Grupos e Flows, `conversaDoGrupo`, `enviosDoFlow`, `respostasDoFlow` e `receiveMessage` de `flows.ts:922` continuam no `Conversation` antigo, isolado num arquivo `types/conversa-de-grupo.ts`, até as Sessões 6 e 7.
   - **Pronto quando:** Criar um Grupo com dois Contatos da ficha nova grava as Participações com os ids de `plataforma.contatos`; os testes de `operations/ferramentas/` passam sem `state.contacts`.
-- [ ] **3.4.9 IA: alvos, escopos e âncoras pelos ids novos** `domínio` `web`
+- [x] **3.4.9 IA: alvos, escopos e âncoras pelos ids novos** `domínio` `web` · *feito*
+  - **Andamento:** plano 15-08, 15-10, 15-21 e 15-39 — A Âncora do Chat e do ensaio é nomeada por `POST /crm/nomes`; o escopo Funil da Automação é conferido em `plataforma.funis`; arquivar um Agente solta as Conversas dele nas tabelas. Telas: aceite do dono em bloco no UAT de 07/11, sem observação em navegador.
   - **Hoje:** `operations/ai.ts:989-997` e `operations/ia/agentes.ts:371-377` dão nome ao alvo (Negócio, Contato, Empresa, Conversa) pelo modelo antigo; `ia/agentes.ts:144` percorre `state.conversations`; `derive-ia.ts:309` confere Automação com escopo Funil em `state.funnels`. Na tela: `features/ia/ancora-do-chat.tsx:44-50`, `agentes/agente-completo.tsx`, `agentes/ensaiar-dialog.tsx`, `automacoes/automacao-spec.ts:455`, `editor-de-automacao.tsx` e `nova-automacao-dialog.tsx`.
   - **O que fazer:**
     1. O nome do alvo vem de uma rota em lote `POST /crm/nomes` com `{ alvos: [{ tipo, id }] }` (até 200), que a tela chama.
     2. O escopo Funil das Automações e Agentes guarda o id de `plataforma.funis`; `derive-ia.ts` recebe a lista de Funis ativos como argumento.
     3. A âncora do Chat em Negócio, Contato ou Conversa usa `useNegocio`, `useContato` e `useConversa`; o Canal das Automações vem de `useCanais`.
   - **Pronto quando:** Ancorar um Chat num Negócio novo mostra o título certo; os testes de `operations/ia/` passam sem `deals`, `contacts` e `conversations` no estado.
-- [ ] **3.4.10 Contas a receber: o cliente pelas tabelas** `domínio` `api` `web`
+- [x] **3.4.10 Contas a receber: o cliente pelas tabelas** `domínio` `api` `web` · *feito*
+  - **Andamento:** plano 15-19 — O cliente é um Contato de `plataforma.contatos`, conferido pelo servidor ao criar a série e ao importar; o nome aparece por `POST /crm/nomes`. Telas: aceite do dono em bloco no UAT de 07/11, sem observação em navegador.
   - **Hoje:** O cliente da conta a receber é um Contato ou Empresa antigo: `clienteDe` (`packages/dominio/src/operations/financeiro.ts:1747`) e `createReceivableSeries` (`:1808`) leem `state.contacts`; `features/estrutura/financeiro/serie-dialog.tsx:78` e `lens.ts:176` mostram o nome; a importação do ClickUp monta o catálogo de clientes de `state.contacts` e `state.companies` (`apps/api/src/importacao/clickup/importar-contas-a-receber.ts:62`; `operations/importacao-contas-a-receber.ts:173`).
   - **O que fazer:**
     1. `clienteDe` devolve só `{ tipo: 'contact' | 'company', id }` do Vínculo “cliente”; o nome vem de `POST /crm/nomes`.
@@ -1057,7 +1068,8 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
 
 **Pronto quando:** Homologação e produção rodaram o script; `npm run check` passa sem o modelo antigo.
 
-- [ ] **3.5.1 Escrever o script de migração do CRM antigo** `api` `banco`
+- [x] **3.5.1 Escrever o script de migração do CRM antigo** `api` `banco` · *feito*
+  - **Andamento:** plano 15-27, 15-28 e 15-29 — `npm run migrar:crm-antigo -w @n1/api -- --espaco <id> --seco|--guardar|--migrar|--verificar`: copia, confere e só então apaga; `--migrar` leva Contatos, Empresas, Negócios, Canais, Conversas e Mensagens com os ids antigos preservados e lista o que não migra. Ensaiado em Docker sobre a cópia de 05/11 e usado no corte de 07/11. Limite: o `ws_n1` só tinha o Funil "Padrão", então o mapeador de Contatos, Negócios e Conversas nunca viu dado real; está provado só com dados sintéticos.
   - **Hoje:** Os dados antigos estão em `plataforma.registros`, nas coleções `contacts`, `companies`, `contactCompanyLinks`, `funnels`, `deals`, `channels` e `conversations` (com as Mensagens dentro de cada Conversa). Não existe script de cópia.
   - **O que fazer:**
     1. Criar `apps/api/src/importacao/crm-antigo/migrar-crm-antigo.ts` e `.cli.ts`, com o comando `npm run migrar:crm-antigo -w @n1/api -- --espaco <id> [--seco]`. `--seco` só conta e lista o que não tem destino.
@@ -1071,19 +1083,22 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
     9. Reescrever o que fica em `registros` apontando para ids antigos: `links` (`toId` de `contact`, `company`, `deal`, `conversation`), `tasks[].provenance.sourceId`, `lists[].canaisDeAtendimento`, `grupos[].canalId` e Participações, escopos `funnel` de Automações, Agentes e Painéis, e `grants` de Funil.
     10. Por fim, copiar as linhas antigas para `plataforma.registros_crm_antigo` e apagá-las de `plataforma.registros`. Isso é obrigatório: `hidratar()` (`apps/api/src/persistencia/repositorio.ts:96`) carrega qualquer coleção que estiver no banco, então linha que fica volta no `GET /estado`.
   - **Pronto quando:** Teste de integração `apps/api/src/importacao/crm-antigo/migrar-crm-antigo.test.ts` sobre um Espaço semeado: depois de rodar, `select colecao, count(*) from plataforma.registros where colecao in ('contacts','companies','deals','funnels','channels','conversations','contactCompanyLinks') group by 1` volta vazio, todo Vínculo de Tarefa aponta para um id que existe nas tabelas, e rodar de novo não muda nada.
-- [ ] **3.5.2 Rodar a migração em homologação e em produção** `você` `infra`
+- [x] **3.5.2 Rodar a migração em homologação e em produção** `você` `infra` · *feito*
+  - **Andamento:** plano 15-30, 15-34 e 15-35 — O plano pedia homologação e produção; o dono decidiu o ensaio local com a cópia dos dados reais (F14-D-02), porque não existe homologação. Ensaiada em Docker sobre a cópia de 05/11 e executada em produção em 07/11 pelo assistente, a pedido escrito do dono: 012 aplicada, o CRM antigo guardado nos 18 Espaços de teste e no `ws_n1` (2.114 linhas saíram de `registros`; as 14 Conversas de Grupo ficam), `--verificar` ok em 19 de 19, API `20b4d01` no ar e web na `main` do n1, com backup do schema `plataforma` antes. O aceite do relatório e das telas é o do UAT de 07/11 ("pass all"); o 404 das operações antigas só está provado em teste, não ao vivo.
   - **O que fazer:**
     1. Backup do banco antes (Sessão 1).
     2. Em homologação: `--seco`, conferir com você o relatório de não migrados, rodar, abrir Caixa, fichas, Listas conversacionais e Contas a receber.
     3. Em produção: o mesmo, junto com o deploy das telas trocadas (3.4).
   - **Pronto quando:** Você aprova o relatório de não migrados e a conferência das telas nos dois ambientes.
-- [ ] **3.5.3 Tirar o CRM antigo do seed** `domínio`
+- [x] **3.5.3 Tirar o CRM antigo do seed** `domínio` · *feito*
+  - **Andamento:** plano 15-29 e 15-31 — `buildSeed()` nasce sem Contatos, Empresas, Funis, Negócios, Canais e Conversas 1:1; a demonstração é `npm run bootstrap:crm-demo` (só banco local).
   - **Hoje:** `seed.ts`, `seed-comercial.ts`, `seed-pos-venda.ts`, `seed-produto.ts`, `seed-ferramentas.ts` e `seed-contas-a-receber.ts` (este em `:223`) criam Contatos, Empresas, Negócios, Funis, Canais e Conversas antigos para a demonstração.
   - **O que fazer:**
     1. Tirar do seed tudo o que é do CRM antigo.
     2. Para o ambiente de desenvolvimento: rodar o script da subtarefa anterior uma vez sobre um Espaço semeado com a versão atual e salvar o resultado como `apps/api/src/bootstrap/crm-demo.sql` (só dados), aplicado por `npm run bootstrap:crm-demo -w @n1/api`.
   - **Pronto quando:** `npm run check -w @n1/dominio` passa com o seed novo; um Espaço de desenvolvimento novo, depois de `bootstrap:crm-demo`, mostra Contatos e Conversas na Caixa.
-- [ ] **3.5.4 Remover o modelo antigo** `domínio` `api` `web`
+- [x] **3.5.4 Remover o modelo antigo** `domínio` `api` `web` · *feito*
+  - **Andamento:** plano 15-32, 15-33, 15-41, 15-42 e 15-43 — O `DataState` perdeu as oito coleções; 40 operações antigas respondem 404 (provado em teste); a ponte dos Canais saiu. Sobra só a Conversa de Grupo e o Flow (F14-D-05), até as Sessões 6 e 7. O corte de 07/11 tirou o CRM antigo de `registros` em produção; ficam as 14 Conversas de Grupo.
   - **Hoje:** Os dois modelos convivem; a ponte `canais-projetados.ts` existe só por isso.
   - **O que fazer:**
     1. Em `packages/dominio/src/types/crm.ts`: apagar `Contact`, `Company`, `Deal`, `Funnel`, `Stage`, `Channel`, `Conversation`, `Message`, `Participant`, `Draft`, `ContactCompanyLink`, `CompanyCompanyLink`, `DistinctFromLink` e afins. Ficam `Queue`, `Inbox` e `BusinessHours` (Filas e Caixa continuam em `registros`).
@@ -1100,7 +1115,8 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
 
 **Pronto quando:** Uma chamada do provedor de teste ao webhook, com o worker ligado, cria Contato, Conversa e Mensagem nas tabelas; a mesma chamada repetida não grava nada novo.
 
-- [ ] **3.6.1 Definir a interface do provedor de mensageria** `api`
+- [x] **3.6.1 Definir a interface do provedor de mensageria** `api` · *feito*
+  - **Andamento:** plano 16-02 — Existe uma interface única de provedor de mensagens (`apps/api/src/mensageria/provedor.ts`) e um conjunto de seis testes de contrato que qualquer provedor novo precisa passar. O provedor de teste só vale para Canal simulado e cada Canal tem o segredo do webhook dele no cofre (corrige o "segredo fixo" que o texto da subtarefa previa). `npm run canal:segredo-de-teste` gera o segredo e imprime o `curl` de prova.
   - **Hoje:** Não existe interface de provedor de mensagens. As Ferramentas têm um provedor simulado próprio só para Grupos (`packages/dominio/src/operations/ferramentas/provedor-simulado.ts`).
   - **O que fazer:**
     1. Arquivo novo `apps/api/src/mensageria/provedor.ts` com `interface ProvedorDeMensageria`. Mora no `apps/api` porque é entrada e saída de rede; os tipos que ela usa vêm do domínio (`TipoIdentificadorContato`, `StatusDeEntrega`, `ConexaoDoCanal`).
@@ -1112,7 +1128,8 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
     7. `apps/api/src/mensageria/registro.ts`: `provedorDoCanal(canal)` devolve o provedor de teste quando `conexao_simulada = true`, senão a implementação do `canal.provedor`; sem implementação, erro `PROVEDOR_INDISPONIVEL`.
     8. Provedor de teste `apps/api/src/mensageria/provedores/teste.ts`: guarda em memória o que recebeu em `enviar`, aceita o segredo fixo de teste e lê um JSON simples em `interpretarChamada`.
   - **Pronto quando:** `apps/api/src/mensageria/provedor.test.ts` é um conjunto de testes que recebe uma implementação e passa com o provedor de teste; as Sessões 4, 7, 8 e 9 rodam o mesmo conjunto contra a sua.
-- [ ] **3.6.2 Fazer o recebimento completo: Contato, Conversa e Mensagem** `domínio` `api`
+- [x] **3.6.2 Fazer o recebimento completo: Contato, Conversa e Mensagem** `domínio` `api` · *feito*
+  - **Andamento:** plano 16-01 — Uma mensagem que chega acha o Contato pelo número ou o cria, reaproveita, reabre ou abre a Conversa (RN-CXE-09), reativa o Contato arquivado e grava a Mensagem sem duplicar. Número novo, repetida, Canal de outro Espaço, Canal arquivado, anexo, lixeira e corrida entre duas chamadas estão provados em Postgres local.
   - **Hoje:** `registrarRecebida` (`apps/api/src/servicos/crm/mensagens.ts:141`) exige `conversaId` e não muda a situação da Conversa. A regra completa só existe no modelo antigo: `receiveMessage` (`packages/dominio/src/operations/conversations.ts:315`) entra na Conversa aberta, reabre a resolvida dentro da janela da Caixa (`inbox.reopenWindowHours`), senão abre outra (RN-CXE-09), e devolve a `ativo` o Contato arquivado ou na lixeira (RN-CON-13).
   - **O que fazer:**
     1. Domínio, `packages/dominio/src/crm/recebimento.ts` (novo): `destinoDaRecebida({ aberta, ultimaResolvida, janelaDeReaberturaHoras, agora })` → `{ acao: 'usar', conversaId } | { acao: 'reabrir', conversaId } | { acao: 'abrir' }`, com a regra de `receiveMessage` (pendente volta a aberta); e `contatoDaRecebida(estado)` para RN-CON-13 (`mesclado` segue para o sobrevivente).
@@ -1124,7 +1141,8 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
     7. Devolve `{ mensagem, conversa, contato, contatoNovo, conversaNova, conversaReaberta, repetida }`: é o que a Sessão 5 (Tarefa) e a Sessão 16 (Agente) usam para o passo seguinte.
     8. `registrarRecebida` sai da interface `ServicoDeMensagens` e vira o passo 4.
   - **Pronto quando:** Testes de serviço contra o Postgres real: Contato novo; Contato arquivado volta a `ativo`; Conversa aberta reaproveitada; resolvida dentro da janela reabre (`reaberturas` soma 1); resolvida fora da janela abre outra; a mesma Mensagem duas vezes grava uma linha só.
-- [ ] **3.6.3 Criar a rota de webhook por Canal** `api`
+- [x] **3.6.3 Criar a rota de webhook por Canal** `api` · *feito*
+  - **Andamento:** plano 16-03 — `POST /webhooks/mensageria/:canalId` guarda a chamada numa fila e responde na hora. Toda recusa (Canal que não existe, arquivado, sem segredo ou com segredo errado) dá a mesma resposta 401, há teto por IP e a chave do provedor nunca vai para o banco nem para o log. A migração `013` criou a fila e está em produção desde 10/11 (aplicada pela publicação, sem backup do schema, por decisão sua).
   - **Hoje:** Não existe. As rotas públicas de hoje (`apps/api/src/rotas/formularios-publicos.ts`) mostram o molde: fora do hook de JWT, com limite de taxa.
   - **O que fazer:**
     1. `POST /webhooks/mensageria/:canalId` em `apps/api/src/rotas/webhooks-de-mensageria.ts` (novo), registrada fora do hook de JWT, com limite de taxa e o corpo cru preservado para conferir assinatura.
@@ -1132,7 +1150,8 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
     3. Canal inexistente, arquivado ou chamada não verificada: a mesma resposta 401, sem dizer o motivo, para não revelar quais Canais existem.
     4. Verificada: grava a chamada em `plataforma.webhooks_recebidos` e responde 200 na hora; nada é processado dentro da requisição.
   - **Pronto quando:** Testes de rota: sem assinatura → 401 e nada gravado; com a do provedor de teste → 200 e uma linha `pendente` em `webhooks_recebidos`.
-- [ ] **3.6.4 Processar a fila de entrada** `api`
+- [x] **3.6.4 Processar a fila de entrada** `api` · *feito*
+  - **Andamento:** plano 16-03 e 16-18 — O processador pega as chamadas da fila sem pisar uma na outra, devolve a que ficou travada, recusa de vez o que nunca vai servir e tenta de novo, com espera crescente, o que foi falha passageira. Liga com `MENSAGERIA_WORKER_ATIVO=true`; está ligado em produção desde 10/11. Com o SIGTERM do `systemctl restart` a API passa a encerrar sozinha, com teto de 15 s (o 16-18 trocou o SIGKILL de 20 s por um tratador único). Publicado em 10/11; o tempo do segundo restart em produção é conferência sua (16-22).
   - **Hoje:** Não existe fila de entrada. O worker do outbox (`apps/api/src/persistencia/outbox-worker.ts`) já tem o molde de reivindicar, tentar de novo e desistir.
   - **O que fazer:**
     1. Tabela `plataforma.webhooks_recebidos` (migração nova da 3.1): `id`, `workspace_id`, `canal_id`, `provedor`, `corpo jsonb`, `recebido_em`, `estado` (`pendente`, `processando`, `processado`, `falhou`), `tentativas`, `locked_at`, `locked_by`, `ultimo_erro`.
@@ -1141,7 +1160,8 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
     4. Ligado em `apps/api/src/index.ts` por `MENSAGERIA_WORKER_ATIVO=true`, como o worker do outbox (`index.ts:175`).
     5. O `corpo` tem dado pessoal: as linhas `processado` são apagadas no prazo de retenção da Sessão 19.
   - **Pronto quando:** Teste: gravar uma chamada, simular queda do worker no meio (`locked_at` vencido) e religar processa a Mensagem uma vez só.
-- [ ] **3.6.5 Gravar o status de entrega que o provedor informa** `domínio` `api`
+- [x] **3.6.5 Gravar o status de entrega que o provedor informa** `domínio` `api` · *feito*
+  - **Andamento:** plano 16-06 — O status que o provedor informa (enviada, entregue, lida) muda a Mensagem sem nunca andar para trás: uma "lida" seguida de um "entregue" atrasado continua "lida". Um evento de conexão só muda Canal real, nunca o simulado, e quando o Canal volta ao ar as Mensagens que esperavam são reenfileiradas.
   - **Hoje:** `plataforma.mensagens` tem `status_entrega`, `status_entrega_em` e `motivo_falha`, mas só o envio preenche (`statusInicialDeEnvio`, `packages/dominio/src/crm/mensagens.ts:192`).
   - **O que fazer:**
     1. Domínio: `proximoStatusDeEntrega(atual, novo)` em `crm/mensagens.ts`, que só avança (`pendente` → `enviada` → `entregue` → `lida`; `falhou` só a partir de `pendente` ou `enviada`).
@@ -1155,7 +1175,8 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
 
 **Pronto quando:** Uma resposta escrita na Caixa, num Canal simulado, chega ao provedor de teste e fica `enviada` com `id_externo`; com erro transitório, a fila tenta de novo.
 
-- [ ] **3.7.1 Enfileirar o envio na mesma transação da Mensagem** `domínio` `api` `banco`
+- [x] **3.7.1 Enfileirar o envio na mesma transação da Mensagem** `domínio` `api` `banco` · *feito*
+  - **Andamento:** plano 16-04 — A resposta escrita na Caixa nasce "pendente" e, num Canal conectado, grava o pedido de envio (só ids, sem texto nem telefone) na mesma transação da Mensagem, nos três pontos que gravam Mensagem enviada. O worker antigo do `automation/` passou a ignorar esse tipo de evento.
   - **Hoje:** `ServicoDeMensagens.enviar` (`apps/api/src/servicos/crm/mensagens.ts:91`) grava a Mensagem com `statusInicialDeEnvio` (`enviada` se o Canal está `conectada`, `pendente` se não) e para aí.
   - **O que fazer:**
     1. Evento novo `mensagem.enviar.v1` em `EVENTOS` (`apps/api/src/persistencia/outbox.ts:33`), com payload `{ mensagemId, conversaId, canalId }`: sem texto e sem telefone, como os outros eventos.
@@ -1164,7 +1185,8 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
     4. Índice único (migração nova da 3.1) `(workspace_id, aggregate_type, aggregate_id, event_type) where event_type = 'mensagem.enviar.v1'`: a mesma Mensagem nunca entra duas vezes na fila.
     5. Quando o Canal volta a `conectada` (evento `conexao` da 3.6), enfileirar as Mensagens `pendente` dele: nada é descartado (B69).
   - **Pronto quando:** Teste de serviço: enviar grava a Mensagem `pendente` e uma linha `mensagem.enviar.v1` no outbox; se o insert do evento falha, a Mensagem também não fica.
-- [ ] **3.7.2 Entregar pelo provedor em vez de HTTP** `api`
+- [x] **3.7.2 Entregar pelo provedor em vez de HTTP** `api` · *feito*
+  - **Andamento:** plano 16-05, 16-20 e 16-21 — Um worker próprio entrega pelo provedor do Canal: a Mensagem passa de "pendente" a "enviada" com o id do provedor, ou a "falhou" com um motivo legível. Falha passageira volta à fila até 5 vezes; resposta ambígua nunca é reenviada sozinha, para o cliente não receber duas vezes. Liga junto com o processador de entrada, por `MENSAGERIA_WORKER_ATIVO`. Depois da verificação da fase, três lacunas se fecharam (16-20 e 16-21): uma linha que volta da fila sem desfecho (trava vencida) fecha como "sem confirmação" em vez de reenviar; o aceite do provedor que não grava tenta 3 vezes e depois fecha a Mensagem; a volta do Canal só reabre o que falhou por Canal desconectado; e a resposta sai pelo número por onde o Contato escreveu, não só pelo principal. Provado em Postgres local e publicado em 10/11; a conferência com o celular em produção é sua (16-22).
   - **Hoje:** O worker (`entregar`, `apps/api/src/persistencia/outbox-worker.ts:230`) só faz POST no serviço `automation/`, pelo caminho de `CAMINHO_POR_EVENTO` (`:63`), e só liga com `OUTBOX_DESTINO_URL` e `OUTBOX_TOKEN` (`apps/api/src/index.ts:175`).
   - **O que fazer:**
     1. `OpcoesOutboxWorker` (`outbox-worker.ts:116`) ganha `tiposDeEvento?: readonly NomeDeEvento[]` (`reivindicar` filtra por `event_type`) e `entregador?: (linha) => Promise<ResultadoDeEntrega>`, usado no lugar do POST.
@@ -1173,7 +1195,8 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
     4. Aceito: grava `id_externo`, `status_entrega = 'enviada'` e `status_entrega_em`. Recusa permanente: `falhou` com `motivo_falha`. Transitória: a linha volta a `pending` com o backoff de hoje.
     5. Um segundo worker em `index.ts`, ligado por `MENSAGERIA_WORKER_ATIVO`, só com `mensagem.enviar.v1`; o worker atual passa `tiposDeEvento` com os quatro eventos de hoje.
   - **Pronto quando:** Teste em `apps/api/src/e2e/mensageria.test.ts`: enviar por `POST /mensagens` num Canal simulado faz o provedor de teste receber uma chamada e a Mensagem ficar `enviada` com `id_externo`; com o provedor devolvendo erro transitório duas vezes, a terceira tentativa entrega.
-- [ ] **3.7.3 Mostrar a entrega no fio e deixar tentar de novo** `api` `web`
+- [x] **3.7.3 Mostrar a entrega no fio e deixar tentar de novo** `api` `web` · *feito*
+  - **Andamento:** plano 16-06 e 16-11 — O fio mostra Enviando…, Enviada, Entregue e Lida, e a Mensagem que falhou mostra "Não enviada", o motivo e o botão "Tentar de novo" (`POST /mensagens/:id/reenviar`). O que vale em tela está provado por teste; ver a tela com WhatsApp real é a prova ao vivo (16-16).
   - **Hoje:** O fio antigo mostra `deliveryStatus` da Mensagem antiga; não há como reenviar uma que falhou.
   - **O que fazer:**
     1. Rota `POST /mensagens/:id/reenviar`: só para `falhou`; volta a `pendente` e enfileira de novo.
@@ -1186,28 +1209,27 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
 
 **Pronto quando:** Com duas abas abertas na mesma Conversa, a Mensagem que chega pelo webhook aparece nas duas em menos de 2 s.
 
-- [ ] **3.8.1 Como mandar as novidades para a tela?** `decisão` · *muda o produto*
-  - **Como é hoje:** `AcompanhanteDaRevisao` (`apps/web/src/dados/store.ts:319`) chama `GET /estado/revisao` (`apps/api/src/rotas/estado.ts:63`) a cada `INTERVALO_DA_REVISAO_MS` = 5 s (`store.ts:312`) e, se mudou, recarrega o Espaço inteiro. As telas do CRM leem por SWR e não são avisadas.
-  - **Você decide:**
-    - (A) Supabase Realtime, que já vem com o banco
-    - (B) Canal próprio no `apps/api` (SSE), alimentado por `LISTEN/NOTIFY` do Postgres
-  - **O que muda depois:** (A) exige expor o schema `plataforma` ao Realtime com regras por linha, o contrário do que a Sessão 1 fecha. (B) cerca de 1 dia, e a regra de acesso continua no `apps/api`, onde já está.
-  - **Recomendo:** (B).
-- [ ] **3.8.2 Publicar os eventos do CRM no banco** `api`
+- [x] **3.8.1 Como mandar as novidades para a tela?** `decisão` · *decidida*
+  - **Decidido:** Escolha B: o próprio `apps/api` avisa a tela por SSE, alimentado por `LISTEN/NOTIFY`. Cada aba só recebe eventos do próprio Espaço e das Conversas que o Membro pode ler, então a regra de acesso continua no backend. Descartado o Supabase Realtime (A), porque exigiria abrir o schema `plataforma` ao Realtime com regras por linha, o contrário do que a Fase 9 fechou. Custa uma conexão fixa a mais no pooler em modo sessão (porta 5432), que produção já usa. Se o pooler real não entregar o `LISTEN`, a tela segue funcionando pela releitura de 5 s; isso só a prova ao vivo (16-16) confirma.
+  - **O que muda no plano:** (A) exige expor o schema `plataforma` ao Realtime com regras por linha, o contrário do que a Sessão 1 fecha. (B) cerca de 1 dia, e a regra de acesso continua no `apps/api`, onde já está.
+- [x] **3.8.2 Publicar os eventos do CRM no banco** `api` · *feito*
+  - **Andamento:** plano 16-07 — Mensagem nova, mudança de status e mudança de Conversa saem como aviso no banco, no mesmo commit do gesto (nada chega antes do commit, nada depois de um rollback). Os avisos só levam ids, nunca o texto da Mensagem.
   - **Hoje:** Nenhuma escrita do CRM avisa ninguém; só a escrita de Canal soma a revisão do Espaço (`avancarRevisaoDoEspaco`, `repositorios/crm/referencias.ts`).
   - **O que fazer:**
     1. `apps/api/src/mensageria/avisar.ts`: `avisarCrm(cliente, evento)` faz `pg_notify('crm_eventos', json)` no mesmo cliente da transação; o Postgres só entrega no `commit`.
     2. Payload só com ids: `{ workspaceId, tipo: 'mensagem.nova' | 'mensagem.status' | 'conversa.mudou', conversaId, mensagemId? }`.
     3. Chamado por `receberMensagem`, `enviar`, `atualizarStatusDeEntrega` e pelos gestos da Conversa (resolver, reabrir, atribuir, mover, lixeira).
   - **Pronto quando:** Teste: uma conexão em `LISTEN crm_eventos` recebe o evento depois do `commit` e nada depois de um `rollback`.
-- [ ] **3.8.3 Abrir a rota de eventos para a tela** `api`
+- [x] **3.8.3 Abrir a rota de eventos para a tela** `api` · *feito*
+  - **Andamento:** plano 16-07 — `GET /eventos` (SSE) exige o token, filtra por Espaço e por quem pode ler a Conversa, bate a cada 25 s, confere o Papel de novo a cada minuto, limita 5 abas por Membro e fecha em 45 min para a aba reconectar. Se o ouvinte do banco cair, responde 503 e a tela volta à releitura.
   - **Hoje:** Não existe.
   - **O que fazer:**
     1. `GET /eventos` em `apps/api/src/rotas/eventos.ts` (novo), `text/event-stream`, com o JWT no `Authorization`, como as outras rotas.
     2. Uma conexão `LISTEN crm_eventos` por processo, fora do pool; cada assinante recebe só os eventos do próprio Espaço e só se pode `ler` `conversa` (`exigir`, `apps/api/src/servicos/crm/acesso.ts:39`).
     3. Batida a cada 25 s, para o proxy não cortar a conexão.
   - **Pronto quando:** Teste de rota: um Membro de outro Espaço conectado em `/eventos` não recebe o evento; sem token, 401.
-- [ ] **3.8.4 Ouvir na tela** `web`
+- [x] **3.8.4 Ouvir na tela** `web` · *feito*
+  - **Andamento:** plano 16-08 e 16-19 — A tela abre o fluxo com `fetch` e o token do Membro (não `EventSource`), reconecta com espera crescente, relê tudo a cada conexão e a cada 5 s enquanto cai, e atualiza só as listas e o fio (sem toast, sem som: D-16-02). Soma-se à releitura por revisão, não a substitui. Medir as duas abas abaixo de 2 s é a prova ao vivo. A aba também corta um fluxo mudo por 60 s e reconecta (a API bate a cada 25 s) e só zera a espera de reconexão depois de 30 s de conexão estável (16-19). Publicado em 10/11; ver a reconexão depois de 2 min sem Wi-Fi é conferência sua (16-22).
   - **Hoje:** Só a releitura a cada 5 s.
   - **O que fazer:**
     1. `apps/web/src/dados/tempo-real.ts`: `fetch` com o token e leitura do corpo em fluxo (o `EventSource` do navegador não manda `Authorization`).
@@ -1222,39 +1244,45 @@ Duas coisas, nesta ordem. Primeiro, acabar com as duas bases do CRM: as telas no
 
 **Pronto quando:** Um áudio recebido pelo provedor de teste toca na Conversa mesmo depois de o link do provedor expirar, e uma imagem anexada na Caixa chega ao provedor de teste com a URL assinada.
 
-- [ ] **3.9.1 Ligar o anexo da Mensagem a um arquivo guardado** `domínio`
+- [x] **3.9.1 Ligar o anexo da Mensagem a um arquivo guardado** `domínio` · *feito*
+  - **Andamento:** plano 16-09 — O anexo da Mensagem aponta para um arquivo guardado no bucket (chave, tamanho e se já foi baixado). Uma Mensagem tem texto ou um anexo (no máximo um) e o Canal só recebe os tipos de mídia que declara aceitar.
   - **Hoje:** `AnexoDaMensagem` (`packages/dominio/src/crm/mensagens.ts:61`) tem só `tipoDeMidia`, `nome` e `referenciaExterna`; `validarNovaMensagem` (`:128`) exige texto e não aceita anexo.
   - **O que fazer:**
     1. `AnexoDaMensagem` ganha `objectKey?: string` (o arquivo no bucket), `tamanhoBytes?: number` e `baixado: boolean` (falso enquanto só há a referência do provedor). A coluna `mensagens.anexos` já é jsonb: não muda o schema.
     2. `NovaMensagem` ganha `anexos?: readonly { objectKey, nome, tipoDeMidia }[]`; `validarNovaMensagem` aceita texto ou anexo (INV-CXE-07) e confere o tipo contra `sendableMediaTypes` das capacidades do Canal.
   - **Pronto quando:** Testes de domínio: Mensagem só com anexo é aceita; vídeo num Canal de e-mail (que não envia vídeo) é recusado.
-- [ ] **3.9.2 Aceitar áudio e vídeo nos anexos de Mensagem** `api`
+- [x] **3.9.2 Aceitar áudio e vídeo nos anexos de Mensagem** `api` · *feito*
+  - **Andamento:** plano 16-09 — Entram áudio (ogg, mp3, m4a, aac), vídeo (mp4, 3gp), docx, xlsx, pptx, csv, txt e zip nos anexos de Mensagem, com a assinatura conferida contra o conteúdo inteiro. Teto de 16 MiB para áudio e vídeo e 25 MiB para o resto. O Formulário público segue como era e continua recusando áudio.
   - **Hoje:** `TIPOS_ACEITOS` (`apps/api/src/servicos/storage-uploads.ts:53`) tem só PDF, XML, JPEG, PNG e WebP, e é a mesma lista do Formulário público (`rotas/formularios-publicos.ts:46`).
   - **O que fazer:**
     1. Lista própria `TIPOS_ACEITOS_NA_MENSAGEM` (os de hoje mais `audio/ogg`, `audio/mpeg`, `audio/mp4`, `audio/aac`, `video/mp4`, `video/3gpp`), sem alargar o Formulário.
     2. `assinaturaConfereComTipo` (`storage-uploads.ts:114`) ganha as assinaturas de OGG (`OggS`), MP3 (`ID3` ou `0xFF 0xFB`) e MP4/3GP (`ftyp` no byte 4).
     3. Teto de tamanho próprio para vídeo, por variável de ambiente, como `UPLOAD_MAX_BYTES`.
   - **Pronto quando:** Teste: um OGG verdadeiro é aceito, um arquivo de texto renomeado para `.ogg` é recusado, e o Formulário público continua recusando áudio.
-- [ ] **3.9.3 Rotas de upload e download de anexo de Mensagem** `api`
+- [x] **3.9.3 Rotas de upload e download de anexo de Mensagem** `api` · *feito*
+  - **Andamento:** plano 16-09 — `POST /mensagens/anexos` (ticket), `POST /mensagens` com `anexos` e `GET /mensagens/:id/anexos/:indice` (endereço assinado novo a cada abertura). Tudo roda sem Supabase nos testes, por uma porta com armazenamento em memória; contra o bucket real ainda não rodou.
   - **Hoje:** O anexo de Tarefa já faz isso (`apps/api/src/rotas/anexos-da-tarefa.ts:108`, com `formIdDaTarefa`); para Mensagem não existe.
   - **O que fazer:**
     1. `POST /mensagens/anexos` com `{ conversaId, nome, tipoDeMidia, tamanhoBytes }`: abre a sessão (`abrirSessaoDeUpload` com `formId = conversa-<id>`) e emite o ticket; a chave segue `workspace/<ws>/conversas/<conversaId>/<uuid>`.
     2. `POST /mensagens` aceita `anexos` com o `objectKey` confirmado (`confirmarObjeto`) e consome a sessão na mesma transação.
     3. `GET /mensagens/:id/anexos/:indice` confere o acesso à Conversa e devolve `urlDeDownload` (`storage-uploads.ts:289`).
   - **Pronto quando:** Teste de rota: um `objectKey` de outra Conversa é recusado; o download de um Membro sem acesso volta 403.
-- [ ] **3.9.4 Baixar a mídia do provedor ao receber** `api`
+- [x] **3.9.4 Baixar a mídia do provedor ao receber** `api` · *feito*
+  - **Andamento:** plano 16-10 — Ao receber, a mídia é baixada, conferida e guardada em `entrada/` antes de a Mensagem ser gravada; se falhar, a Mensagem entra assim mesmo e a mídia é completada nas passadas seguintes, até 3, e depois fica indisponível sem derrubar a Mensagem. Cada passada deixa uma linha de log com os tempos de cada etapa.
   - **Hoje:** Não existe: a recebida guarda só o que vier em `anexos`.
   - **O que fazer:**
     1. No processador de entrada, antes da transação: para cada anexo com `referenciaNoProvedor`, chamar `baixarMidia`, subir ao bucket com a chave da subtarefa anterior e gravar `objectKey` com `baixado: true`.
     2. Se o download falhar, a Mensagem é gravada assim mesmo com `baixado: false` e a referência; uma nova tentativa roda na próxima passada do worker.
   - **Pronto quando:** Teste com o provedor de teste: o link do provedor deixa de responder depois do recebimento e o anexo continua abrindo pela URL assinada.
-- [ ] **3.9.5 Anexar e tocar mídia no fio** `web`
+- [x] **3.9.5 Anexar e tocar mídia no fio** `web` · *feito*
+  - **Andamento:** plano 16-11 — O compositor anexa arquivo de verdade, só nas categorias que o Canal aceita, e o fio toca áudio e vídeo, mostra imagem, oferece "Baixar" para documento e avisa quando o provedor não entregou o arquivo. Saíram o microfone, a localização, a figurinha e o "ver uma vez" (D-16-10). Se o Safari toca o áudio do WhatsApp é a prova ao vivo.
   - **Hoje:** O compositor de `features/crm/conversation-thread.tsx` envia só texto; `apps/web/src/dados/envio-ao-bucket.ts` já sobe arquivo por URL assinada para Formulário e Tarefa.
   - **O que fazer:**
     1. Botão de anexar no compositor, usando `envio-ao-bucket.ts`; só oferece os tipos que o Canal envia (`sendableMediaTypes`).
     2. No fio: `<audio>`, `<video>`, `<img>` e link de documento, com a URL de `GET /mensagens/:id/anexos/:indice`.
   - **Pronto quando:** Anexar uma imagem pela Caixa mostra a imagem no fio e o provedor de teste recebe a URL assinada.
-- [ ] **3.9.6 Ligar a limpeza de arquivos órfãos** `api`
+- [x] **3.9.6 Ligar a limpeza de arquivos órfãos** `api` · *feito*
+  - **Andamento:** plano 16-10 — Uma coleta diária apaga sessões de upload abandonadas e arquivos de `entrada/` que nenhuma Mensagem cita. Liga com `COLETA_DE_ORFAOS_ATIVA=true` (nasce desligada). Limite conhecido: só enxerga os primeiros 500 arquivos de cada Canal.
   - **Hoje:** `coletarOrfaos` (`apps/api/src/servicos/storage-uploads.ts:305`) apaga do bucket o que foi enviado e nunca virou anexo, mas só o teste a chama.
   - **O que fazer:**
     1. Rodar uma vez por dia a partir de `apps/api/src/index.ts`, ligado por `COLETA_DE_ORFAOS_ATIVA=true`, protegido por `pg_try_advisory_lock` para só uma instância rodar.
@@ -1287,7 +1315,8 @@ Liga o primeiro provedor real: números comuns de WhatsApp, conectados por QR co
 
 **Pronto quando:** A lista de números está anotada e a Evolution responde no servidor.
 
-- [ ] **4.1.1 Separar os números e os celulares** `você`
+- [x] **4.1.1 Separar os números e os celulares** `você` · *feito*
+  - **Andamento:** plano dono, 12/11 — Você deu por concluído em 12/11, ao fechar a sessão. Não há neste cronograma uma lista dos números anotada; o que existe em produção são duas instâncias da Evolution ligadas a Canais (uma criada pelo "Conectar" do CRM e uma ligada à mão).
   - **Hoje:** Nenhum número escolhido.
   - **O que fazer:**
     1. Escolher pelo menos dois números para testar. Um deles pode ser o que vai para produção.
@@ -1296,7 +1325,8 @@ Liga o primeiro provedor real: números comuns de WhatsApp, conectados por QR co
     4. Anotar nesta tarefa, para cada número: o número, o nome do Canal (ex.: “Comercial”) e quem fica com o celular.
   - **Pronto quando:** A lista está anotada nesta tarefa.
   - **Atenção:** A API não oficial vai contra os termos do WhatsApp: um número pode ser bloqueado se mandar muita mensagem para quem não o tem salvo. Use números que aguentem esse risco.
-- [ ] **4.1.2 Instalar a Evolution API no servidor da Sessão 1** `infra`
+- [x] **4.1.2 Instalar a Evolution API no servidor da Sessão 1** `infra` · *feito*
+  - **Andamento:** plano instalação do dono e PR #7 — A Evolution 2.4.0 está instalada na VM e responde por HTTPS, a `EVOLUTION_URL` e a `EVOLUTION_API_KEY` estão no `api.env` do servidor e `npm run evolution:fumaca` confirmou em 11/11, contra ela, `fetchInstances` com a chave global (o passo 4 do plano). Você deu a sessão por fechada em 12/11. Fica registrado o que não foi feito: o passo 3 do plano (restringir o acesso externo ao painel da Evolution), que é da infra, e a troca da chave global que foi colada na conversa em 11/11, que você vai fazer.
   - **Hoje:** A Sessão 1 (1.6) deixa o servidor pronto, sem a Evolution.
   - **O que fazer:**
     1. Subir a Evolution API v2 por Docker, com um Postgres só dela (variáveis `DATABASE_PROVIDER=postgresql` e `DATABASE_CONNECTION_URI`). Nunca o banco da plataforma.
@@ -1312,7 +1342,8 @@ Liga o primeiro provedor real: números comuns de WhatsApp, conectados por QR co
 
 **Pronto quando:** Criar um Canal não oficial, clicar em “Conectar” e ler o QR code com o celular deixa o Canal “conectada” na tela, sem recarregar.
 
-- [ ] **4.2.1 Ensinar a conexão real ao domínio** `domínio`
+- [x] **4.2.1 Ensinar a conexão real ao domínio** `domínio` · *feito*
+  - **Andamento:** plano 16-13, 16-17 e PR #7 — O domínio ganhou `conectar` (a pessoa pede o QR code; não muda a conexão) e `conexao_perdida` (a queda leva a `com_erro`; num Canal já desconectado é ignorada), além de `conexao_confirmada` e da conferência do número, que já vinham da Fase 16. `podeConectarPorQrCode` decide o botão da ficha. Uma tentativa de conexão que falha (QR lido por outro número) leva até um Canal `desconectada` a `com_erro`. "Simular conexão" recusa o Canal já ligado a um provedor real (16-17). Você conectou um número real em 11/11.
   - **Hoje:** `AcaoDeConexao` (`packages/dominio/src/crm/canais.ts:129`) só tem `simular_conexao` e `desconectar`, e `proximaConexao` (`:131`) só trata essas duas. `AcaoCrm` (`packages/dominio/src/crm/permissoes.ts:47`) não tem “conectar”.
   - **O que fazer:**
     1. Acrescentar a `AcaoDeConexao` três ações: `conectar` (a pessoa pede o QR code), `conexao_confirmada` (o provedor avisou que conectou) e `conexao_perdida` (o provedor avisou que caiu). `desconectar` fica.
@@ -1320,7 +1351,8 @@ Liga o primeiro provedor real: números comuns de WhatsApp, conectados por QR co
     3. Acrescentar `conectar` a `AcaoCrm` em `permissoes.ts`, com a mesma regra de quem pode `simular_conexao` hoje.
     4. Nova função `conferirNumeroConectado(canal, numeroDoProvedor)` em `canais.ts`: compara o número que o provedor diz ter conectado com o `identificadorExterno` do Canal e recusa se forem diferentes.
   - **Pronto quando:** Testes em `packages/dominio/src/crm/canais.test.ts` cobrem as quatro ações e o caso do número diferente.
-- [ ] **4.2.2 Criar o cliente da Evolution no apps/api** `api`
+- [x] **4.2.2 Criar o cliente da Evolution no apps/api** `api` · *feito*
+  - **Andamento:** plano 16-12, 16-13 e PR #7 — Além de consultar, configurar o webhook, enviar e baixar mídia (Fase 16), o cliente cria a instância `n1-<espaço>-<canal>` (com o token escolhido pelo CRM), pede o QR code, sai da sessão e apaga a instância; o webhook passou a assinar também `CONNECTION_UPDATE`. A chave global da Evolution virou variável da API (`EVOLUTION_API_KEY`, só no `api.env`), o que reverte a decisão T-16-51 da Fase 16; a trava está no código: o cliente só cria e apaga instância `n1-...` e recusa qualquer outra, inclusive a do `automation/`. Conferido contra a Evolution 2.4.0 real em 11/11 pela fumaça (8 de 8: versão, criar com QR válido, token, estado, QR, sair, apagar e conferir que sumiu). Depois de um `connect`, a instância continua na lista por cerca de 1 s depois de apagada; a fumaça espera isso (PR #8) e o produto não depende disso.
   - **Hoje:** Nenhum código do `apps/api` chama a Evolution. O único que chama está no `automation/` (`adapters/evolution.ts`, fora deste repositório).
   - **O que fazer:**
     1. Criar `apps/api/src/provedores/evolution/cliente.ts` (dentro da pasta de provedores que a Sessão 3 criar), com `fetch`, cabeçalho `apikey` e tempo limite em toda chamada.
@@ -1329,7 +1361,8 @@ Liga o primeiro provedor real: números comuns de WhatsApp, conectados por QR co
     4. Os erros da Evolution viram os erros da interface de provedor da Sessão 3 (transitório ou permanente) e passam por `sanitizarErro` (`apps/api/src/persistencia/outbox-worker.ts:108`) antes de ir para o log.
   - **Pronto quando:** Testes em `apps/api/src/provedores/evolution/cliente.test.ts` contra `criarServidorFalso` (`apps/api/src/testes/servidor-falso.ts`) cobrem cada função, uma resposta 401 e um tempo esgotado.
   - **Atenção:** Os caminhos acima são os da Evolution API v2. Conferir na documentação da versão instalada antes de codificar.
-- [ ] **4.2.3 Criar a rota de conectar** `api`
+- [x] **4.2.3 Criar a rota de conectar** `api` · *feito*
+  - **Andamento:** plano PR #7 — `POST /canais/:id/conectar` cria a instância se ela ainda não existe, guarda o token dela e o segredo do webhook no cofre e devolve o QR code e o código de pareamento. Nunca grava `conectada`: quem diz que conectou é a Evolution (4.3.1). É idempotente (reaproveita instância e credencial), e é assim que o painel renova o QR. Sem `EVOLUTION_API_KEY` responde 503 dizendo o que falta. A Evolution é chamada fora da transação, porque segurar o Espaço durante a rede o travaria, e um teste prova a ordem. Publicado em 11/11.
   - **Hoje:** `POST /canais/:id/simular-conexao` (`apps/api/src/rotas/crm/canais.ts:93`) chama `simularConexao` (`apps/api/src/servicos/crm/canais.ts:255`), que só grava a marca no banco.
   - **O que fazer:**
     1. Nova rota `POST /canais/:id/conectar` em `rotas/crm/canais.ts`, servida por uma função nova `conectar` em `servicos/crm/canais.ts`.
@@ -1337,7 +1370,8 @@ Liga o primeiro provedor real: números comuns de WhatsApp, conectados por QR co
     3. Se a instância já existe e está desconectada, só pede um QR code novo (`pedirQrCode`).
     4. Nada grava `conectada` aqui: o Canal só muda quando a Evolution confirmar (4.3).
   - **Pronto quando:** Teste em `apps/api/src/rotas/crm/canais.test.ts`: `POST /canais/:id/conectar` devolve o QR code, a credencial fica cifrada no cofre e o Canal continua `desconectada`.
-- [ ] **4.2.4 Mostrar o QR code na ficha do Canal** `web`
+- [x] **4.2.4 Mostrar o QR code na ficha do Canal** `web` · *feito*
+  - **Andamento:** plano PR #7 — Na ficha do Canal, "Conectar" ("Reconectar" em `com_erro`) abre o painel com o QR code e os passos de cada provedor; criar o Canal abre a ficha com o painel aberto. O QR é renovado pelo painel a cada cerca de 25 s, e não pelo tempo real como o plano previa (`QRCODE_UPDATED`): o `NOTIFY` do Postgres aceita 8 KB e um QR em base64 passa disso. Você usou o painel num navegador real para conectar um número em 11/11. Limite: um Canal que já está `com_erro` e falha de novo para `com_erro` não muda de estado, então a tela não tem o que observar e a frase "QR lido por outro número" só aparece quando o estado muda depois de o painel pedir o QR.
   - **Hoje:** A página de conectar mostra um quadro tracejado “disponível quando a integração chegar” (`apps/web/src/features/crm/conectar-provedor.tsx:136-145`, texto em `apps/web/src/features/crm/conectar-canal.ts:40-43`). Depois de criar, ela só abre a ficha (`conectar-provedor.tsx:91`). A ficha mostra “Simular conexão” (`[canal]/page.tsx:318-326`).
   - **O que fazer:**
     1. Na ficha `[canal]/page.tsx`, para o provedor `whatsapp-nao-oficial`, trocar “Simular conexão” por “Conectar”. O clique chama `conectarCanal(id)` (nova, em `apps/web/src/dados/crm/canais.ts`) e abre um painel com o QR code e os passos de `ORIENTACAO_DO_PROVEDOR` (`conectar-canal.ts:33`).
@@ -1353,7 +1387,8 @@ Liga o primeiro provedor real: números comuns de WhatsApp, conectados por QR co
 
 **Pronto quando:** Desligar a internet do celular muda o Canal para “com erro”; remover o aparelho no celular muda para “desconectada”.
 
-- [ ] **4.3.1 Tratar os eventos de conexão da Evolution** `api`
+- [x] **4.3.1 Tratar os eventos de conexão da Evolution** `api` · *feito*
+  - **Andamento:** plano PR #7 — `connection.update` entra pelo webhook. O `open` é só um aviso: o processador confere na Evolution, na fonte, se a instância está aberta e se o número é o do Canal, e só então grava `conectada` (`conexao_simulada` falso). `close` de aparelho removido desconecta, outro `close` leva a `com_erro` e `connecting` não muda nada; número diferente sai da sessão e deixa `com_erro`. O `open` real está provado (você conectou em 11/11). `QRCODE_UPDATED` não é tratado: o painel renova o QR (4.2.4). Desde 12/11 (PR #12) a mudança de conexão avisa as abas abertas (`canal.mudou`, só o id do Canal): a tela relê os Canais sozinha, o fio da Conversa mostra "WhatsApp desconectado" com o link Reconectar e bloqueia o envio (antes só o `com_erro` avisava, e a Mensagem ficava em "Enviando…" sem explicação). Você testou a desconexão com um celular real e confirmou em 12/11 que o app a mostra como desconectada. Sem prova separada: o corpo exato do `connection.update`, e o significado dos `statusReason` (assumi 401 = aparelho removido; qualquer outra razão vira `com_erro`, que a tela também mostra e bloqueia).
   - **Hoje:** Nenhum evento de fora chega ao Canal.
   - **O que fazer:**
     1. No tratador da Evolution na rota de webhook da Sessão 3, tratar `CONNECTION_UPDATE`: estado `open` gera `conexao_confirmada`; `close` com o motivo de sessão encerrada (o aparelho foi removido no celular) gera `desconectar`; `close` por outro motivo gera `conexao_perdida`; `connecting` não muda nada.
@@ -1361,20 +1396,23 @@ Liga o primeiro provedor real: números comuns de WhatsApp, conectados por QR co
     3. Gravar pela `definirConexao` de `apps/api/src/repositorios/crm/canais.ts:209`, avançar a revisão do Espaço e avisar a tela pelo tempo real.
     4. Tratar `QRCODE_UPDATED` repassando o QR novo à tela pelo tempo real.
   - **Pronto quando:** Teste em `apps/api` com eventos `CONNECTION_UPDATE` de exemplo: `open` deixa o Canal `conectada` com `conexao_simulada = false`; `close` por queda deixa `com_erro`; número diferente deixa `com_erro`.
-- [ ] **4.3.2 Conferir a conexão de tempos em tempos** `api`
+- [x] **4.3.2 Conferir a conexão de tempos em tempos** `api` · *feito*
+  - **Andamento:** plano PR #7 — A cada 5 min a API pergunta à Evolution o estado de cada Canal `whatsapp-nao-oficial` ativo e corrige o banco quando um webhook se perdeu. Liga com `EVOLUTION_CONFERENCIA_ATIVA=true`; **está ligada em produção desde 12/11**, com a sua autorização. Na primeira rodada, em produção, ela conferiu 2 Canais e corrigiu 1: a instância estava fechada na Evolution e o app ainda a mostrava como conectada. É a única rede para a instância apagada no painel da Evolution (a configuração do webhook some junto, e nenhum aviso chega) e para o webhook perdido.
   - **Hoje:** Não existe. Um webhook perdido deixaria o estado errado para sempre.
   - **O que fazer:**
     1. Rotina no `apps/api`, no mesmo molde de `apps/api/src/automacoes/scheduler-worker.ts`, que a cada 5 min chama `estadoDaConexao` para cada Canal `whatsapp-nao-oficial` ativo e corrige o banco quando diverge.
     2. Ligada pela variável `EVOLUTION_CONFERENCIA_ATIVA`, desligada no ambiente local, e iniciada em `apps/api/src/index.ts` como os outros workers.
   - **Pronto quando:** Com o celular desligado, mudar à mão `conexao` para `conectada` no banco: em até 5 min ela volta para `com_erro`.
-- [ ] **4.3.3 Desconectar e arquivar de verdade** `api`
+- [x] **4.3.3 Desconectar e arquivar de verdade** `api` · *feito*
+  - **Andamento:** plano PR #7 — Desconectar tira o aparelho da sessão antes de gravar `desconectada`; arquivar também apaga a instância e a credencial do cofre. A Evolution é chamada antes da transação: se ela não responder, a rota devolve 502 ("Não foi possível falar com o WhatsApp. Tente de novo.") e nada é gravado. Canal sem credencial, simulado ou de outro provedor não chama ninguém, e uma instância que você ligou à mão só ganha "sair da sessão" e nunca é apagada. Provado com a Evolution de mentira e, no cliente, pela fumaça real (sair e apagar). Ainda não conferido: desconectar pela ficha e ver o aparelho sumir de "Aparelhos conectados" no celular.
   - **Hoje:** `desconectar` e `arquivar` (`apps/api/src/servicos/crm/canais.ts:257` e `:259`) só mudam o banco; o celular continua conectado à Evolution.
   - **O que fazer:**
     1. `desconectar` chama `sairDaSessao` antes de gravar `desconectada`.
     2. `arquivar` chama `sairDaSessao` e `apagarInstancia` e apaga a credencial do Canal no cofre.
     3. Se a Evolution falhar, nada é gravado e a rota devolve “Não foi possível falar com o WhatsApp. Tente de novo.”
   - **Pronto quando:** Desconectar pela ficha faz o aparelho sumir de “Aparelhos conectados” no celular.
-- [ ] **4.3.4 Tirar “Simular conexão” da produção** `api` `web`
+- [x] **4.3.4 Tirar “Simular conexão” da produção** `api` `web` · *feito*
+  - **Andamento:** plano PR #7 — A rota `POST /canais/:id/simular-conexao` e o botão só existem com `PERMITIR_CONEXAO_SIMULADA=true`; produção não define a variável (conferido no `api.env` da VM em 11/11), o ambiente de teste a liga e um teste prova que sem ela a rota responde 404. O 404 está provado em teste, não ao vivo. A api diz se a simulação está ligada em `GET /canais/:id` (`simulacaoPermitida`) e não em `GET /estado`, como o plano previa, porque o Canal já não está em `/estado` desde a Fase 15. Efeito aceito: os Canais de WhatsApp oficial e de E-mail, que ainda não têm provedor real, deixam de poder "conectar" por simulação em produção.
   - **Hoje:** A rota `POST /canais/:id/simular-conexao`, o serviço `simularConexao`, o botão da ficha e a marca `MarcaDeConexaoSimulada` (`apps/web/src/features/crm/selo-do-provedor.tsx`) valem para todo mundo.
   - **O que fazer:**
     1. Registrar a rota só quando a variável `PERMITIR_CONEXAO_SIMULADA=true` (homologação e testes; nunca em produção).
@@ -1389,14 +1427,16 @@ Liga o primeiro provedor real: números comuns de WhatsApp, conectados por QR co
 
 **Pronto quando:** Uma mensagem mandada do celular aparece na Caixa de Entrada; a resposta chega no celular; os tiques e as reações aparecem na tela.
 
-- [ ] **4.4.1 Proteger o webhook da Evolution** `api`
+- [x] **4.4.1 Proteger o webhook da Evolution** `api` · *feito*
+  - **Andamento:** plano 16-03, 16-12 e PR #7, #11 — O segredo vai num cabeçalho configurado no webhook da instância, não na URL (assim não cai no log do nginx), é conferido em tempo constante e a chamada só vale se a instância do corpo for a do Canal. O webhook assina `MESSAGES_UPSERT`, `CONNECTION_UPDATE` e, desde a 4.4.5, `MESSAGES_UPDATE`, `MESSAGES_DELETE` e `MESSAGES_EDITED`. `QRCODE_UPDATED` não entra, porque o painel renova o QR sozinho (4.2.4). A chave de deduplicação da fila de entrada passou a existir só para `messages.upsert`: o tique repete o id da Mensagem e seria descartado como repetido. Atenção: uma instância que já estava conectada guarda a lista de eventos de quando foi ligada; `npm run canal:atualizar-webhook-evolution` a reaplica (feito nas duas instâncias ligadas em 12/11, ver 4.4.5).
   - **Hoje:** A rota de webhook da Sessão 3 confere a origem por provedor. A Evolution não assina o webhook como a Meta assina.
   - **O que fazer:**
     1. Ao configurar o webhook da instância (`configurarWebhook`), usar um endereço com um segredo aleatório por Canal, guardado no cofre: `/webhooks/evolution/<canalId>/<segredo>`, dentro da rota da Sessão 3.
     2. A rota confere o segredo em tempo constante e confere que o campo `instance` do corpo é a instância daquele Canal. Senão, 401 sem processar.
     3. Assinar só os eventos usados: `QRCODE_UPDATED`, `CONNECTION_UPDATE`, `MESSAGES_UPSERT`, `MESSAGES_UPDATE` e `MESSAGES_DELETE`. Os de grupo entram na Sessão 6.
   - **Pronto quando:** Teste: uma chamada com segredo errado, ou com a instância de outro Canal, recebe 401 e não grava nada na fila de entrada.
-- [ ] **4.4.2 Traduzir a mensagem recebida da Evolution** `api`
+- [x] **4.4.2 Traduzir a mensagem recebida da Evolution** `api` · *feito*
+  - **Andamento:** plano 16-12, PR #9 e #11 — Texto, imagem, áudio, vídeo, documento e figurinha viram mensagem do CRM. A que você digita no celular (`fromMe`) entra como Mensagem enviada pelo próprio Canal (ator `integration`, status `enviada`, com o avatar "Celular" no fio): não reabre uma Conversa resolvida, não acorda uma pendente, não reativa um Contato arquivado e não conta como recebida para a janela de 24 h nem para o número de resposta; o `pushName` dela é o do dono do número e nunca vira o nome do Contato; e, se o eco de uma Mensagem da plataforma chegar antes do aceite, fica uma só. Você confirmou em 11/11, com um celular real, que a Mensagem digitada no aparelho aparece na Caixa (texto; mídia digitada no celular ainda não foi testada). A citação (`contextInfo.stanzaId`) liga a Mensagem à citada da MESMA Conversa e do mesmo Canal; a citada que não existe aqui deixa a Mensagem sem ligação, sem erro. Pelo código da Evolution 2.4.0-rc, o texto que cita chega sem o `contextInfo` (a mídia mantém); você confirmou em 12/11 que a citação funciona num celular real, mas não sei se o texto e a mídia foram testados separadamente. Seguem ignoradas, com motivo, grupo (Sessão 6), localização, contato e enquete. Os exemplos de teste são sintéticos: o plano pedia eventos reais gravados, e isso não foi feito.
   - **Hoje:** O recebimento completo (achar ou criar Contato e Conversa) vem da Sessão 3; ele recebe `MensagemRecebidaDoProvedor` (`packages/dominio/src/crm/mensagens.ts:110`) e nada traduz o formato da Evolution para ela.
   - **O que fazer:**
     1. Criar `apps/api/src/provedores/evolution/traduzir.ts`, que transforma o evento `MESSAGES_UPSERT` na entrada do recebimento.
@@ -1406,14 +1446,16 @@ Liga o primeiro provedor real: números comuns de WhatsApp, conectados por QR co
     5. Ignorar por enquanto as mensagens de grupo (`remoteJid` terminado em `@g.us`) e de status (`status@broadcast`): grupos são da Sessão 6.
   - **Pronto quando:** Testes em `apps/api/src/provedores/evolution/traduzir.test.ts` com eventos reais gravados: texto, imagem, áudio, resposta citada, `fromMe` e mensagem de grupo ignorada.
   - **Atenção:** Para ter eventos reais: apontar o webhook da instância de teste para um endereço de captura e salvar os corpos em `apps/api/src/provedores/evolution/exemplos/`, sem dados de clientes. Conferir se a versão instalada entrega o remetente como `@lid` (identificador oculto do WhatsApp, sem número) em vez do número; se entregar, tratar antes de ligar em produção.
-- [ ] **4.4.3 Juntar o número com e sem o nono dígito** `domínio`
+- [x] **4.4.3 Juntar o número com e sem o nono dígito** `domínio` · *feito*
+  - **Andamento:** plano PR #10 — `variantesDoNumeroBrasileiro` devolve `[com o 9, sem o 9]` só do celular brasileiro (`55` + DDD + 8 dígitos que começam em 6 a 9; o fixo e o número de fora têm uma forma só). O recebimento procura o Contato pela forma que chegou e depois pela outra; o Contato novo grava a forma com o 9; e a resposta sai pelo número como o WhatsApp o conhece (o da última recebida), só se for o mesmo celular do Identificador. Dois Contatos que já existiam, um com cada forma, não são mesclados sozinhos: a forma que chegou vence e juntá-los é o "Mesclar" da ficha. Publicado em 11/11; provado em Postgres local e com a Evolution de mentira, sem teste ao vivo com um celular sem o 9.
   - **Hoje:** `normalizarWhatsapp` (`packages/dominio/src/crm/normalizacao.ts:72`) só repassa para `normalizarTelefone` (`:57`), que aceita +55 com 12 ou 13 dígitos sem juntar os dois. O WhatsApp entrega muitos celulares antigos sem o nono dígito (`551187654321`), e o mesmo Contato pode estar cadastrado com ele (`+5511987654321`): viraria um Contato repetido.
   - **O que fazer:**
     1. Nova função `variantesDoNumeroBrasileiro(numero)` em `normalizacao.ts`: para +55 com DDD e celular, devolve as duas formas, com e sem o 9.
     2. O recebimento da Sessão 3 procura o Contato pelas duas formas antes de criar um novo. Contato novo grava a forma com o 9 como `valor` do identificador `whatsapp`.
     3. O envio usa o número como o WhatsApp o conhece: o `remoteJid` da última mensagem recebida na Conversa.
   - **Pronto quando:** Teste: uma mensagem de `551187654321@s.whatsapp.net` cai no Contato cadastrado com `+5511987654321`, sem criar outro.
-- [ ] **4.4.4 Enviar texto e mídia pela Evolution** `api`
+- [x] **4.4.4 Enviar texto e mídia pela Evolution** `api` · *feito*
+  - **Andamento:** plano 16-12 e PR #11 — A resposta escrita na Caixa sai pela instância do Canal (texto, imagem, vídeo, documento e áudio), e resposta ambígua nunca é reenviada sozinha. A resposta citada leva `quoted` (id da Mensagem, chat, de quem era e o texto) em texto, mídia e áudio, e a tela ganhou o botão "Responder" (só no WhatsApp não oficial e em Mensagem com id do provedor). Áudio com texto sai como duas mensagens. Texto e imagem chegaram ao celular na prova ao vivo de 10/11, e o texto de novo em 11/11; a citação enviada pelo "Responder" foi confirmada por você em 12/11; o áudio ainda não foi visto num celular.
   - **Hoje:** A porta de saída da Sessão 3 entrega a um provedor de teste; não há provedor Evolution.
   - **O que fazer:**
     1. Implementar `enviar` da interface de provedor em `apps/api/src/provedores/evolution/`: texto por `enviarTexto`; imagem, vídeo e documento por `enviarMidia`, com a URL assinada do arquivo; áudio por `enviarAudio` (chega como mensagem de voz).
@@ -1421,7 +1463,8 @@ Liga o primeiro provedor real: números comuns de WhatsApp, conectados por QR co
     3. Na volta, gravar o `key.id` devolvido em `id_externo` da Mensagem `enviada`: é ele que liga os tiques depois.
     4. Canal fora de `conectada`: não tentar. A Mensagem fica `pendente` (regra B69) e a outbox tenta de novo quando o Canal voltar.
   - **Pronto quando:** Pela Caixa de Entrada, um texto, uma imagem e um áudio chegam ao celular, e no banco as três Mensagens têm `id_externo` preenchido.
-- [ ] **4.4.5 Gravar tiques, reações, edições e mensagens apagadas** `domínio` `api` `web`
+- [x] **4.4.5 Gravar tiques, reações, edições e mensagens apagadas** `domínio` `api` `web` · *feito*
+  - **Andamento:** plano PR #11 — No ar desde 11/11, com o webhook das duas instâncias ligadas reaplicado em 12/11 (`npm run canal:atualizar-webhook-evolution`, com os cinco eventos). O domínio tipa `Reacao`, `MarcacaoDeExclusao` e `EdicaoExterna` e traz as regras da ontologia: a Reação é um registro de acréscimo (vale a última de cada autor), a exclusão é terminal e a edição só vale para a Mensagem recebida (o conteúdo anterior vai ao histórico). O tradutor entende `messages.update` (o tique), `messages.delete`, `messages.edited` e a reação dentro do upsert; o processador os aplica na Mensagem que já existe, sem criar nada. A tela mostra a reação embaixo da bolha, "Mensagem apagada" (o conteúdo continua guardado, mas não é exibido), a marca "editada" e a citação. Você confirmou em 12/11, com um celular real, o tique, a edição, a apagada, a reação e a citação: os formatos lidos no código da Evolution 2.4.0-rc2 batem com o que ela manda. Limites: dar Reação pela tela não existe (só se mostra), e reação, edição e apagada em grupo são da Sessão 6.
   - **Hoje:** As colunas `status_entrega`, `status_entrega_em`, `reacoes`, `marcacao_exclusao` e `edicoes_externas` existem em `plataforma.mensagens` (008, linhas 153-159), mas o repositório (`apps/api/src/repositorios/crm/mensagens.ts`) só insere e lê, e o tipo `Mensagem` as declara como `unknown` (`packages/dominio/src/crm/mensagens.ts:96-99`).
   - **O que fazer:**
     1. No domínio: tipar `Reacao` (`autor`, `emoji`, `em`), `MarcacaoDeExclusao` (`porQuem`, `em`) e `EdicaoExterna` (`conteudoAnterior`, `em`), e criar `proximoStatusDeEntrega(atual, novo)`, que só avança (`enviada`, depois `entregue`, depois `lida`); `falhou` é final.
@@ -1436,20 +1479,17 @@ Liga o primeiro provedor real: números comuns de WhatsApp, conectados por QR co
 
 **Pronto quando:** Dois números conectados em homologação, sem misturar Conversas, e a decisão dos avisos do Financeiro tomada.
 
-- [ ] **4.5.1 Testar com dois números reais** `você`
+- [x] **4.5.1 Testar com dois números reais** `você` · *feito*
+  - **Andamento:** plano dono, 12/11 — Você deu por concluído em 12/11, ao fechar a sessão. Eu não conferi o roteiro do plano (o mesmo Contato com uma Conversa por Canal e cada resposta saindo pelo número da Conversa). O que está provado com celular real é um número por vez: conectar, receber, a mensagem digitada no celular, enviar, tique, edição, apagada, reação, citação e desconectar.
   - **Hoje:** Testado só com Canais simulados (`apps/api/src/e2e/canais-fluxo.test.ts`).
   - **O que fazer:**
     1. Conectar em homologação os dois números da lista de 4.1.
     2. Do mesmo celular, mandar mensagem para os dois números e responder pelos dois na Caixa de Entrada.
     3. Conferir que o mesmo Contato tem uma Conversa por Canal e que cada resposta sai pelo número da Conversa.
   - **Pronto quando:** A consulta `select canal_id, count(*) from plataforma.conversas where contato_id = '<id do Contato>' group by canal_id` devolve duas linhas, e cada resposta chegou pelo número certo.
-- [ ] **4.5.2 Os avisos do Financeiro passam a sair por um Canal daqui?** `decisão` `api` · *arrumação: pode seguir a recomendação*
-  - **Como é hoje:** As Automações do Financeiro gravam o evento `automacao.notificar-canal.v1` (`apps/api/src/persistencia/eventos-de-canal.ts`). O worker da outbox o entrega ao `automation/`, que busca o número na Tarefa e envia pela instância `numeropvmarcos` (`sendText` e `sendListMessage`). Os textos dos avisos (`gasto-novo` e `relatorio`) moram no `automation/`. A mesma instância recebe os extratos que chegam por WhatsApp (`/webhook/receber-whatsapp-doc/:origem`).
-  - **Você decide:**
-    - (A) Sim: o worker monta a Mensagem e envia pela porta de saída, por um Canal conectado aqui
-    - (B) Não: continuam pelo `automation/` como estão
-  - **O que muda depois:** (A) tira a dependência do `automation/` para avisar, mas exige trazer os textos `gasto-novo` e `relatorio` para o domínio, escolher qual Canal envia e abrir a Conversa com o solicitante na Caixa de Entrada: cerca de 1 dia. E o número `numeropvmarcos` não pode virar Canal aqui sem antes tirar do `automation/` a recepção de extratos, porque cada instância da Evolution tem um endereço de webhook configurado. (B) não muda nada.
-  - **Recomendo:** (B) nesta sessão. (A) numa sessão do Financeiro, depois de duas semanas com os números estáveis, usando um número novo e não o `numeropvmarcos`.
+- [x] **4.5.2 Os avisos do Financeiro passam a sair por um Canal daqui?** `decisão` `api` · *decidida*
+  - **Decidido:** Escolha B: os avisos do Financeiro continuam pelo `automation/`, como estão. A (A) fica para uma sessão do Financeiro, depois de duas semanas com os números estáveis e usando um número novo, nunca a instância do `automation/`.
+  - **O que muda no plano:** (A) tira a dependência do `automation/` para avisar, mas exige trazer os textos `gasto-novo` e `relatorio` para o domínio, escolher qual Canal envia e abrir a Conversa com o solicitante na Caixa de Entrada: cerca de 1 dia. E o número `numeropvmarcos` não pode virar Canal aqui sem antes tirar do `automation/` a recepção de extratos, porque cada instância da Evolution tem um endereço de webhook configurado. (B) não muda nada.
 
 **A sessão fica pronta quando:** Dois números conectados por QR code pela ficha do Canal recebem e respondem texto, imagem e áudio pela Caixa de Entrada, cada um nas suas Conversas; os tiques de entregue e lida aparecem; desligar o celular muda o estado do Canal sem ninguém clicar nada; e “Simular conexão” não existe mais em produção.
 
@@ -1473,44 +1513,33 @@ Liga a Lista conversacional ao WhatsApp real: a mensagem que chega cria ou atual
 
 **Pronto quando:** A primeira mensagem de um número novo cria Contato, Conversa e uma Tarefa na Lista; as seguintes não criam outra.
 
-- [ ] **5.1.1 Mensagem nova cria Tarefa?** `decisão` · *muda o produto*
-  - **Como é hoje:** A Tarefa conversacional só nasce pelo diálogo da Lista ou pelo botão do fio.
-  - **Você decide:**
-    - (A) Sim: mensagem de um Contato sem Tarefa aberta na Lista cria uma; com Tarefa aberta, só atualiza o cartão
-    - (B) Não: a mensagem só aparece na Caixa de Entrada, e alguém cria a Tarefa
-  - **O que muda depois:** Com (A), a Lista vira a fila de atendimento. Com (B), a Caixa de Entrada continua sendo a fila e esta tarefa encolhe para meio dia.
-  - **Recomendo:** (A), porque é o propósito da Lista conversacional.
-- [ ] **5.1.2 E se o Canal estiver em mais de uma Lista conversacional?** `decisão` · *muda o produto*
-  - **Como é hoje:** `validarCanaisDeAtendimento` (`packages/dominio/src/operations/canais.ts:133`) deixa o mesmo Canal em várias Listas.
-  - **Você decide:**
-    - (A) Um Canal só pode estar em uma Lista conversacional: marcar em outra é recusado
-    - (B) A Tarefa nasce na primeira Lista, pela ordem da Estrutura
-    - (C) Nasce uma Tarefa em cada Lista
-  - **O que muda depois:** (A) é uma recusa a mais na configuração e deixa a regra óbvia. (B) esconde de onde a Tarefa veio. (C) duplica o atendimento.
-  - **Recomendo:** (A).
-- [ ] **5.1.3 E se a Tarefa do Contato já estiver concluída?** `decisão` · *muda o produto*
-  - **Como é hoje:** Nada acontece com a Tarefa quando chega mensagem.
-  - **Você decide:**
-    - (A) Reabre a Tarefa concluída, voltando ao Status inicial da Lista
-    - (B) Cria uma Tarefa nova e deixa a concluída como histórico
-    - (C) Segue a Conversa: se a Conversa reabriu (dentro da janela da Caixa), reabre a Tarefa; se nasceu Conversa nova, cria Tarefa nova
-  - **O que muda depois:** (A) junta atendimentos diferentes na mesma Tarefa. (B) cria Tarefa até para um “obrigado” logo depois de concluir. (C) usa a mesma janela que já decide a Conversa.
-  - **Recomendo:** (C).
-- [ ] **5.1.4 Decidir no domínio o que a mensagem faz com a Tarefa** `domínio`
+- [x] **5.1.1 Mensagem nova cria Tarefa?** `decisão` · *decidida*
+  - **Decidido:** Escolha A: a mensagem de um Contato sem Tarefa aberta na Lista do Canal cria uma Tarefa; com Tarefa aberta, só o cartão se atualiza (ele já mostra a última mensagem).
+  - **O que muda no plano:** Com (A), a Lista vira a fila de atendimento. Com (B), a Caixa de Entrada continua sendo a fila e esta tarefa encolhe para meio dia.
+- [x] **5.1.2 E se o Canal estiver em mais de uma Lista conversacional?** `decisão` · *decidida*
+  - **Decidido:** Escolha A: um Canal só atende em uma Lista conversacional; marcá-lo em outra é recusado.
+  - **O que muda no plano:** (A) é uma recusa a mais na configuração e deixa a regra óbvia. (B) esconde de onde a Tarefa veio. (C) duplica o atendimento.
+- [x] **5.1.3 E se a Tarefa do Contato já estiver concluída?** `decisão` · *decidida*
+  - **Decidido:** Escolha C: a Tarefa segue a Conversa. A Tarefa concluída da mesma Conversa reabre no Status inicial da Lista; se nasceu uma Conversa nova, nasce uma Tarefa nova e a concluída fica como histórico.
+  - **O que muda no plano:** (A) junta atendimentos diferentes na mesma Tarefa. (B) cria Tarefa até para um “obrigado” logo depois de concluir. (C) usa a mesma janela que já decide a Conversa.
+- [x] **5.1.4 Decidir no domínio o que a mensagem faz com a Tarefa** `domínio` · *feito*
+  - **Andamento:** plano PR #13 — Em produção e testado no domínio: `tarefaDaRecebida` (nada, criar ou reabrir), `aplicarTarefaDaRecebida` e `autorizadorDaTarefaDaRecebida`, com testes de cada caso do plano (Contato sem Tarefa, com Tarefa aberta, concluída com Conversa reaberta, concluída com Conversa nova, Canal fora de qualquer Lista, Tarefa na lixeira, Lista arquivada) e da repetição do passo. Dois desvios do plano: a função não recebe "a Conversa nasceu ou reabriu agora" (o Vínculo "conversa da Tarefa" diz o mesmo e deixa o passo repetível sem duplicar), e devolve `reabrir` no lugar de `atualizar`. Mesclado em 13/11 (PR #13) e usado pelo processador de entrada em produção. Não depende de celular: é uma função pura, provada por teste.
   - **Hoje:** Não existe regra; `tarefasConversacionaisDoContato` (`packages/dominio/src/derive-conversacional.ts:137`) já acha as Tarefas do Contato.
   - **O que fazer:**
     1. `tarefaDaRecebida(state, { canalId, contatoId, conversaId, conversaNova, conversaReaberta })` em `packages/dominio/src/operations/tarefas-conversacionais.ts` → `{ acao: 'nada' } | { acao: 'criar', listId } | { acao: 'atualizar', taskId, statusId? }`.
     2. Acha a Lista conversacional cujo `canaisDeAtendimento` tem o Canal, as Tarefas ativas dela com Vínculo para o Contato, e aplica as três decisões acima.
     3. Se a decisão de “mais de uma Lista” for (A), `validarCanaisDeAtendimento` passa a recusar Canal já usado em outra Lista conversacional.
   - **Pronto quando:** Testes de domínio de cada caso: Contato sem Tarefa; com Tarefa aberta; com Tarefa concluída e Conversa reaberta; com Tarefa concluída e Conversa nova; Canal fora de qualquer Lista.
-- [ ] **5.1.5 Criar ou atualizar a Tarefa quando a mensagem chega** `api`
+- [x] **5.1.5 Criar ou atualizar a Tarefa quando a mensagem chega** `api` · *feito*
+  - **Andamento:** plano PR #13 — Em produção: depois de `receberMensagem`, o processador de entrada chama `servicos/crm/tarefa-da-mensagem.ts`, que cria a Tarefa ou reabre a concluída num gesto só e avisa a tela. Se o passo falha, a linha volta à fila e repetir não duplica a Mensagem nem a Tarefa. Desvio do plano: o ator não é o "Agente do pipeline", porque ele é Convidado e Convidado não cria Tarefa; quem assina é o sistema, pelo Canal, e o responsável é o atribuído da Conversa quando há. Provado em Postgres local com o provedor de teste: a primeira mensagem de um número novo cria Contato, Conversa, Mensagem e uma Tarefa; a segunda e a repetição do mesmo webhook não criam outra; Canal fora da Lista não cria; Contato arquivado e Lista sem quem possa escrever não derrubam a linha. Roda só onde `MENSAGERIA_WORKER_ATIVO=true`, e está ligado em produção. A api está na VM desde 12/11 às 20:37 UTC (`6587eba`, sem migração), o PR foi mesclado em 13/11 e a VM já roda o mesmo código do merge; o `/saude` responde e o log não mostrou aviso nem erro. Com o celular, vale o seu aceite de 13/11 (roteiro 5.3.1): você disse que já fez os testes e mandou marcar como concluído; não recebi o detalhe de cada passo.
   - **Hoje:** O processador de entrada (Sessão 3, `apps/api/src/mensageria/processador-de-entrada.ts`) para em `receberMensagem`.
   - **O que fazer:**
     1. Depois de `receberMensagem` com `repetida: false`, chamar `executar()` com `tarefaDaRecebida` e, conforme o resultado, `criarTarefaConversacional` (com Contato, Canal e Conversa já lidos, sem abrir Conversa) ou a troca de Status.
     2. Ator: o Membro “Agente do pipeline” (`resolverMembroAgenteDoPipeline`, `apps/api/src/persistencia/credenciais-de-servico.ts:96`), como as integrações já fazem. Responsável da Tarefa nova: o atribuído da Conversa, se houver; senão nenhum.
     3. Roda depois do `commit` da Mensagem: falhar aqui não perde a Mensagem. A linha de `webhooks_recebidos` volta a `pendente`, e reprocessar é seguro porque `tarefaDaRecebida` acha a Tarefa já criada.
   - **Pronto quando:** Teste em `apps/api` com o provedor de teste: a primeira chamada de um número novo cria Contato, Conversa e Tarefa; a segunda não cria outra Tarefa; repetir a mesma chamada do webhook não duplica nada.
-- [ ] **5.1.6 Mostrar a Tarefa nova na Lista sem recarregar** `web`
+- [x] **5.1.6 Mostrar a Tarefa nova na Lista sem recarregar** `web` · *feito*
+  - **Andamento:** plano Fase 16 (3.8.4) e PR #13 — O evento `mensagem.nova` já revalidava o resumo das Tarefas e o cartão mostra o trecho da última mensagem (Fase 16). Desde o merge (13/11, web da Vercel em produção), `mensagem.nova` e `conversa.mudou` (que a api manda depois de criar ou reabrir a Tarefa) também pedem a revisão do Espaço, para a Tarefa nova aparecer sem esperar a releitura de 5 s; se o pedido chega com a pergunta de revisão em voo, ela repete uma vez. Provado em testes de componente e de store e, no navegador, pelo seu teste de 13/11 (roteiro 5.3.1). Você não me passou a medida dos "menos de 2 s": o aceite é seu, sem número.
   - **Hoje:** A Tarefa criada pelo servidor só aparece na próxima releitura da revisão (até 5 s), e o cartão não sabe que chegou mensagem.
   - **O que fazer:**
     1. Em `apps/web/src/dados/tempo-real.ts` (Sessão 3), um evento `mensagem.nova` também chama `verificarRevisao()` do store.
@@ -1523,13 +1552,15 @@ Liga a Lista conversacional ao WhatsApp real: a mensagem que chega cria ou atual
 
 **Pronto quando:** A resposta escrita na ficha da Tarefa chega no WhatsApp e mostra “entregue” na ficha.
 
-- [ ] **5.2.1 Responder sempre pela Conversa da Tarefa** `web`
+- [x] **5.2.1 Responder sempre pela Conversa da Tarefa** `web` · *feito*
+  - **Andamento:** plano Fases 14 e 15 e PR #13 — Você já criava a Lista conversacional e respondia pela ficha (Sessões 3 e 4). Desde o merge (13/11), o fio da ficha fica preso à Conversa da Tarefa (`conversaFixaId`): só mostra a aba do Canal dela, o envio vai por ela e o "Responder por" oferece só os Canais da Lista. Escolher outro ali não troca de aba: abre o mesmo diálogo "Trocar o Canal da Tarefa" do seletor "Canal" da ficha. Sem a prop (Caixa de Entrada, ficha do Contato) nada muda. Efeito colateral aceito: o fio da Tarefa deixa de mostrar as abas dos outros Canais (a Conversa deles está em "Abrir na Caixa de Entrada"). Está na web de produção desde o merge. Provado em testes de componente e pelo seu teste de 13/11 (roteiro 5.3.1), sem o detalhe de cada passo; eu não abri a tela num navegador autenticado.
   - **Hoje:** No fio, “Responder por” escolhe o Canal pelo padrão do Contato (`canalPadraoDeResposta`, `packages/dominio/src/derive-conversacional.ts:271`); dentro da Tarefa, pode cair num Canal que não é o da Lista.
   - **O que fazer:**
     1. `ConversationThread` ganha a prop `conversaFixaId`, passada pela ficha (`tarefa-completa.tsx:2189`) com a Conversa do Vínculo “conversa da Tarefa”.
     2. Com ela, “Responder por” mostra só os Canais da Lista (`canaisDaLista`), com o da Tarefa marcado; escolher outro chama a troca de Canal da Tarefa (Sessão 3, 3.3).
   - **Pronto quando:** Teste de componente: responder na ficha grava a Mensagem com o `conversaId` do Vínculo, e o seletor não mostra Canal fora da Lista.
-- [ ] **5.2.2 Testar a resposta contra a Evolution de homologação** `api`
+- [x] **5.2.2 Testar a resposta contra a Evolution de homologação** `api` · *feito*
+  - **Andamento:** plano PR #13 — O teste existe (`apps/api/src/e2e/lista-conversacional-evolution.test.ts`, mesclado em 13/11) e roda sempre, contra o servidor falso da Evolution: cria a Tarefa pela rota, a primeira Mensagem sai pela instância do Canal, fica `enviada` com o id da Evolution e `entregue` quando o aviso de entrega chega pelo webhook. Contra uma Evolution de homologação roda só com `EVOLUTION_HOMOLOGACAO_URL`, `_INSTANCIA`, `_APIKEY` e `_DESTINO` (manda mensagem de verdade e recusa a instância do Financeiro), e esse bloco NUNCA rodou: não há Evolution de homologação configurada aqui. Nele o `entregue` não é provado, porque o aviso da Evolution vai para a URL pública da api, não para o teste; isso ficou no passo 4 da 5.3.1, que você fez com um celular em 13/11 (sem o detalhe de cada passo). O bloco de homologação segue sem rodar.
   - **Hoje:** Os testes de envio da Sessão 3 usam o provedor de teste.
   - **O que fazer:** Teste em `apps/api/src/e2e/` que roda só com as variáveis da Evolution de homologação: cria a Tarefa conversacional num Canal Evolution, envia por `POST /mensagens` e espera a Mensagem ficar `enviada` com `id_externo` e depois `entregue` pelo webhook.
   - **Pronto quando:** O teste passa contra a Evolution de homologação e é pulado sem as variáveis.
@@ -1540,7 +1571,8 @@ Liga a Lista conversacional ao WhatsApp real: a mensagem que chega cria ou atual
 
 **Pronto quando:** Você aprova os seis passos do roteiro.
 
-- [ ] **5.3.1 Percorrer o roteiro com um celular** `você`
+- [x] **5.3.1 Percorrer o roteiro com um celular** `você` · *feito*
+  - **Andamento:** plano dono, 13/11 — Você disse em 13/11 que já fez os testes e mandou marcar tudo como concluído. Não recebi o detalhe de cada um dos seis passos (a Tarefa nascendo com o cartão mostrando “oi”, a resposta chegando com “entregue”, o áudio, concluir a Tarefa e mandar outra mensagem), então o que está registrado é o seu aceite, não uma prova que eu tenha visto.
   - **O que fazer:**
     1. 1. Conectar o número de teste pela Evolution (Sessão 4) e marcá-lo como Canal da Lista conversacional.
     2. 2. Do seu celular, mandar “oi” para o número.
