@@ -56,6 +56,7 @@ import {
   type NovaMensagem,
 } from "@n1/dominio/crm/mensagens";
 import { capacidadesDoCanal } from "@n1/dominio/crm/capacidades";
+import { textoDoModelo, type ModeloDeMensagem } from "@n1/dominio/crm/modelos";
 import { categoriaDaMidia, ehDocumento, normalizarTipoDeMidia, TIPOS_ACEITOS_NA_MENSAGEM, tiposAceitosParaOCanal } from "@n1/dominio/crm/midia";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { avisarCrm } from "../../mensageria/avisar";
@@ -68,6 +69,7 @@ import { finalidadeDeMarketing } from "../../repositorios/crm/referencias";
 import { armazenamentoDeAnexosPadrao, type ArmazenamentoDeAnexos } from "../armazenamento-de-anexos";
 import type { MotivoDeRecusaDeConfirmacao } from "../storage-uploads";
 import { exigir, type AcessoAoCrm } from "./acesso";
+import { modelosDoEnvio } from "./modelo-do-envio";
 import { recusa, sucesso, type ResultadoCrm } from "./resultado";
 import { comTransacao, type FrasesDeRestricao } from "./transacao";
 
@@ -205,19 +207,29 @@ export function criarServicoDeMensagens(deps: {
           }
 
           const mensagens = criarRepositorioDeMensagensPg(cliente);
+          let modeloEscolhido: ModeloDeMensagem | undefined;
+          let variaveisDoModelo: readonly string[] = [];
           if (entrada.direcao === "enviada") {
+            // 7.3.4: os modelos que o Canal envia e o que a pessoa escolheu (ver `modelo-do-envio.ts`).
+            const dosModelos = await modelosDoEnvio(cliente, membro.workspaceId, canal, entrada);
+            if (!dosModelos.ok) return dosModelos;
+            const { enviaveis } = dosModelos.valor;
+            modeloEscolhido = dosModelos.valor.escolhido;
+            variaveisDoModelo = dosModelos.valor.variaveis;
             const envio = validarEnvio({
               capacidades: capacidadesDoCanal({ channelType: canal.tipo, provider: canal.provedor }),
               ultimaRecebidaEm: await mensagens.ultimaRecebidaEm(membro.workspaceId, conversa.id),
               agora: Date.now(),
-              modelosAprovados: [],
+              ...(modeloEscolhido ? { modeloId: modeloEscolhido.id } : {}),
+              modelosAprovados: enviaveis.map((m) => m.id),
             });
             if (!envio.ok) {
-              return recusa<never>(409, envio.error, { codigo: "JANELA_EXPIRADA", campo: envio.field ?? "modelo" });
+              // A recusa leva os modelos que a pessoa pode escolher no lugar do texto livre.
+              return recusa<never>(409, envio.error, { codigo: "JANELA_EXPIRADA", campo: envio.field ?? "modelo", ...(enviaveis.length > 0 ? { modelos: enviaveis } : {}) });
             }
 
             // 3.2.4: o modelo de marketing só sai com consentimento vigente do Contato para o tipo do Canal.
-            const categoria = await deps.categoriaDoModelo?.(cliente, membro.workspaceId, conversa, entrada);
+            const categoria = modeloEscolhido?.categoria ?? (await deps.categoriaDoModelo?.(cliente, membro.workspaceId, conversa, entrada));
             if (categoria !== undefined) {
               const frase = recusaPorFaltaDeConsentimento({
                 categoriaDoModelo: categoria,
@@ -271,8 +283,23 @@ export function criarServicoDeMensagens(deps: {
             canalId: canal.id,
             direcao: entrada.direcao,
             ator: { tipo: "member", id: membro.id },
-            conteudo: entrada.conteudo.trim() === "" && confirmados.length > 0 ? null : entrada.conteudo,
+            // Na Mensagem de modelo o texto é o do modelo já preenchido: o atendente lê o que foi mandado, não `{{1}}`.
+            conteudo: modeloEscolhido
+              ? textoDoModelo(modeloEscolhido, variaveisDoModelo)
+              : entrada.conteudo.trim() === "" && confirmados.length > 0
+                ? null
+                : entrada.conteudo,
             statusEntrega: entrada.direcao === "enviada" ? statusInicialDeEnvio(canal.conexao) : null,
+            ...(modeloEscolhido
+              ? {
+                  modeloUsado: {
+                    idNoProvedor: modeloEscolhido.idNoProvedor,
+                    nome: modeloEscolhido.nome,
+                    idioma: modeloEscolhido.idioma,
+                    variaveis: variaveisDoModelo,
+                  },
+                }
+              : {}),
             ...(entrada.emRespostaAId !== undefined ? { emRespostaAId: entrada.emRespostaAId } : {}),
             ...(confirmados.length > 0
               ? {

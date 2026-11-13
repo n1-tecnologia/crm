@@ -744,7 +744,7 @@ describeComBanco("POST /operacoes/:nome — contra o banco real", () => {
     const canalId = await semearCanal(WS, {
       nome: `Atendimento ${sufixo}`,
       tipo: "whatsapp",
-      provedor: "whatsapp-cloud",
+      provedor: "whatsapp-nao-oficial",
       identificadorExterno: `+5511${String(sufixo).slice(-9)}`,
       conexao: "conectada",
     });
@@ -1078,7 +1078,7 @@ describeComBanco("POST /operacoes/removeMember — a sucessão chega às tabelas
         [ws, contatoA, funil, etapa, removido()],
       )
     ).rows[0]!.id;
-    const canal = await semearCanal(ws, { nome: "Canal", tipo: "whatsapp", provedor: "whatsapp-cloud", identificadorExterno: "5511900000000" });
+    const canal = await semearCanal(ws, { nome: "Canal", tipo: "whatsapp", provedor: "whatsapp-nao-oficial", identificadorExterno: "5511900000000" });
     const conversa = async (contatoId: string, titulo: string, membroId: string) =>
       (
         await pool().query<{ id: string }>(

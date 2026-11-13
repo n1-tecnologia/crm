@@ -29,7 +29,7 @@ import { RESUMO_MAXIMO } from "@n1/dominio/crm/resumo-da-tarefa";
 import { sucesso } from "../../servicos/crm/resultado";
 import type { ServicoDeTarefasConversacionais } from "../../servicos/crm/tarefas-conversacionais";
 import { ACTOR_REF, PRIORITY, TASK_DATE } from "../esquemas/fragmentos";
-import { responder, responderLista, TEXTO_CURTO, TEXTO_LONGO } from "./comum";
+import { PRIMEIRA_MENSAGEM, responder, responderLista, TEXTO_CURTO, TEXTO_LONGO } from "./comum";
 
 const ID = z.string().min(1).max(64);
 
@@ -38,7 +38,7 @@ export const TROCA_DE_CANAL = z
   .object({
     canalId: ID,
     /** Obrigatória só quando o Contato da Tarefa não tem Conversa aberta no Canal novo (D-07): quem decide é o serviço. */
-    mensagem: z.object({ conteudo: TEXTO_LONGO.min(1) }).strict().optional(),
+    mensagem: PRIMEIRA_MENSAGEM.optional(),
   })
   .strict();
 
@@ -57,7 +57,7 @@ export const NOVA_TAREFA_CONVERSACIONAL = z
     contatoId: ID,
     canalId: ID,
     /** Obrigatória só quando o par (Contato, Canal) não tem Conversa aberta (D-07): quem decide é o serviço. */
-    mensagem: z.object({ conteudo: TEXTO_LONGO.min(1) }).strict().optional(),
+    mensagem: PRIMEIRA_MENSAGEM.optional(),
     negocioId: ID.optional(),
     title: TEXTO_CURTO.optional(),
     statusId: ID.optional(),

@@ -208,14 +208,33 @@ describe("08-08 — a página de orientação do provedor (D-07, D-08)", () => {
     expect(router.push).toHaveBeenCalledWith(`${DESTINO}/canais/${ID_DO_CANAL}?conectar=1`);
   });
 
-  it("os outros provedores seguem como estavam: a pílula antiga e a ficha aberta sem `?conectar=1`", async () => {
+  it("Sessão 7: o WhatsApp oficial pede o token na ficha do Canal: os passos de 7.1, a pílula nova e a ficha aberta com `?conectar=1`", async () => {
     const pagina = await ConectarProvedorPage({ params: Promise.resolve({ provedor: "whatsapp-cloud" }) });
+    render(provedores(pagina));
+
+    const orientacao = ORIENTACAO_DO_PROVEDOR["whatsapp-cloud"];
+    expect(orientacao.passos).toHaveLength(3);
+    for (const passo of orientacao.passos) expect(screen.getByText(passo)).toBeTruthy();
+    expect(screen.getByText("Token de acesso e número verificado")).toBeTruthy();
+    expect(screen.getByText(orientacao.espacoReservado.texto)).toBeTruthy();
+    expect(screen.getByText("na ficha do Canal, depois de criar")).toBeTruthy();
+    expect(screen.queryByText("disponível quando a integração chegar")).toBeNull();
+
+    await preencherEConectar();
+    await waitFor(() => expect(router.push).toHaveBeenCalledTimes(1));
+    expect(router.push).toHaveBeenCalledWith(`${DESTINO}/canais/${ID_DO_CANAL}?conectar=1`);
+  });
+
+  it("o e-mail segue como estava: a pílula antiga e a ficha aberta sem `?conectar=1`", async () => {
+    const pagina = await ConectarProvedorPage({ params: Promise.resolve({ provedor: "email-imap-smtp" }) });
     render(provedores(pagina));
 
     expect(screen.getByText("disponível quando a integração chegar")).toBeTruthy();
     expect(screen.queryByText("na ficha do Canal, depois de criar")).toBeNull();
 
-    await preencherEConectar();
+    fireEvent.change(screen.getByLabelText(/^Nome/), { target: { value: "Suporte" } });
+    fireEvent.change(screen.getByLabelText(/^Endereço de e-mail/), { target: { value: "suporte@exemplo.com.br" } });
+    fireEvent.click(screen.getByRole("button", { name: "Conectar" }));
     await waitFor(() => expect(router.push).toHaveBeenCalledTimes(1));
     expect(router.push).toHaveBeenCalledWith(`${DESTINO}/canais/${ID_DO_CANAL}`);
   });

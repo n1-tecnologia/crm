@@ -29,6 +29,11 @@ export interface OpcoesDoDownload {
   readonly timeoutMs?: number;
   /** Padrão: `hostDaMetaPermitido`. Os testes apontam para o servidor falso local. */
   readonly permitido?: (url: URL) => boolean;
+  /**
+   * Cabeçalhos do PRIMEIRO pedido (WhatsApp oficial: o download da mídia exige `Authorization: Bearer <token>`; a URL do
+   * Instagram já vem assinada e não usa isto). Nunca seguem num redirecionamento: o token não vai para a CDN.
+   */
+  readonly cabecalhos?: Readonly<Record<string, string>>;
 }
 
 const indisponivel = () => new ErroDeProvedor("MIDIA_INDISPONIVEL", "A mídia não está disponível no Instagram.");
@@ -55,7 +60,12 @@ export async function baixarMidiaDaMeta(referencia: string, opcoes: OpcoesDoDown
   let resposta: Response | undefined;
   for (let salto = 0; salto <= REDIRECIONAMENTOS; salto += 1) {
     try {
-      resposta = await buscar(url, { method: "GET", redirect: "manual", signal: AbortSignal.timeout(timeoutMs) });
+      resposta = await buscar(url, {
+        method: "GET",
+        redirect: "manual",
+        signal: AbortSignal.timeout(timeoutMs),
+        ...(salto === 0 && opcoes.cabecalhos ? { headers: opcoes.cabecalhos } : {}),
+      });
     } catch {
       throw foraDoAr();
     }

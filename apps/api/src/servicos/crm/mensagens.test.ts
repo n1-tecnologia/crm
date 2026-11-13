@@ -133,15 +133,21 @@ describeComBanco("ServicoDeMensagens — Postgres local", () => {
     expect(conectada.statusEntrega).toBe("pendente");
   });
 
-  it("oficial sem nenhuma recebida ainda não tem janela: a primeira enviada passa", async () => {
+  it("oficial sem nenhuma recebida (7.2.6): a empresa só abre a conversa com modelo aprovado, então o texto livre é recusado antes de gravar", async () => {
     const c = await espaco("semrecebida");
-    const m = valor(await servico.enviar(c.membro, { conversaId: c.comercial.conversaId, direcao: "enviada", conteudo: "Olá" }));
-    expect(m.statusEntrega).toBe("pendente");
+    const r = recusado(await servico.enviar(c.membro, { conversaId: c.comercial.conversaId, direcao: "enviada", conteudo: "Olá" }));
+    expect(r).toMatchObject({ status: 409, codigo: "JANELA_EXPIRADA", campo: "modelo" });
+    expect(r.error).toMatch(/começar a conversa/);
+    expect(await contar(c.ws)).toBe(0);
+    // O não oficial segue livre: sem janela, o texto sai a qualquer hora.
+    expect(valor(await servico.enviar(c.membro, { conversaId: c.suporte.conversaId, direcao: "enviada", conteudo: "Olá" })).statusEntrega).toBe("pendente");
   });
 
   describe("fila de saída (16-04, 3.7.1): a Mensagem enviada e o evento mensagem.enviar.v1 nascem juntos", () => {
     it("Canal conectado: a enviada nasce pendente com UMA linha mensagem.enviar.v1 só com ids", async () => {
       const c = await espaco("fila");
+      // A janela de 24 h do oficial só existe depois de uma recebida: o Contato escreveu agora.
+      await receber(c.ws, c.comercial.canalId, { criadoEm: new Date().toISOString(), idExterno: "wamid.janela.fila" });
       const m = valor(await servico.enviar(c.membro, { conversaId: c.comercial.conversaId, direcao: "enviada", conteudo: "olá" }));
       expect(m.statusEntrega).toBe("pendente");
 
@@ -175,6 +181,8 @@ describeComBanco("ServicoDeMensagens — Postgres local", () => {
 
     it("se o insert do evento falha, a Mensagem também não fica (rollback)", async () => {
       const c = await espaco("rollback");
+      await receber(c.ws, c.comercial.canalId, { criadoEm: new Date().toISOString(), idExterno: "wamid.janela.rollback" });
+      const antes = await contar(c.ws);
       const quebrado = criarServicoDeMensagens({
         pool,
         acesso: criarAcessoAoCrmPg(pool),
@@ -185,7 +193,8 @@ describeComBanco("ServicoDeMensagens — Postgres local", () => {
       await expect(quebrado.enviar(c.membro, { conversaId: c.comercial.conversaId, direcao: "enviada", conteudo: "não pode ficar" })).rejects.toThrow(
         "fila fora do ar",
       );
-      expect(await contar(c.ws)).toBe(0);
+      // Só a recebida que abriu a janela: a enviada que falhou na fila não ficou.
+      expect(await contar(c.ws)).toBe(antes);
       expect(await filaDeSaida(c.ws)).toHaveLength(0);
     });
   });

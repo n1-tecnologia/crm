@@ -57,7 +57,7 @@ describeComBanco("ConversaNaLista.ultimaRecebidaEm — Postgres local", () => {
     const canal = await semearCanal(ws, {
       nome: "Comercial",
       tipo: "whatsapp",
-      provedor: "whatsapp-cloud",
+      provedor: "whatsapp-nao-oficial",
       identificadorExterno: "+5511977771101",
       conexao: "conectada",
     });

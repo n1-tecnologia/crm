@@ -40,6 +40,7 @@
     "canal:ligar-evolution": "vite-node src/bootstrap/canal-ligar-evolution.cli.ts",
     "canal:atualizar-webhook-evolution": "vite-node src/bootstrap/canal-atualizar-webhook-evolution.cli.ts",
     "evolution:fumaca": "vite-node src/bootstrap/evolution-fumaca.cli.ts",
+    "whatsapp-oficial:fumaca": "vite-node src/bootstrap/whatsapp-oficial-fumaca.cli.ts",
     "tempo-real:provar": "vite-node src/mensageria/provar-tempo-real.cli.ts"
   },
   "dependencies": {

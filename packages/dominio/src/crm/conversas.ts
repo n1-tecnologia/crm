@@ -76,7 +76,11 @@ export interface ConversaDetalhada {
 export interface NovaConversa {
   readonly canalId: string;
   readonly contatoId: string;
-  readonly mensagem: { readonly conteudo: string };
+  /**
+   * A primeira Mensagem. No WhatsApp oficial a empresa só abre a conversa com modelo aprovado (7.2.6): `modeloId` e `variaveis`
+   * escolhem o modelo do Canal, e o `conteudo` pode ficar vazio (o servidor grava o texto do modelo já preenchido).
+   */
+  readonly mensagem: { readonly conteudo: string; readonly modeloId?: string | undefined; readonly variaveis?: readonly string[] | undefined };
 }
 
 export interface FiltroDeConversas {
@@ -168,7 +172,8 @@ export function validarNovaConversa(entrada: NovaConversa): OperationResult<Nova
   if (entrada.canalId.trim() === "") return fail("Escolha o Canal da Conversa.", "canalId");
   if (entrada.contatoId.trim() === "") return fail("Escolha o Contato da Conversa.", "contatoId");
   const conteudo = entrada.mensagem.conteudo;
-  if (conteudo.trim() === "") return fail("Escreva a primeira Mensagem da Conversa.", "conteudo");
+  const comModelo = entrada.mensagem.modeloId !== undefined && entrada.mensagem.modeloId !== "";
+  if (conteudo.trim() === "" && !comModelo) return fail("Escreva a primeira Mensagem da Conversa.", "conteudo");
   if (conteudo.length > LIMITES_CRM.textoLongo) {
     return fail(`A Mensagem vai até ${LIMITES_CRM.textoLongo} caracteres.`, "conteudo");
   }

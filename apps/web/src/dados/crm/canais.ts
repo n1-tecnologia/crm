@@ -144,6 +144,40 @@ export function concluirConexaoDoInstagram(entrada: { readonly codigo: string; r
   return gravar("/canais/instagram/concluir", "POST", entrada);
 }
 
+/** O que a pessoa cola no painel do token. O `token` só passa por aqui: vai no corpo do `POST` e nunca para uma chave de SWR. */
+export interface EntradaDoWhatsAppOficial {
+  readonly phoneNumberId: string;
+  readonly wabaId: string;
+  readonly token: string;
+}
+
+/**
+ * Sessão 7 (7.2.5): conecta o Canal do WhatsApp oficial com o ID do número, o ID da conta do WhatsApp Business e o token do
+ * usuário do sistema da Meta. A api confere o número na Meta, guarda o token cifrado no cofre e devolve o Canal já
+ * `conectada`. O token NUNCA volta, não entra em chave de SWR nem em cabeçalho de cache; um 409 (`TOKEN_RECUSADO` no
+ * campo `token`, `NUMERO_DIFERENTE` no campo `phoneNumberId`) sobe como `ErroDeApi` e a tela segue como estava.
+ */
+export function conectarWhatsAppOficial(id: string, entrada: EntradaDoWhatsAppOficial): Promise<Canal> {
+  return gravar(`${chaveDoCanal(id)}/whatsapp-oficial/conectar`, "POST", entrada);
+}
+
+/** O número guardado do Canal do WhatsApp oficial: o que a ficha mostra (nunca o token, que a api não devolve). */
+export interface NumeroDoWhatsAppOficial {
+  readonly phoneNumberId: string;
+  readonly wabaId: string;
+  /** O número como a Meta o mostra, ex. `+55 11 97777-0001`. */
+  readonly numeroExibido: string;
+}
+
+/** Sessão 7: lê o número e a conta ligados ao Canal. `pausado` não lê nada (Canal que não está conectado de verdade). */
+export function useNumeroDoWhatsAppOficial(id: string, opcoes: { readonly pausado?: boolean } = {}) {
+  return useSWR<NumeroDoWhatsAppOficial, Error>(
+    opcoes.pausado ? null : `${chaveDoCanal(id)}/whatsapp-oficial/numero`,
+    async (chave: string) => (await chamarCrm<{ ok: true; dados: NumeroDoWhatsAppOficial }>(chave)).dados,
+    { shouldRetryOnError: valeRepetir, revalidateOnFocus: false },
+  );
+}
+
 export interface ContaDoInstagram {
   readonly usuario: string;
   readonly nome: string | null;

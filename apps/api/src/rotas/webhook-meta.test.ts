@@ -309,3 +309,154 @@ describe("Sessão 8 — desautorização e exclusão de dados do Instagram", () 
     expect(esquecidos).toEqual([]);
   });
 });
+
+describe("Sessão 7 — o WhatsApp oficial guarda na fila de entrada o que a Meta assinou", () => {
+  const CAMINHO = "/webhooks/meta/whatsapp";
+  const RESULTADO = { guardadas: 1, repetidas: 0, semCanal: 0, recusadas: 0 };
+  const enviar = (opcoes: OpcoesDeWebhookMeta, assinatura?: string) =>
+    appCom(opcoes).inject({
+      method: "POST",
+      url: CAMINHO,
+      headers: { "content-type": "application/json", ...(assinatura ? { "x-hub-signature-256": assinatura } : {}) },
+      payload: EVENTO_WHATSAPP,
+    });
+
+  it("com a assinatura conferida, entrega a chamada inteira à fila, responde 200 e acorda o processador", async () => {
+    const recebidas: ChamadaDoWebhook[] = [];
+    let acordou = 0;
+    const assinatura = assinar(EVENTO_WHATSAPP);
+    const resposta = await enviar(
+      {
+        segredoDoApp: SEGREDO,
+        segredoDoInstagram: "",
+        enfileirarWhatsApp: async (chamada) => (recebidas.push(chamada), RESULTADO),
+        acordarProcessador: () => {
+          acordou += 1;
+        },
+      },
+      assinatura,
+    );
+    expect(resposta.statusCode).toBe(200);
+    expect(recebidas).toHaveLength(1);
+    expect(recebidas[0]!.corpoCru.toString("utf8")).toBe(EVENTO_WHATSAPP);
+    expect(recebidas[0]!.cabecalhos["x-hub-signature-256"]).toBe(assinatura);
+    expect(acordou).toBe(1);
+  });
+
+  it("assinatura errada: 401 e nada vai à fila", async () => {
+    let chamou = false;
+    const resposta = await enviar(
+      { segredoDoApp: SEGREDO, segredoDoInstagram: "", enfileirarWhatsApp: async () => ((chamou = true), RESULTADO) },
+      assinar(EVENTO_WHATSAPP, "outra-chave"),
+    );
+    expect(resposta.statusCode).toBe(401);
+    expect(chamou).toBe(false);
+  });
+
+  it("sem o segredo do app o evento não vira dado: 200, e a fila nem é chamada", async () => {
+    let chamou = false;
+    const resposta = await enviar({ segredoDoApp: "", segredoDoInstagram: "", enfileirarWhatsApp: async () => ((chamou = true), RESULTADO) });
+    expect(resposta.statusCode).toBe(200);
+    expect(chamou).toBe(false);
+  });
+
+  it("a fila que falha responde 500, para a Meta reenviar", async () => {
+    const resposta = await enviar(
+      {
+        segredoDoApp: SEGREDO,
+        segredoDoInstagram: "",
+        enfileirarWhatsApp: async () => {
+          throw new Error("banco fora");
+        },
+      },
+      assinar(EVENTO_WHATSAPP),
+    );
+    expect(resposta.statusCode).toBe(500);
+  });
+
+  it("o corpo do webhook (número, texto) NUNCA vai ao log, com a fila ligada ou só escutando", async () => {
+    const linhas: string[] = [];
+    const stream = { write: (linha: string) => void linhas.push(linha) };
+    const comLog = (webhookMeta: OpcoesDeWebhookMeta) => buildApp({ logger: { level: "info", stream }, webhookMeta });
+    const evento = JSON.stringify({
+      object: "whatsapp_business_account",
+      entry: [{ id: "1", changes: [{ field: "messages", value: { contacts: [{ wa_id: "5511987654321" }], messages: [{ from: "5511987654321", id: "wamid.Z", text: { body: "texto secreto do cliente" } }] } }] }],
+    });
+    const chamar = (app: ReturnType<typeof buildApp>) =>
+      app.inject({ method: "POST", url: CAMINHO, headers: { "content-type": "application/json", "x-hub-signature-256": assinar(evento) }, payload: evento });
+
+    // Só escutando (sem a fila ligada).
+    expect((await chamar(comLog({ segredoDoApp: SEGREDO, segredoDoInstagram: "" }))).statusCode).toBe(200);
+    // Com a fila ligada.
+    expect((await chamar(comLog({ segredoDoApp: SEGREDO, segredoDoInstagram: "", enfileirarWhatsApp: async () => RESULTADO }))).statusCode).toBe(200);
+
+    const tudo = linhas.join("\n");
+    expect(tudo).toContain("webhook da Meta");
+    for (const proibido of ["5511987654321", "texto secreto do cliente", "wamid.Z"]) expect(tudo).not.toContain(proibido);
+  });
+});
+
+describe("Sessão 7 — o aviso de que um modelo de mensagem mudou (7.3.2)", () => {
+  const CAMINHO = "/webhooks/meta/whatsapp";
+  const aviso = (...contas: string[]) =>
+    JSON.stringify({
+      object: "whatsapp_business_account",
+      entry: contas.map((id) => ({ id, time: 1792680000, changes: [{ field: "message_template_status_update", value: { event: "APPROVED", message_template_id: 1, message_template_name: "boas_vindas", message_template_language: "pt_BR" } }] })),
+    });
+  const enviar = (opcoes: OpcoesDeWebhookMeta, corpo: string, assinatura?: string) =>
+    appCom(opcoes).inject({
+      method: "POST",
+      url: CAMINHO,
+      headers: { "content-type": "application/json", ...(assinatura ? { "x-hub-signature-256": assinatura } : {}) },
+      payload: corpo,
+    });
+
+  it("com a assinatura conferida, entrega a conta (WABA) de cada aviso, sem repetir, e responde 200", async () => {
+    const contas: string[] = [];
+    const corpo = aviso("111", "222", "111");
+    const resposta = await enviar({ segredoDoApp: SEGREDO, segredoDoInstagram: "", aoMudarModelosDoWhatsApp: (c) => void contas.push(c) }, corpo, assinar(corpo));
+    expect(resposta.statusCode).toBe(200);
+    expect(contas).toEqual(["111", "222"]);
+  });
+
+  it("aceita também o aviso de mudança de categoria", async () => {
+    const contas: string[] = [];
+    const corpo = JSON.stringify({ object: "whatsapp_business_account", entry: [{ id: "333", changes: [{ field: "template_category_update", value: {} }] }] });
+    await enviar({ segredoDoApp: SEGREDO, segredoDoInstagram: "", aoMudarModelosDoWhatsApp: (c) => void contas.push(c) }, corpo, assinar(corpo));
+    expect(contas).toEqual(["333"]);
+  });
+
+  it("assinatura errada ou ausente: 401 / só escuta, e a sincronização NÃO é disparada (um corpo forjado não faz a api chamar a Meta)", async () => {
+    const contas: string[] = [];
+    const corpo = aviso("111");
+    const opcoes = { segredoDoApp: SEGREDO, segredoDoInstagram: "", aoMudarModelosDoWhatsApp: (c: string) => void contas.push(c) };
+    expect((await enviar(opcoes, corpo, assinar(corpo, "outra-chave"))).statusCode).toBe(401);
+    expect((await enviar(opcoes, corpo)).statusCode).toBe(401);
+    // Sem o segredo configurado a rota só escuta: também não dispara.
+    expect((await enviar({ ...opcoes, segredoDoApp: "" }, corpo)).statusCode).toBe(200);
+    expect(contas).toEqual([]);
+  });
+
+  it("um corpo de mensagem comum não dispara nada", async () => {
+    const contas: string[] = [];
+    const resposta = await enviar({ segredoDoApp: SEGREDO, segredoDoInstagram: "", aoMudarModelosDoWhatsApp: (c) => void contas.push(c) }, EVENTO_WHATSAPP, assinar(EVENTO_WHATSAPP));
+    expect(resposta.statusCode).toBe(200);
+    expect(contas).toEqual([]);
+  });
+
+  it("se a sincronização lança, a resposta continua 200 (o aviso é só um atalho)", async () => {
+    const corpo = aviso("111");
+    const resposta = await enviar(
+      {
+        segredoDoApp: SEGREDO,
+        segredoDoInstagram: "",
+        aoMudarModelosDoWhatsApp: () => {
+          throw new Error("falhou");
+        },
+      },
+      corpo,
+      assinar(corpo),
+    );
+    expect(resposta.statusCode).toBe(200);
+  });
+});

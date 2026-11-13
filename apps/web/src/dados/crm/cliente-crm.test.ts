@@ -79,6 +79,20 @@ describe("chamarCrm — falhas", () => {
     expect(e.bloqueios).toEqual(bloqueios);
   });
 
+  it("(f) 409 JANELA_EXPIRADA com `modelos` (7.3): o ErroDeApi os carrega para a tela oferecer; sem eles, `modelos` é undefined", async () => {
+    const modelos = [{ id: "m1", nome: "pedido_saiu", enviavel: true }];
+    fetchMock.mockResolvedValueOnce(respostaFalsa(409, { ok: false, error: "A janela expirou.", codigo: "JANELA_EXPIRADA", campo: "modelo", modelos }));
+    const erro = (await chamarCrm("/mensagens", { method: "POST", corpo: {} }).catch((e: unknown) => e)) as ErroDeApi;
+    expect(erro).toBeInstanceOf(ErroDeApi);
+    expect(erro.codigo).toBe("JANELA_EXPIRADA");
+    expect(erro.campo).toBe("modelo");
+    expect(erro.modelos).toEqual(modelos);
+
+    fetchMock.mockResolvedValueOnce(respostaFalsa(409, { ok: false, error: "Tem Negócio aberto.", codigo: "TEM_BLOQUEIO" }));
+    const semModelos = (await chamarCrm("/contatos/c1", { method: "DELETE" }).catch((e: unknown) => e)) as ErroDeApi;
+    expect(semModelos.modelos).toBeUndefined();
+  });
+
   it("(f) sem sessão: ErroDeApi 401 e o fetch nunca é chamado", async () => {
     obterSessao.mockResolvedValue({ data: { session: null } });
     const erro = await chamarCrm("/contatos").catch((e: unknown) => e);

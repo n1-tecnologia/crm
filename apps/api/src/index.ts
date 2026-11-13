@@ -81,6 +81,7 @@ import { carregarEnv, encerrar, pool } from "./persistencia/conexao";
 import { criarOutboxWorker } from "./persistencia/outbox-worker";
 import { criarColetaDeOrfaos } from "./mensageria/coleta-de-orfaos";
 import { criarConferenciaDaEvolution } from "./mensageria/provedores/evolution/conferencia";
+import { criarSincronizadorDeModelos } from "./mensageria/provedores/whatsapp-cloud/sincronizacao";
 import { criarWorkerDeSaida } from "./mensageria/entregar-mensagem";
 import { criarHubDeEventos } from "./mensageria/hub-de-eventos";
 import { criarOuvinteDoCrm } from "./mensageria/ouvinte-pg";
@@ -351,6 +352,21 @@ if (process.env.EVOLUTION_CONFERENCIA_ATIVA === "true") {
   conferencia.iniciar();
   aoEncerrar(() => conferencia.parar());
   app.log.info("conferência da Evolution ativa");
+}
+
+// A sincronização dos modelos de mensagem do WhatsApp oficial (Sessão 7, 7.3.2): de hora em hora lê os modelos de cada Canal real
+// conectado, para o aviso que a Meta perdeu não deixar a lista velha. Desligada por padrão: só com
+// `WHATSAPP_MODELOS_SINCRONIZACAO_ATIVA=true` (e, para ter provedor, `META_APP_SECRET`). A trava consultiva garante que duas
+// instâncias nunca sincronizam juntas; o registro leva só contagens.
+if (process.env.WHATSAPP_MODELOS_SINCRONIZACAO_ATIVA === "true") {
+  const modelos = criarSincronizadorDeModelos({
+    registrar: (nivel, mensagem, dados) => {
+      app.log[nivel](dados ?? {}, mensagem);
+    },
+  });
+  modelos.iniciar();
+  aoEncerrar(() => modelos.parar());
+  app.log.info("sincronização dos modelos do WhatsApp ativa");
 }
 
 // Registrada ANTES do `listen`: se ele falhar (porta ocupada), a próxima

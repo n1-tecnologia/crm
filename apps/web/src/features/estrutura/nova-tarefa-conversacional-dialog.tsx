@@ -36,6 +36,7 @@ import { useContato } from "@/dados/crm/contatos";
 import { useNegocios } from "@/dados/crm/negocios";
 import { criarTarefaConversacional, useConversaAbertaDoPar } from "@/dados/crm/tarefas-conversacionais";
 import { useData, useRehidratar, useSession } from "@/dados/store";
+import { SeletorDeModelo, useEscolhaDeModelo } from "@/features/crm/seletor-de-modelo";
 import { SeletorDeRegistro, type RegistroEscolhido } from "@/features/crm/seletor-de-registro";
 import { CHANNEL_TYPE_LABEL } from "@/features/shell/format";
 import { ConfirmDialog, Field, Select, TextArea, TextInput } from "@/features/shell/ui";
@@ -77,6 +78,8 @@ export function NovaTarefaConversacionalDialog({
   /** O Tipo da Tarefa; vazio = o padrão da Lista (o que o domínio faria sozinho). */
   const [taskTypeId, setTaskTypeId] = useState("");
   const [mensagem, setMensagem] = useState("");
+  /** Muda a cada abertura: a escolha de modelo de uma abertura anterior não vale na seguinte. */
+  const [geracao, setGeracao] = useState(0);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<{ readonly texto: string; readonly campo: string | undefined } | null>(null);
 
@@ -116,6 +119,10 @@ export function NovaTarefaConversacionalDialog({
   const parCompleto = contactId !== "" && canalId !== "";
   const verificando = parCompleto && conversaAberta.conversa === undefined && conversaAberta.erro === undefined;
   const pedeMensagem = parCompleto && (conversaAberta.conversa === null || conversaAberta.erro !== undefined);
+  // 7.3.5: no WhatsApp oficial a Conversa só nasce com Mensagem de modelo aprovada (7.2.6): no lugar do texto, o seletor.
+  const modelo = useEscolhaDeModelo(canais.find((c) => c.id === canalId), `${contactId}:${canalId}:${geracao}`, { pausado: !open || !pedeMensagem });
+  const comModelo = pedeMensagem && modelo.oficial;
+  const erroDoModelo = comModelo && erro && (erro.campo === "variaveis" || erro.campo === "modeloId") ? erro : null;
 
   const tiposDaListaEscolhida = (id: string) =>
     [...new Set(canaisDaListaNasTabelas(state.lists.find((l) => l.id === id), canaisDasTabelas).map((ch) => CHANNEL_TYPE_LABEL[ch.tipo]))].join(" · ");
@@ -130,9 +137,11 @@ export function NovaTarefaConversacionalDialog({
           ? "Escolha o Canal da conversa."
           : verificando
             ? "Conferindo a conversa deste Contato…"
-            : pedeMensagem && mensagem.trim() === ""
-              ? "Escreva a primeira Mensagem."
-              : undefined;
+            : comModelo
+              ? modelo.motivo
+              : pedeMensagem && mensagem.trim() === ""
+                ? "Escreva a primeira Mensagem."
+                : undefined;
 
   const reset = () => {
     setListId(listaFixa ?? "");
@@ -144,6 +153,7 @@ export function NovaTarefaConversacionalDialog({
     setNegocioId("");
     setTaskTypeId("");
     setMensagem("");
+    setGeracao((g) => g + 1);
     setEnviando(false);
     setErro(null);
   };
@@ -165,8 +175,12 @@ export function NovaTarefaConversacionalDialog({
         listId,
         contatoId: contactId,
         canalId,
-        // O campo só aparece sem Conversa aberta; com ela o corpo não leva a Mensagem.
-        ...(pedeMensagem && mensagem.trim() ? { mensagem: { conteudo: mensagem.trim() } } : {}),
+        // O campo só aparece sem Conversa aberta; com ela o corpo não leva a Mensagem. No WhatsApp oficial a Mensagem é o modelo escolhido.
+        ...(comModelo && modelo.escolha.pedido
+          ? { mensagem: { conteudo: "", modeloId: modelo.escolha.pedido.modeloId, variaveis: modelo.escolha.pedido.variaveis } }
+          : pedeMensagem && mensagem.trim()
+            ? { mensagem: { conteudo: mensagem.trim() } }
+            : {}),
         ...(titulo.trim() ? { title: titulo.trim() } : {}),
         ...(statusId ? { statusId } : {}),
         ...(responsavelId ? { assignees: [{ kind: "member" as const, id: responsavelId }] } : {}),
@@ -178,6 +192,7 @@ export function NovaTarefaConversacionalDialog({
       reset();
       onDone(`Tarefa criada: ${task.title}.`, task.id);
     } catch (e) {
+      modelo.aprenderDaRecusa(e);
       setErro({ texto: e instanceof ErroDeApi ? e.message : "Não foi possível criar a Tarefa. Tente de novo.", campo: e instanceof ErroDeApi ? e.campo : undefined });
       setEnviando(false);
     }
@@ -305,7 +320,22 @@ export function NovaTarefaConversacionalDialog({
           ) : null}
         </div>
 
-        {pedeMensagem ? (
+        {comModelo ? (
+          modelo.paraEscolher.length > 0 ? (
+            <SeletorDeModelo
+              key={`${contactId}:${canalId}:${geracao}`}
+              modelos={modelo.paraEscolher}
+              primeiroNome={nomeDoContato.split(" ")[0]}
+              disabled={enviando}
+              erro={erroDoModelo}
+              onChange={modelo.aoEscolher}
+            />
+          ) : (
+            <p data-sem-modelo="true" className="app-base" style={{ color: "var(--aviso)" }}>
+              {modelo.motivo}
+            </p>
+          )
+        ) : pedeMensagem ? (
           <Field
             label="Primeira Mensagem"
             required
@@ -358,7 +388,7 @@ export function NovaTarefaConversacionalDialog({
           )}
         </Field>
 
-        {erro && (erro.campo !== "mensagem" || !pedeMensagem) ? (
+        {erro && erroDoModelo === null && (erro.campo !== "mensagem" || !pedeMensagem) ? (
           <p role="alert" className="app-base" style={{ color: "var(--erro)" }}>
             {erro.texto}
           </p>

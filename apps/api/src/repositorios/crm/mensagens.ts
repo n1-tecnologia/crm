@@ -53,6 +53,11 @@ export interface LinhaNovaDeMensagem {
   readonly emRespostaAId?: string;
   /** Os anexos já conferidos no bucket (16-09); sem eles, a coluna fica com o padrão `[]`. */
   readonly anexos?: readonly AnexoDaMensagem[];
+  /**
+   * Sessão 7 (7.3): a Mensagem de modelo (WhatsApp oficial). Guarda o id e o nome do modelo na Meta, o idioma e as variáveis
+   * preenchidas: a entrega os lê para montar o envio. Sem modelo, a coluna fica nula.
+   */
+  readonly modeloUsado?: { readonly idNoProvedor: string; readonly nome: string; readonly idioma: string; readonly variaveis: readonly string[] };
 }
 
 /**
@@ -191,7 +196,7 @@ export interface LinhaDoBancoDeMensagem {
   readonly assunto: string | null;
   readonly enderecos_adicionais: readonly EnderecoAdicional[];
   readonly em_resposta_a_id: string | null;
-  readonly modelo_usado: { readonly idNoProvedor: string; readonly nome: string } | null;
+  readonly modelo_usado: { readonly idNoProvedor: string; readonly nome: string; readonly idioma?: string; readonly variaveis?: readonly string[] } | null;
   readonly id_externo: string | null;
   readonly status_entrega: StatusDeEntrega | null;
   readonly status_entrega_em: Date | null;
@@ -259,9 +264,9 @@ export function criarRepositorioDeMensagensPg(cliente: Pool | PoolClient): Repos
       const { rows } = await cliente.query<LinhaDoBancoDeMensagem>(
         `insert into plataforma.mensagens
            (workspace_id, conversa_id, canal_id, direcao, ator_tipo, ator_id, conteudo,
-            status_entrega, status_entrega_em, em_resposta_a_id, anexos)
+            status_entrega, status_entrega_em, em_resposta_a_id, anexos, modelo_usado)
          values ($1, $2, $3, $4, $5, $6, $7, $8::text,
-                 case when $8::text is null then null else now() end, $9, $10::jsonb)
+                 case when $8::text is null then null else now() end, $9, $10::jsonb, $11::jsonb)
          returning ${COLUNAS_DE_MENSAGEM}`,
         [
           workspaceId,
@@ -274,6 +279,7 @@ export function criarRepositorioDeMensagensPg(cliente: Pool | PoolClient): Repos
           linha.statusEntrega,
           linha.emRespostaAId ?? null,
           JSON.stringify(linha.anexos ?? []),
+          linha.modeloUsado === undefined ? null : JSON.stringify(linha.modeloUsado),
         ],
       );
       return linhaParaMensagem(rows[0]!);

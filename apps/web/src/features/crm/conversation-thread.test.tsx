@@ -24,6 +24,7 @@ import type { ContatoDetalhado, IdentificadorDeContato } from "@n1/dominio/crm/c
 import type { ConsentimentoDoContato } from "@n1/dominio/crm/consentimentos";
 import type { ConversaNaLista } from "@n1/dominio/crm/conversas";
 import type { Mensagem } from "@n1/dominio/crm/mensagens";
+import type { ModeloNaLista } from "@n1/dominio/crm/modelos";
 import type { DataState } from "@n1/dominio/state";
 import { POS_VENDA_LIST_ID } from "@n1/dominio/seed-pos-venda";
 import { ErroDeApi } from "@/dados/crm/cliente-crm";
@@ -77,6 +78,8 @@ let gravarMensagem: (corpo: { conversaId: string; direcao: string; conteudo: str
 let gravarNota: (corpo: { conteudo: string }) => Promise<Response>;
 /** O que `GET /contatos/:id/consentimentos` responde (15-25). */
 let consentimentosDaApi: ConsentimentoDoContato[];
+/** Os modelos de mensagem de cada Canal (`GET /canais/:id/modelos`, 7.3); vazio por padrão. */
+let modelosDaApi: Record<string, ModeloNaLista[]>;
 /** O que `POST /conversas` responde. */
 let abrirNaApi: (corpo: { canalId: string; contatoId: string; mensagem: { conteudo: string } }) => Promise<Response>;
 
@@ -267,6 +270,7 @@ beforeEach(() => {
       dados: { id: "nota_1", contatoId: CONTATO_ID, conteudo: corpo.conteudo, autorId: "mem_thiago", criadoEm: new Date().toISOString() },
     });
   consentimentosDaApi = [];
+  modelosDaApi = {};
   abrirNaApi = async (corpo) => {
     const id = `cnv_nova_${conversasDaApi.length}`;
     const conversa = novaConversa(id, corpo.canalId, { atualizadoEm: new Date().toISOString() });
@@ -296,6 +300,11 @@ beforeEach(() => {
       return resposta(200, { ok: true, itens, total: itens.length });
     }
     if (metodo === "GET" && alvo.pathname === "/negocios") return resposta(200, { ok: true, itens: [], total: 0 });
+    const modelosDoCanal = /^\/canais\/([^/]+)\/modelos$/.exec(alvo.pathname);
+    if (metodo === "GET" && modelosDoCanal) {
+      const itens = modelosDaApi[modelosDoCanal[1] ?? ""] ?? [];
+      return resposta(200, { ok: true, itens, total: itens.length });
+    }
     if (metodo === "GET" && alvo.pathname === `/contatos/${CONTATO_ID}/consentimentos`) {
       return resposta(200, { ok: true, itens: consentimentosDaApi, total: consentimentosDaApi.length });
     }
@@ -788,17 +797,21 @@ describe("ConversationThread — preso à Conversa da Tarefa (5.2.1)", () => {
 });
 
 describe("ConversationThread — abrir a Conversa pelo fio com a primeira Mensagem (F14-D-07)", () => {
-  /** O Contato nunca falou em "Comercial": o Canal alcança, mas não há Conversa nele. */
+  /**
+   * O Contato nunca falou em "Comercial": o Canal alcança, mas não há Conversa nele. Aqui o Canal é o NÃO oficial: no WhatsApp
+   * oficial a empresa só abre a conversa com modelo aprovado (7.2.6), e esse caminho tem os testes dele mais abaixo.
+   */
   function semConversaEmComercial() {
     conversasDaApi = conversasDaApi.filter((c) => c.id !== "cnv_comercial");
     delete mensagensDaApi.cnv_comercial;
+    canaisDaApi = canaisDaApi.map((c) => (c.id === "chn_comercial" ? { ...c, provedor: "whatsapp-nao-oficial" as const } : c));
   }
 
-  async function irParaComercial() {
+  async function irParaComercial(rotulo = "Comercial · WhatsApp oficial") {
     await waitFor(() => expect(screen.getByRole("combobox", { name: "Responder por" })).toBeTruthy());
     fireEvent.click(respondePor());
-    fireEvent.click(screen.getAllByRole("option").find((o) => o.textContent === "Comercial · WhatsApp oficial") as HTMLElement);
-    await waitFor(() => expect(abaDe("Comercial · WhatsApp oficial").getAttribute("aria-selected")).toBe("true"));
+    fireEvent.click(screen.getAllByRole("option").find((o) => o.textContent === rotulo) as HTMLElement);
+    await waitFor(() => expect(abaDe(rotulo).getAttribute("aria-selected")).toBe("true"));
   }
 
   async function enviarPeloFio(texto: string) {
@@ -812,9 +825,9 @@ describe("ConversationThread — abrir a Conversa pelo fio com a primeira Mensag
     semConversaEmComercial();
     const aberta = vi.fn();
     montar({ onConversaAberta: aberta });
-    await irParaComercial();
+    await irParaComercial("Comercial · WhatsApp não oficial");
     expect(screen.getByRole("textbox", { name: "Primeira Mensagem" })).toBeTruthy();
-    expect(screen.getByText("Nenhuma Conversa em Comercial · WhatsApp oficial.")).toBeTruthy();
+    expect(screen.getByText("Nenhuma Conversa em Comercial · WhatsApp não oficial.")).toBeTruthy();
 
     await enviarPeloFio("oi, aqui é do Comercial");
 
@@ -857,7 +870,7 @@ describe("ConversationThread — abrir a Conversa pelo fio com a primeira Mensag
       return original(corpo);
     };
     montar();
-    await irParaComercial();
+    await irParaComercial("Comercial · WhatsApp não oficial");
     fireEvent.change(compositor(), { target: { value: "uma só" } });
     fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
     const dialogo = await screen.findByRole("alertdialog");
@@ -877,13 +890,13 @@ describe("ConversationThread — abrir a Conversa pelo fio com a primeira Mensag
     abrirNaApi = async () => resposta(409, { ok: false, error: "Já existe uma Conversa aberta deste Contato neste Canal.", codigo: "CONVERSA_ABERTA_NO_PAR" });
     const aberta = vi.fn();
     montar({ onConversaAberta: aberta });
-    await irParaComercial();
+    await irParaComercial("Comercial · WhatsApp não oficial");
     await enviarPeloFio("tentativa");
 
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Já existe uma Conversa aberta deste Contato neste Canal."));
     expect((screen.getByRole("textbox", { name: "Primeira Mensagem" }) as HTMLTextAreaElement).value).toBe("tentativa");
     expect(aberta).not.toHaveBeenCalled();
-    expect(screen.getByText("Nenhuma Conversa em Comercial · WhatsApp oficial.")).toBeTruthy();
+    expect(screen.getByText("Nenhuma Conversa em Comercial · WhatsApp não oficial.")).toBeTruthy();
   });
 });
 
@@ -1283,5 +1296,208 @@ describe("ConversationThread — o compositor anexa um arquivo de verdade (16-11
       if (!(botao as HTMLButtonElement).disabled) expect(botao.getAttribute("title") ?? "").not.toMatch(/microfone|Gravar/i);
     }
     expect(getUserMedia).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * 7.3.5 — a Mensagem de modelo no WhatsApp oficial. Fora da janela de 24 h e antes da primeira mensagem do Contato a empresa só
+ * escreve com modelo aprovado: o compositor troca o texto livre pelo `SeletorDeModelo` (os modelos ENVIÁVEIS do Canal, a prévia e
+ * um campo por variável, com `{{1}}` já com o primeiro nome) e o envio leva `modeloId` e `variaveis`, com o `conteudo` vazio.
+ * Sem modelo enviável o compositor mantém o texto e se desliga dizendo que falta sincronizar ou aprovar modelos na Meta.
+ */
+describe("ConversationThread — Mensagem de modelo no WhatsApp oficial (7.3.5)", () => {
+  function modelo(id: string, nome: string, extras: Partial<ModeloNaLista> = {}): ModeloNaLista {
+    return {
+      id,
+      canalId: "chn_comercial",
+      idNoProvedor: `meta_${id}`,
+      nome,
+      idioma: "pt_BR",
+      categoria: "utilidade",
+      estado: "aprovado",
+      motivoDeRejeicao: null,
+      componentes: [{ type: "BODY", text: "Olá {{1}}, seu pedido {{2}} saiu." }],
+      quantidadeDeVariaveis: 2,
+      sincronizadoEm: "2026-11-13T12:00:00.000Z",
+      enviavel: true,
+      motivoDeNaoEnviavel: null,
+      ...extras,
+    };
+  }
+
+  const seletor = () => document.querySelector("[data-seletor-de-modelo]");
+  const botaoEnviar = () => screen.getByRole("button", { name: "Enviar" });
+  const campoDaVariavel = (n: number) => screen.getByLabelText(new RegExp(`Variável \\{\\{${n}\\}\\}`)) as HTMLInputElement;
+
+  async function escolherOModelo(nome: string) {
+    fireEvent.click(screen.getByRole("combobox", { name: /Mensagem de modelo/ }));
+    fireEvent.click(screen.getAllByRole("option").find((o) => o.textContent?.includes(nome)) as HTMLElement);
+  }
+
+  /** A janela do Comercial (oficial) fechou: a recebida é de 2026-10-10, bem além das 24 h (o seed do teste). */
+  async function noComercialComJanelaFechada() {
+    montar({ canalPreferidoId: "chn_comercial" });
+    await waitFor(() => expect(screen.getByText("cnv_comercial mensagem 1")).toBeTruthy());
+  }
+
+  it("(1) janela fechada com modelo enviável: o seletor entra no lugar do texto livre, com {{1}} no primeiro nome do Contato e a prévia", async () => {
+    modelosDaApi.chn_comercial = [modelo("m1", "pedido_saiu")];
+    await noComercialComJanelaFechada();
+    await waitFor(() => expect(seletor()).not.toBeNull());
+    expect(screen.queryByRole("textbox", { name: /Escrever para/ })).toBeNull();
+    // Sem escolher nada o envio está desligado e diz o que falta.
+    expect(botaoEnviar().getAttribute("aria-disabled")).toBe("true");
+    expect(document.body.textContent).toContain("Escolha a Mensagem de modelo.");
+
+    await escolherOModelo("pedido_saiu");
+    expect(campoDaVariavel(1).value).toBe("Ana");
+    expect(campoDaVariavel(2).value).toBe("");
+    expect(document.querySelector("[data-previa-do-modelo]")?.textContent).toBe("Olá Ana, seu pedido {{2}} saiu.");
+    // A variável vazia segura o envio e diz QUAL é.
+    expect(botaoEnviar().getAttribute("aria-disabled")).toBe("true");
+    expect(document.body.textContent).toContain("Preencha a variável {{2}} do modelo.");
+
+    fireEvent.change(campoDaVariavel(2), { target: { value: "1234" } });
+    expect(document.querySelector("[data-previa-do-modelo]")?.textContent).toBe("Olá Ana, seu pedido 1234 saiu.");
+    expect(botaoEnviar().getAttribute("aria-disabled")).not.toBe("true");
+  });
+
+  it("(2) Enviar confirma com a prévia e grava POST /mensagens com modeloId e variaveis, o conteúdo vazio; depois o seletor volta ao começo", async () => {
+    modelosDaApi.chn_comercial = [modelo("m1", "pedido_saiu")];
+    await noComercialComJanelaFechada();
+    await waitFor(() => expect(seletor()).not.toBeNull());
+    await escolherOModelo("pedido_saiu");
+    fireEvent.change(campoDaVariavel(2), { target: { value: "  1234 " } });
+
+    fireEvent.click(botaoEnviar());
+    const dialogo = await screen.findByRole("alertdialog");
+    expect(dialogo.textContent).toContain("Olá Ana, seu pedido 1234 saiu.");
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Enviar" }));
+
+    await waitFor(() => expect(gravacoes()).toHaveLength(1));
+    expect(gravacoes()[0]).toEqual({
+      caminho: "/mensagens",
+      metodo: "POST",
+      corpo: { conversaId: "cnv_comercial", direcao: "enviada", conteudo: "", modeloId: "m1", variaveis: ["Ana", "1234"] },
+    });
+    await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Mensagem enviada."));
+    // Reiniciado: nada escolhido de novo.
+    expect(screen.getByRole("combobox", { name: /Mensagem de modelo/ }).textContent).toContain("Escolher o modelo");
+  });
+
+  it("(3) só os modelos ENVIÁVEIS aparecem para escolher: o que o CRM ainda não sabe preencher fica de fora (e só na ficha do Canal)", async () => {
+    modelosDaApi.chn_comercial = [
+      modelo("m1", "pedido_saiu"),
+      modelo("m2", "com_imagem", { enviavel: false, motivoDeNaoEnviavel: "Modelo com cabeçalho de imagem." }),
+      modelo("m3", "em_analise", { estado: "pendente", enviavel: false }),
+    ];
+    await noComercialComJanelaFechada();
+    await waitFor(() => expect(seletor()).not.toBeNull());
+    fireEvent.click(screen.getByRole("combobox", { name: /Mensagem de modelo/ }));
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([expect.stringContaining("pedido_saiu")]);
+  });
+
+  it("(4) janela fechada SEM modelo enviável: o texto fica, o envio se desliga e diz que falta sincronizar ou aprovar modelos na Meta", async () => {
+    modelosDaApi.chn_comercial = [modelo("m2", "com_imagem", { enviavel: false })];
+    await noComercialComJanelaFechada();
+    await waitFor(() => expect(document.body.textContent).toContain("Sincronize os modelos na ficha do Canal ou aprove um na Meta."));
+    expect(seletor()).toBeNull();
+    fireEvent.change(compositor(), { target: { value: "fora da janela" } });
+    expect(botaoEnviar().getAttribute("aria-disabled")).toBe("true");
+    expect(document.body.textContent).toContain("A janela de resposta expirou e este Canal não tem Mensagem de modelo aprovada");
+  });
+
+  it("(5) janela ABERTA: o texto livre segue livre, mesmo com modelos no Canal", async () => {
+    modelosDaApi.chn_comercial = [modelo("m1", "pedido_saiu")];
+    conversasDaApi = conversasDaApi.map((c) => (c.id === "cnv_comercial" ? { ...c, ultimaRecebidaEm: new Date(Date.now() - 3_600_000).toISOString() } : c));
+    await noComercialComJanelaFechada();
+    expect(compositor()).toBeTruthy();
+    expect(seletor()).toBeNull();
+    fireEvent.change(compositor(), { target: { value: "texto livre" } });
+    expect(botaoEnviar().getAttribute("aria-disabled")).not.toBe("true");
+  });
+
+  it("(6) sem nenhuma Conversa no Canal oficial (antes da primeira mensagem do Contato): o seletor abre a Conversa com POST /conversas e o modelo", async () => {
+    conversasDaApi = conversasDaApi.filter((c) => c.id !== "cnv_comercial");
+    delete mensagensDaApi.cnv_comercial;
+    modelosDaApi.chn_comercial = [modelo("m1", "pedido_saiu")];
+    const aberta = vi.fn();
+    montar({ onConversaAberta: aberta });
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Responder por" })).toBeTruthy());
+    fireEvent.click(respondePor());
+    fireEvent.click(screen.getAllByRole("option").find((o) => o.textContent === "Comercial · WhatsApp oficial") as HTMLElement);
+    await waitFor(() => expect(seletor()).not.toBeNull());
+    expect(screen.queryByRole("textbox", { name: "Primeira Mensagem" })).toBeNull();
+
+    await escolherOModelo("pedido_saiu");
+    fireEvent.change(campoDaVariavel(2), { target: { value: "99" } });
+    fireEvent.click(botaoEnviar());
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Enviar" }));
+
+    await waitFor(() => expect(aberta).toHaveBeenCalledTimes(1));
+    expect(gravacoes()).toEqual([
+      { caminho: "/conversas", metodo: "POST", corpo: { canalId: "chn_comercial", contatoId: CONTATO_ID, mensagem: { conteudo: "", modeloId: "m1", variaveis: ["Ana", "99"] } } },
+    ]);
+  });
+
+  it("(7) antes da primeira mensagem do Contato e sem modelo enviável: não dá para começar a conversa, e diz como resolver", async () => {
+    conversasDaApi = conversasDaApi.filter((c) => c.id !== "cnv_comercial");
+    delete mensagensDaApi.cnv_comercial;
+    montar();
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Responder por" })).toBeTruthy());
+    fireEvent.click(respondePor());
+    fireEvent.click(screen.getAllByRole("option").find((o) => o.textContent === "Comercial · WhatsApp oficial") as HTMLElement);
+    await waitFor(() => expect(document.body.textContent).toContain("não dá para começar a conversa"));
+    expect(document.body.textContent).toContain("Sincronize os modelos na ficha do Canal ou aprove um na Meta.");
+    expect(seletor()).toBeNull();
+  });
+
+  it("(8) a recusa de variável da api (400, campo variaveis) aparece junto do campo, e o que foi preenchido fica", async () => {
+    modelosDaApi.chn_comercial = [modelo("m1", "pedido_saiu")];
+    gravarMensagem = async () => resposta(400, { ok: false, error: "A variável {{2}} não pode ter quebra de linha nem tabulação.", codigo: "VALOR_INVALIDO", campo: "variaveis" });
+    await noComercialComJanelaFechada();
+    await waitFor(() => expect(seletor()).not.toBeNull());
+    await escolherOModelo("pedido_saiu");
+    fireEvent.change(campoDaVariavel(2), { target: { value: "1234" } });
+    fireEvent.click(botaoEnviar());
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Enviar" }));
+
+    await waitFor(() => expect(seletor()?.textContent).toContain("não pode ter quebra de linha nem tabulação"));
+    expect(campoDaVariavel(2).value).toBe("1234");
+    expect(campoDaVariavel(1).value).toBe("Ana");
+  });
+
+  it("(9) a recusa JANELA_EXPIRADA da api traz os modelos: o seletor aparece mesmo quando a leitura deles falhou e o fio achava a janela aberta", async () => {
+    conversasDaApi = conversasDaApi.map((c) => (c.id === "cnv_comercial" ? { ...c, ultimaRecebidaEm: new Date(Date.now() - 3_600_000).toISOString() } : c));
+    const antes = rotaPadrao;
+    // A leitura dos modelos cai (500): o fio não sabe de nenhum modelo.
+    rotaPadrao = async (url, init) => (/\/modelos$/.test(new URL(url).pathname) ? resposta(500, { ok: false, error: "fora do ar" }) : antes(url, init));
+    gravarMensagem = async () =>
+      resposta(409, {
+        ok: false,
+        error: "A janela de resposta deste Canal expirou. Só é possível enviar uma Mensagem de modelo aprovada.",
+        codigo: "JANELA_EXPIRADA",
+        campo: "modelo",
+        modelos: [modelo("m1", "pedido_saiu")],
+      });
+    await noComercialComJanelaFechada();
+    fireEvent.change(compositor(), { target: { value: "oi" } });
+    fireEvent.click(botaoEnviar());
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Enviar" }));
+
+    await waitFor(() => expect(seletor()).not.toBeNull());
+    expect(screen.getByRole("alert").textContent).toContain("A janela de resposta deste Canal expirou.");
+    await escolherOModelo("pedido_saiu");
+    expect(campoDaVariavel(1).value).toBe("Ana");
+  });
+
+  it("(10) o Canal NÃO oficial nunca mostra o seletor nem pede modelos à api", async () => {
+    modelosDaApi.chn_suporte = [modelo("m9", "nao_deveria_aparecer", { canalId: "chn_suporte" })];
+    montar({ canalPreferidoId: "chn_suporte" });
+    await waitFor(() => expect(screen.getByText("cnv_suporte mensagem 1")).toBeTruthy());
+    expect(compositor()).toBeTruthy();
+    expect(seletor()).toBeNull();
+    const pediuModelosDoSuporte = fetchMock.mock.calls.some((c) => new URL(String(c[0])).pathname === "/canais/chn_suporte/modelos");
+    expect(pediuModelosDoSuporte).toBe(false);
   });
 });

@@ -33,7 +33,7 @@ import { z } from "zod";
 import { LIMITES_CRM } from "@n1/dominio/crm/comum";
 import { ESTADOS_DA_CONVERSA, SITUACOES_DA_CONVERSA, type FiltroDeConversas } from "@n1/dominio/crm/conversas";
 import type { ServicoDeConversas } from "../../servicos/crm/conversas";
-import { PARAMS_ID, responder, responderLista, TEXTO_CURTO, TEXTO_LONGO } from "./comum";
+import { PARAMS_ID, PRIMEIRA_MENSAGEM, responder, responderLista, TEXTO_CURTO, TEXTO_LONGO } from "./comum";
 
 const ID = z.string().min(1).max(64);
 
@@ -58,7 +58,7 @@ export const NOVA_CONVERSA = z
   .object({
     canalId: ID,
     contatoId: ID,
-    mensagem: z.object({ conteudo: TEXTO_LONGO.min(1) }).strict(),
+    mensagem: PRIMEIRA_MENSAGEM,
   })
   .strict();
 

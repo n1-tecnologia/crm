@@ -51,8 +51,9 @@ do provedor. `chaves` é opcional: sem ela, a chave mestra é lida do ambiente a
 `servicos/cofre` (a rota só repassa a injeção dos testes).
 
 `registroPadrao()` tem o provedor de teste sempre, a Evolution (`whatsapp-nao-oficial`) **só quando `EVOLUTION_URL`
-existe** e o Instagram (`instagram-graph`, Sessão 8) **só com `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET` e
-`INSTAGRAM_REDIRECT_URI`** (`provedores/instagram/do-ambiente.ts`): sem elas, um Canal real continua recusando com
+existe**, o Instagram (`instagram-graph`, Sessão 8) **só com `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET` e
+`INSTAGRAM_REDIRECT_URI`** (`provedores/instagram/do-ambiente.ts`) e o WhatsApp oficial (`whatsapp-cloud`, Sessão 7) **só com
+`META_APP_SECRET`** (`provedores/whatsapp-cloud/do-ambiente.ts`): sem elas, um Canal real continua recusando com
 `PROVEDOR_INDISPONIVEL`. A credencial do Canal é o JSON
 `{ instancia, apikey }` com o token da INSTÂNCIA (nunca a chave global da Evolution), no cofre com
 `tipo = "whatsapp-nao-oficial"`. A Evolution traduz `MESSAGES_UPSERT` e, desde a Sessão 4, `connection.update` e a mensagem que a pessoa digita no
@@ -318,6 +319,17 @@ Canal de cada conta, confere com `verificarChamada` e grava um item por linha em
 o caminho de sempre: o processador (com `resolverRemetente` trocando o IGSID pelo @), `receberMensagem`, o outbox e o
 worker de saída. Tudo em [`provedores/instagram/CONTEXT.md`](provedores/instagram/CONTEXT.md).
 
+## O WhatsApp oficial (`provedores/whatsapp-cloud/`)
+
+O `ProvedorDeMensageria` do Canal `whatsapp-cloud` (Sessão 7), a Cloud API da Meta, no mesmo desenho do Instagram: a rota da
+Meta (`../rotas/webhook-meta.ts`) confere a assinatura e entrega a chamada a `provedores/whatsapp-cloud/entrada.ts`, que acha o
+Canal pelo `metadata.phone_number_id` (`whatsapp_cloud_numeros`, migração `015`), confere com `verificarChamada` e grava um
+item por linha em `webhooks_recebidos`. A conexão é pelo token (`POST /canais/:id/whatsapp-oficial/conectar`), não por QR code
+nem por login. Fora das 24 h, e antes da primeira mensagem do Contato, só sai Mensagem de modelo (`validarEnvio` e
+`abrirConversaNoCliente`, que escolhem o modelo pelo mesmo auxiliar); os modelos são sincronizados da Meta
+(`plataforma.modelos_de_mensagem`, migração `016`). Nunca falou com a Meta real. Tudo em
+[`provedores/whatsapp-cloud/CONTEXT.md`](provedores/whatsapp-cloud/CONTEXT.md).
+
 ## Ligar um Canal real: `canal:ligar-evolution`
 
 `npm run canal:ligar-evolution -w @n1/api -- --canal <id> --instancia <nome> [--seco]`
@@ -415,5 +427,6 @@ código e o id interno, nunca o conteúdo. As únicas linhas de dado são as con
 | `provedores/evolution/` (`cliente.ts`, `traduzir.ts`, `provedor.ts`, `exemplos/`) | 16-12 | a Evolution |
 | `provedores/instagram/` (`provedor.ts`, `traduzir.ts`, `entrada.ts`, `conexao.ts`, `midia.ts`, `token.ts`, `repositorio.ts`) | Sessão 8 | o Instagram, com a conexão pelo login e a desautorização da Meta |
 | `provedores/meta/assinatura.ts` | Sessão 8 | a assinatura da Meta (`X-Hub-Signature-256`) e o `signed_request` |
+| `provedores/whatsapp-cloud/` (`provedor.ts`, `cliente.ts`, `traduzir.ts`, `entrada.ts`, `conexao.ts`, `repositorio.ts`, `configuracao.ts`) | Sessão 7 | o WhatsApp oficial (Cloud API), conectado pelo token |
 | `../bootstrap/canal-ligar-evolution.ts`, `canal-segredo-de-teste.ts` | 16-13, 16-02 | os dois comandos de linha da mensageria |
 | `provar-tempo-real.ts`, `provar-tempo-real.cli.ts` | 16-15 | `npm run tempo-real:provar`: uma volta de `LISTEN/NOTIFY` pelo pooler, para o dono provar a A9 |

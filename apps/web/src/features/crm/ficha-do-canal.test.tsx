@@ -195,8 +195,9 @@ describe("08-09 — a ficha do Canal relacional", () => {
   });
 
   it("CR-01 (16-17): Canal ligado a um provedor e desconectado: sem Simular conexão, com a frase de como reconectar", async () => {
-    // O WhatsApp oficial não conecta por QR code: a frase do CR-01 segue sendo o caminho dele.
-    await montar("uuid-1", canalRelacional({ provedor: "whatsapp-cloud", ligadoAoProvedor: true, conexao: "desconectada" }));
+    // O WhatsApp oficial (Sessão 7) e o não oficial (Sessão 4) ganharam o botão Conectar, e o Instagram tem o login dele: a frase
+    // do CR-01 segue sendo o caminho de reconectar dos provedores que ainda não conectam pela tela (o e-mail).
+    await montar("uuid-1", canalRelacional({ tipo: "email", provedor: "email-imap-smtp", ligadoAoProvedor: true, conexao: "desconectada" }));
 
     expect(await screen.findByRole("heading", { name: /Suporte do Zap/ })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Simular conexão" })).toBeNull();
@@ -395,13 +396,13 @@ describe("Sessão 4 — a ficha do WhatsApp não oficial conecta lendo um QR cod
     expect(screen.queryByRole("button", { name: "Conectar" })).toBeNull();
   });
 
-  it("outros provedores não ganham Conectar: o Instagram tem o login dele e o WhatsApp oficial nem simulação em produção", async () => {
+  it("outros provedores não ganham Conectar: o Instagram tem o login dele e o e-mail nem simulação em produção", async () => {
     await montar("uuid-1", semSimulacao({ tipo: "instagram", provedor: "instagram-graph", identificadorExterno: "loja.n1" }));
     expect(await screen.findByRole("button", { name: "Conectar com o Instagram" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Conectar" })).toBeNull();
     cleanup();
 
-    await montar("uuid-1", semSimulacao({ provedor: "whatsapp-cloud" }));
+    await montar("uuid-1", semSimulacao({ tipo: "email", provedor: "email-imap-smtp" }));
     expect(await screen.findByRole("heading", { name: /Suporte do Zap/ })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Conectar" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Simular conexão" })).toBeNull();
@@ -469,5 +470,232 @@ describe("Sessão 4 — a ficha do WhatsApp não oficial conecta lendo um QR cod
     await waitFor(() => expect(router.replace).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(chamadasRest().some(([url]) => String(url).endsWith("/conectar"))).toBe(false);
+  });
+});
+
+describe("Sessão 7 — a ficha do WhatsApp oficial conecta colando o token", () => {
+  const TOKEN = "EAAG-token-permanente-de-teste-1234567890";
+  const oficial = (sobre: Partial<CanalNaFicha> = {}) =>
+    canalRelacional({ provedor: "whatsapp-cloud", simulacaoPermitida: false, ...sobre });
+  const NUMERO = { ok: true, dados: { phoneNumberId: "1098765432100", wabaId: "100200300400500", numeroExibido: "+55 11 97777-0001" } };
+  const posts = (caminho: string) => chamadasRest().filter(([url, init]) => url === `http://api${caminho}` && init?.method === "POST");
+
+  it("produção (sem simulação): Conectar é o botão de conexão, Simular conexão não existe, e o texto fala do token", async () => {
+    await montar("uuid-1", oficial());
+
+    expect(await screen.findByRole("button", { name: "Conectar" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Simular conexão" })).toBeNull();
+    expect(screen.getByText(/O botão pede o ID do número, o ID da conta do WhatsApp Business e o token/)).toBeTruthy();
+  });
+
+  it("onde a simulação é permitida (desenvolvimento): Conectar e Simular conexão convivem", async () => {
+    await montar("uuid-1", oficial({ simulacaoPermitida: true }));
+
+    expect(await screen.findByRole("button", { name: "Conectar" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Simular conexão" })).toBeTruthy();
+  });
+
+  it("Canal com erro: o botão serve de Reconectar", async () => {
+    await montar("uuid-1", oficial({ conexao: "com_erro", ligadoAoProvedor: true }));
+
+    expect(await screen.findByRole("button", { name: "Reconectar" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Conectar" })).toBeNull();
+  });
+
+  it("Canal conectado de verdade: sem Conectar, com Desconectar, e a ficha mostra o número e os dois IDs lidos da api (nunca o token)", async () => {
+    rotas["GET /canais/uuid-1/whatsapp-oficial/numero"] = () => resposta(200, NUMERO);
+    await montar("uuid-1", oficial({ conexao: "conectada", ligadoAoProvedor: true }));
+
+    expect(await screen.findByRole("button", { name: "Desconectar" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Conectar" })).toBeNull();
+    expect(await screen.findByText("+55 11 97777-0001")).toBeTruthy();
+    expect(screen.getByText("1098765432100")).toBeTruthy();
+    expect(screen.getByText("100200300400500")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("token-permanente");
+  });
+
+  it("Canal que ainda não está conectado de verdade não lê o número (nenhuma chamada a /whatsapp-oficial/numero)", async () => {
+    await montar("uuid-1", oficial());
+
+    expect(await screen.findByRole("button", { name: "Conectar" })).toBeTruthy();
+    expect(chamadasRest().some(([url]) => String(url).endsWith("/whatsapp-oficial/numero"))).toBe(false);
+  });
+
+  it("Membro não vê Conectar (a tela só esconde; quem barra é o servidor)", async () => {
+    await montar("uuid-1", oficial(), "mem_julia");
+
+    expect(await screen.findByRole("heading", { name: /Suporte do Zap/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Conectar" })).toBeNull();
+  });
+
+  it("Conectar abre o painel do TOKEN (não o do QR code): nenhuma chamada à api até enviar; enviar faz POST com os três valores aparados, fecha e avisa", async () => {
+    rotas["POST /canais/uuid-1/whatsapp-oficial/conectar"] = () => resposta(200, { ok: true, dados: oficial({ conexao: "conectada", ligadoAoProvedor: true }) });
+    await montar("uuid-1", oficial());
+
+    fireEvent.click(await screen.findByRole("button", { name: "Conectar" }));
+
+    const dialogo = await screen.findByRole("alertdialog");
+    expect(within(dialogo).getByText("Conectar o WhatsApp oficial")).toBeTruthy();
+    expect(within(dialogo).getByText(/final 0001/)).toBeTruthy();
+    expect(within(dialogo).queryByAltText("QR code para conectar o WhatsApp deste Canal")).toBeNull();
+    // Abrir o painel não chama a api: nem a rota do QR code nem a do token.
+    expect(posts("/canais/uuid-1/conectar")).toHaveLength(0);
+    expect(posts("/canais/uuid-1/whatsapp-oficial/conectar")).toHaveLength(0);
+
+    fireEvent.change(within(dialogo).getByLabelText(/^ID do número de telefone/), { target: { value: " 1098765432100 " } });
+    fireEvent.change(within(dialogo).getByLabelText(/^ID da conta do WhatsApp Business/), { target: { value: "100200300400500\n" } });
+    fireEvent.change(within(dialogo).getByLabelText(/^Token de acesso/), { target: { value: ` ${TOKEN}\n` } });
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Conectar" }));
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    const enviados = posts("/canais/uuid-1/whatsapp-oficial/conectar");
+    expect(enviados).toHaveLength(1);
+    expect(JSON.parse(enviados[0]![1]!.body as string)).toEqual({ phoneNumberId: "1098765432100", wabaId: "100200300400500", token: TOKEN });
+    expect(await screen.findByText("WhatsApp oficial conectado.")).toBeTruthy();
+    // O token só foi no corpo do POST: nunca na URL de nenhuma chamada.
+    expect(chamadasRest().some(([url]) => String(url).includes(TOKEN))).toBe(false);
+  });
+
+  it("?conectar=1 (depois de criar o Canal oficial): abre o painel do token sozinho, uma vez, e limpa o endereço", async () => {
+    parametros.atual = new URLSearchParams("conectar=1");
+    await montar("uuid-1", oficial());
+
+    const dialogo = await screen.findByRole("alertdialog");
+    expect(within(dialogo).getByText("Conectar o WhatsApp oficial")).toBeTruthy();
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/crm/caixa-de-entrada/configuracoes/canais/uuid-1"));
+    expect(router.replace).toHaveBeenCalledTimes(1);
+  });
+
+  it("o não oficial segue abrindo o painel do QR code, não o do token", async () => {
+    rotas["POST /canais/uuid-1/conectar"] = () =>
+      resposta(200, { ok: true, dados: { situacao: "qrcode", qrcode: { imagem: "data:image/png;base64,iVBORw0KGgo=" } } });
+    await montar("uuid-1", canalRelacional({ simulacaoPermitida: false }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Conectar" }));
+
+    const dialogo = await screen.findByRole("alertdialog");
+    expect(within(dialogo).getByText("Conectar o WhatsApp")).toBeTruthy();
+    expect(within(dialogo).queryByText("Conectar o WhatsApp oficial")).toBeNull();
+    expect(within(dialogo).queryByLabelText(/^Token de acesso/)).toBeNull();
+    expect(await within(dialogo).findByAltText("QR code para conectar o WhatsApp deste Canal")).toBeTruthy();
+  });
+});
+
+/**
+ * 7.3.5 — a seção "Mensagens de modelo" da ficha do WhatsApp oficial lista os modelos que a Meta aprovou para o Canal
+ * (`GET /canais/:id/modelos`, todos os estados), com o motivo da rejeição e o que o CRM ainda não envia, e "Sincronizar com a
+ * Meta" (`POST …/modelos/sincronizar`) só para quem pode conectar o Canal e só com o número conectado de verdade.
+ */
+describe("Sessão 7 — as Mensagens de modelo na ficha do WhatsApp oficial (7.3.5)", () => {
+  const oficial = (sobre: Partial<CanalNaFicha> = {}) =>
+    canalRelacional({ provedor: "whatsapp-cloud", simulacaoPermitida: false, conexao: "conectada", ligadoAoProvedor: true, ...sobre });
+  const modelo = (id: string, nome: string, extras: Record<string, unknown> = {}) => ({
+    id,
+    canalId: "uuid-1",
+    idNoProvedor: `meta_${id}`,
+    nome,
+    idioma: "pt_BR",
+    categoria: "utilidade",
+    estado: "aprovado",
+    motivoDeRejeicao: null,
+    componentes: [{ type: "BODY", text: "Olá {{1}}" }],
+    quantidadeDeVariaveis: 1,
+    sincronizadoEm: "2026-11-13T12:00:00.000Z",
+    enviavel: true,
+    motivoDeNaoEnviavel: null,
+    ...extras,
+  });
+  const lista = (itens: unknown[]) => () => resposta(200, { ok: true, itens, total: itens.length });
+  const pedidosDeModelos = () => chamadasRest().filter(([url]) => String(url).includes("/modelos"));
+  const linha = (nome: string) => document.querySelector(`[data-modelo="${nome}"]`) as HTMLElement;
+
+  it("(1) lista cada modelo com idioma, categoria, estado e variáveis; o rejeitado traz o motivo da Meta; o aprovado que o CRM não envia diz por quê", async () => {
+    rotas["GET /canais/uuid-1/modelos"] = lista([
+      modelo("m1", "pedido_saiu", { quantidadeDeVariaveis: 2 }),
+      modelo("m2", "promocao", { estado: "rejeitado", categoria: "marketing", motivoDeRejeicao: "INVALID_FORMAT", enviavel: false }),
+      modelo("m3", "com_imagem", { enviavel: false, motivoDeNaoEnviavel: "Modelo com cabeçalho de imagem, vídeo ou documento: o CRM ainda não envia a mídia do cabeçalho." }),
+      modelo("m4", "em_analise", { estado: "pendente", enviavel: false }),
+    ]);
+    await montar("uuid-1", oficial());
+
+    await waitFor(() => expect(linha("pedido_saiu")).toBeTruthy());
+    expect(within(linha("pedido_saiu")).getByText("Aprovado")).toBeTruthy();
+    expect(linha("pedido_saiu").textContent).toContain("pt_BR · Utilidade · 2 variáveis");
+    expect(within(linha("promocao")).getByText("Rejeitado")).toBeTruthy();
+    expect(linha("promocao").textContent).toContain("Marketing");
+    expect(linha("promocao").textContent).toContain("Motivo da Meta: INVALID_FORMAT");
+    expect(within(linha("com_imagem")).getByText("Aprovado")).toBeTruthy();
+    expect(linha("com_imagem").textContent).toContain("Aprovado, mas não sai pelo CRM: Modelo com cabeçalho de imagem");
+    expect(within(linha("em_analise")).getByText("Em análise")).toBeTruthy();
+    // O que dá para enviar e quando foi a última leitura da Meta.
+    expect(screen.getByText(/1 de 4 podem ser enviados pelo CRM\./)).toBeTruthy();
+    expect(screen.getByText(/Última sincronização:/)).toBeTruthy();
+  });
+
+  it("(2) Administrador com o número conectado: “Sincronizar com a Meta” faz POST sem corpo e diz quantos vieram, mudaram e saíram", async () => {
+    rotas["GET /canais/uuid-1/modelos"] = lista([modelo("m1", "pedido_saiu")]);
+    rotas["POST /canais/uuid-1/modelos/sincronizar"] = () => resposta(200, { ok: true, dados: { criados: 1, atualizados: 2, removidos: 0, ignorados: 3 } });
+    await montar("uuid-1", oficial());
+
+    fireEvent.click(await screen.findByRole("button", { name: "Sincronizar com a Meta" }));
+
+    await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Modelos sincronizados com a Meta: 1 novo, 2 atualizados, 0 removidos."));
+    expect(screen.getByRole("status").textContent).toContain("3 de um tipo que o CRM ainda não conhece ficaram de fora.");
+    const post = chamadasRest().find(([url, init]) => url === "http://api/canais/uuid-1/modelos/sincronizar" && init?.method === "POST");
+    expect(post?.[1]?.body).toBeUndefined();
+    expect((post?.[1]?.headers as Record<string, string>)["content-type"]).toBeUndefined();
+  });
+
+  it("(3) a recusa da api (token vencido, Meta fora do ar…) aparece na seção com a frase dela", async () => {
+    rotas["GET /canais/uuid-1/modelos"] = lista([]);
+    rotas["POST /canais/uuid-1/modelos/sincronizar"] = () =>
+      resposta(409, { ok: false, error: "A Meta recusou o token: ele é inválido, venceu ou não tem acesso a este número. Gere um token novo e tente de novo.", codigo: "TOKEN_RECUSADO" });
+    await montar("uuid-1", oficial());
+
+    fireEvent.click(await screen.findByRole("button", { name: "Sincronizar com a Meta" }));
+
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("A Meta recusou o token"));
+  });
+
+  it("(4) Membro lê a lista mas não vê o botão (a tela só esconde; quem barra é o servidor)", async () => {
+    rotas["GET /canais/uuid-1/modelos"] = lista([modelo("m1", "pedido_saiu")]);
+    await montar("uuid-1", oficial(), "mem_julia");
+
+    await waitFor(() => expect(linha("pedido_saiu")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Sincronizar com a Meta" })).toBeNull();
+  });
+
+  it("(5) Canal que não está conectado de verdade (desconectado, ou só simulado) não tem o botão; a lista vazia diz para conectar o número", async () => {
+    rotas["GET /canais/uuid-1/modelos"] = lista([]);
+    await montar("uuid-1", oficial({ conexao: "desconectada", ligadoAoProvedor: false }));
+
+    expect(await screen.findByText("Conecte o número para trazer os modelos da conta.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Sincronizar com a Meta" })).toBeNull();
+  });
+
+  it("(6) conectado e sem nenhum modelo: diz como trazê-los (criar na Meta e sincronizar) e por que isso importa", async () => {
+    rotas["GET /canais/uuid-1/modelos"] = lista([]);
+    await montar("uuid-1", oficial());
+
+    expect(await screen.findByText("Nenhuma Mensagem de modelo sincronizada.")).toBeTruthy();
+    expect(screen.getByText(/Crie o modelo no Gerenciador do WhatsApp, na Meta, e use “Sincronizar com a Meta”\./)).toBeTruthy();
+  });
+
+  it("(7) a leitura que falha mostra a frase da api, sem derrubar a ficha", async () => {
+    rotas["GET /canais/uuid-1/modelos"] = () => resposta(403, { ok: false, error: "Você não pode ver os modelos deste Canal.", codigo: "PERMISSAO" });
+    await montar("uuid-1", oficial());
+
+    expect(await screen.findByText("Não foi possível carregar as Mensagens de modelo.")).toBeTruthy();
+    expect(screen.getByText("Você não pode ver os modelos deste Canal.")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /Suporte do Zap/ })).toBeTruthy();
+  });
+
+  it("(8) o Canal NÃO oficial mantém o texto de hoje e nem pede modelos à api", async () => {
+    await montar("uuid-1", canalRelacional({ simulacaoPermitida: false }));
+
+    expect(await screen.findByText("Nenhuma Mensagem de modelo sincronizada.")).toBeTruthy();
+    expect(screen.getByText("Este tipo de Canal não exige modelo para enviar.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Sincronizar com a Meta" })).toBeNull();
+    expect(pedidosDeModelos()).toHaveLength(0);
   });
 });

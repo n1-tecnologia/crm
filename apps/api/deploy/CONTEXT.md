@@ -468,6 +468,56 @@ cd /opt/n1-crm/current && EVOLUTION_API_KEY=<chave global> \
 O comando escreve no banco do `DATABASE_URL` com a `COFRE_CHAVE` do ambiente: para o Canal de produção, rode-o com
 as de produção. A chave global nunca entra no `api.env` nem no cofre.
 
+## WhatsApp oficial (Sessão 7): a primeira conexão de verdade
+
+O WhatsApp oficial (a Cloud API da Meta) **nunca falou com a Meta real**: tudo foi provado contra um servidor falso. Este roteiro é a
+primeira vez, e a ordem importa: a fumaça vem antes de conectar qualquer Canal. As partes da Meta (empresa verificada, número
+dedicado, app ao vivo, token do usuário do sistema) são o item 7.1 do plano e são do dono.
+
+**No `api.env` do servidor** (o `n1crm` o edita; reinicie com `sudo systemctl restart n1-crm-api`):
+
+| Variável | Para quê |
+|---|---|
+| `META_APP_SECRET` | **obrigatória**: a chave secreta do app (painel › Configurações › Básico). Liga o provedor `whatsapp-cloud` e confere a assinatura `X-Hub-Signature-256` do webhook. Sem ela, o Canal oficial não tem provedor e o webhook só escuta |
+| `META_WEBHOOK_VERIFY_TOKEN` | o texto que se digita no painel da Meta ao cadastrar o webhook (a rota o confere no `GET`). Sem ela, a Meta não consegue cadastrar o endereço |
+| `META_GRAPH_VERSAO` | opcional, `v26.0` por padrão (a versão do app da Meta): a versão fixada da Graph API |
+| `WHATSAPP_MODELOS_SINCRONIZACAO_ATIVA` | opcional, `true` liga a sincronização dos modelos de mensagem de hora em hora (rede de segurança: o aviso da Meta, a conexão e o botão da ficha já sincronizam). Desligada por padrão |
+
+O **token de cada número NÃO vai ao `api.env`**: entra pelo formulário de conectar na ficha do Canal e fica cifrado no cofre.
+A chave secreta e o token nunca vão por mensagem, e-mail nem captura de tela.
+
+**A ordem do roteiro:**
+
+1. **Publicar** a versão com a Sessão 7 (`publicar.sh`; a `015` e a `016` entram no `migrar`).
+2. **A fumaça**, sem Canal nenhum e sem mandar mensagem, lendo o token sem eco para ele não ficar no histórico do shell:
+   ```bash
+   read -s WHATSAPP_FUMACA_TOKEN && export WHATSAPP_FUMACA_TOKEN
+   WHATSAPP_FUMACA_PHONE_NUMBER_ID=<id> WHATSAPP_FUMACA_WABA_ID=<id> WHATSAPP_FUMACA_NUMERO='+55...' \
+     npm run whatsapp-oficial:fumaca -w @n1/api        # só leitura; 0 passou, 1 falhou, 2 faltou configuração
+   unset WHATSAPP_FUMACA_TOKEN
+   ```
+   Ela confere o número e a lista de modelos (estados, categorias e os componentes que a Meta devolve), diz quantos modelos o CRM
+   envia e **falha se o formato não for o que o CRM assume**. A saída leva só fatos (nunca o token, os IDs, o número inteiro nem o
+   texto de um modelo). `--inscrever` liga o único passo que escreve na Meta (inscrever o app na conta). **Se a fumaça falhar, pare e
+   cole a saída: o código foi escrito contra a documentação, e é aqui que um nome de campo errado aparece.**
+3. **O webhook no painel da Meta** (WhatsApp › Configuração): endereço `https://<api>/webhooks/meta/whatsapp`, o
+   `META_WEBHOOK_VERIFY_TOKEN`, e assinar os campos `messages` e `message_template_status_update`. O botão "Verificar" da Meta chama o
+   `GET` da rota (devolve o `hub.challenge`).
+4. **O Canal no CRM**: criar o Canal com o provedor WhatsApp oficial e o número (com DDI); na ficha, "Conectar" e colar o ID do
+   número, o ID da conta e o token. A conexão recusa um token de outro número.
+5. **Os modelos**: a ficha do Canal lista os modelos (a conexão já os sincronizou); "Sincronizar com a Meta" repete.
+6. **O roteiro com um celular** (o do 5.3.1, agora pelo oficial): mandar "oi" de um número de teste e ver a Tarefa/Conversa nascer;
+   responder dentro das 24 h (texto livre) e ver "entregue"/"lida" chegarem; mandar mídia nos dois sentidos; fora das 24 h só sai
+   modelo (a Caixa mostra o seletor); abrir uma Conversa nova pelo oficial só com modelo.
+
+**Para desligar:** "Desconectar" na ficha apaga o token do cofre e o número; tirar `META_APP_SECRET` e reiniciar desliga a
+integração inteira (o Canal oficial fica sem provedor, e nada é dado como enviado). Os modelos sincronizados ficam.
+
+**Provado com a Meta real (2026-11-13, número de teste, Graph v26.0):** a leitura do número (`display_phone_number`, `verified_name`) e
+a lista de modelos (cinco modelos, três enviáveis; componentes BODY, HEADER texto e imagem, FOOTER, BUTTONS e um CAROUSEL).
+**Ainda não provado com a Meta real:** o envio e os códigos de erro dele, o webhook (nenhum chegou ainda), o download de mídia com o
+token, o aviso `message_template_status_update` e a paginação dos modelos (a conta de teste cabe numa página). Modelos com cabeçalho de mídia ou variável em botão aparecem na lista mas o CRM ainda não os envia.
+
 ## Por que assim
 
 - **systemd, não pm2.** O pm2 da VPS é do root e de todos os projetos; aqui

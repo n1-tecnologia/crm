@@ -197,6 +197,7 @@ export function TextInput({
   disabledReason,
   size = "md",
   required = false,
+  autoComplete,
 }: {
   readonly id?: string;
   readonly value: string;
@@ -211,6 +212,8 @@ export function TextInput({
   readonly size?: "sm" | "md";
   /** Marca `aria-required` no próprio controle — `Field` só desenha o asterisco. */
   readonly required?: boolean;
+  /** Um segredo colado (o token da Meta) leva `off`: o navegador não oferece guardá-lo nem sugerir um valor. */
+  readonly autoComplete?: "off";
 }) {
   return (
     <input
@@ -221,6 +224,7 @@ export function TextInput({
       placeholder={placeholder}
       aria-invalid={invalid}
       aria-required={required}
+      {...(autoComplete ? { autoComplete } : {})}
       readOnly={disabled}
       aria-disabled={disabled}
       title={disabled ? disabledReason : undefined}

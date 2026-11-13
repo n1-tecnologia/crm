@@ -241,7 +241,7 @@ describeComBanco("Fase 8 ponta a ponta: dois WhatsApps lado a lado, pelo HTTP, c
     expect(porNome("Suporte")).toMatchObject({ id: suporteId, provedor: "whatsapp-nao-oficial", conexao: "conectada", conexaoSimulada: true });
   });
 
-  it("(f) o mesmo Contato abre uma Conversa em cada Canal; a 2ª no mesmo Canal é recusada", async () => {
+  it("(f) o mesmo Contato tem uma Conversa em cada Canal (a do oficial nasce quando ele escreve, 7.2.6); a 2ª no mesmo Canal é recusada", async () => {
     const ana = await chamar("POST", "/contatos", MEMBRO, {
       nome: "Ana",
       identificadores: [{ tipo: "whatsapp", valor: WHATSAPP_DA_ANA }],
@@ -249,16 +249,28 @@ describeComBanco("Fase 8 ponta a ponta: dois WhatsApps lado a lado, pelo HTTP, c
     expect(ana.status).toBe(201);
     anaId = dados<{ contato: { id: string } }>(ana.corpo).contato.id;
 
+    // 7.2.6: o Comercial é oficial, e a empresa só abre a conversa com Mensagem de modelo aprovada: o texto livre é recusado
+    // e nada nasce (nem Conversa, nem Mensagem, nem linha na fila).
     const noComercial = await chamar("POST", "/conversas", MEMBRO, {
       canalId: comercialId,
       contatoId: anaId,
       mensagem: { conteudo: "Olá, aqui é do Comercial." },
     });
-    expect(noComercial.status).toBe(201);
-    const cc = dados<ConversaCriada>(noComercial.corpo);
-    expect(cc.primeiraMensagem.statusEntrega).toBe("pendente");
-    expect(await filaDeSaida(espacoA)).toEqual([cc.primeiraMensagem.id]);
-    conversaComercialId = cc.conversa.id;
+    expect(noComercial.status).toBe(409);
+    expect(noComercial.corpo).toMatchObject({ ok: false, codigo: "JANELA_EXPIRADA", campo: "modelo" });
+    expect(await filaDeSaida(espacoA)).toEqual([]);
+    // A Conversa do oficial nasce quando o Contato escreve (3.6.2). A recebida é de 30 h atrás: (g) precisa da janela fechada.
+    const haTrintaHoras = new Date(Date.now() - 30 * 60 * 60 * 1000).toISOString();
+    const primeiraRecebida = await criarServicoDeRecebimento({ pool }).receberMensagem(espacoA, comercialId, {
+      idExterno: "wamid.comercial.0",
+      criadoEm: haTrintaHoras,
+      remetente: { tipo: "whatsapp", valor: WHATSAPP_DA_ANA },
+      conteudo: "Oi, aqui é a Ana.",
+      cargaBruta: { origem: "teste" },
+    });
+    expect(primeiraRecebida.ok).toBe(true);
+    if (!primeiraRecebida.ok) throw new Error("a recebida do Comercial devia entrar");
+    conversaComercialId = primeiraRecebida.valor.conversa.id;
 
     const noSuporte = await chamar("POST", "/conversas", MEMBRO, {
       canalId: suporteId,
@@ -268,7 +280,7 @@ describeComBanco("Fase 8 ponta a ponta: dois WhatsApps lado a lado, pelo HTTP, c
     expect(noSuporte.status).toBe(201);
     const cs = dados<ConversaCriada>(noSuporte.corpo);
     expect(cs.primeiraMensagem.statusEntrega).toBe("pendente");
-    expect(await filaDeSaida(espacoA)).toHaveLength(2);
+    expect(await filaDeSaida(espacoA)).toEqual([cs.primeiraMensagem.id]);
     conversaSuporteId = cs.conversa.id;
     expect(conversaSuporteId).not.toBe(conversaComercialId);
 
@@ -316,7 +328,7 @@ describeComBanco("Fase 8 ponta a ponta: dois WhatsApps lado a lado, pelo HTTP, c
     expect(naoOficial.status).toBe(201);
     // 3.7.1: nasce pendente e entra na fila; só o provedor a passa a `enviada`.
     expect(dados<MensagemHttp>(naoOficial.corpo).statusEntrega).toBe("pendente");
-    expect(await filaDeSaida(espacoA)).toHaveLength(3);
+    expect(await filaDeSaida(espacoA)).toHaveLength(2);
 
     const fio = await chamar("GET", `/mensagens?conversaId=${conversaSuporteId}`, MEMBRO);
     expect(fio.status).toBe(200);
@@ -340,7 +352,7 @@ describeComBanco("Fase 8 ponta a ponta: dois WhatsApps lado a lado, pelo HTTP, c
     expect(enviada.status).toBe(201);
     expect(dados<MensagemHttp>(enviada.corpo).statusEntrega).toBe("pendente");
     // Canal fora do ar: a Mensagem é guardada e nenhuma linha nova entra na fila (nada é descartado nem enfileirado).
-    expect(await filaDeSaida(espacoA)).toHaveLength(3);
+    expect(await filaDeSaida(espacoA)).toHaveLength(2);
   });
 
   it("(i) um Membro de OUTRO Espaço recebe 404 no Canal, na Conversa e na Mensagem, e lista vazia (T-08-50)", async () => {

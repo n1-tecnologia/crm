@@ -57,6 +57,7 @@ import { reenfileirarPendentesDoCanal } from "../../mensageria/fila-de-saida";
 import { FalhaDoProvedor, FRASE_DE_FALHA_DO_WHATSAPP, type ConectorDaEvolution } from "../../mensageria/provedores/evolution/conexao";
 import { esquecerCredenciaisDaEvolution } from "../../mensageria/provedores/evolution/repositorio";
 import { esquecerConta } from "../../mensageria/provedores/instagram/repositorio";
+import { esquecerNumero } from "../../mensageria/provedores/whatsapp-cloud/repositorio";
 import { criarRepositorioDeCanaisPg, type RepositorioDeCanais } from "../../repositorios/crm/canais";
 import { avancarRevisaoDoEspaco, filaAtiva, origemAtiva } from "../../repositorios/crm/referencias";
 import { avisarCrm } from "../../mensageria/avisar";
@@ -231,6 +232,8 @@ export function criarServicoDeCanais(deps: {
       if (!atualizado) return naoEncontrado();
       // Sessão 8: desconectar o Instagram apaga a conta ligada e o token do cofre, na mesma transação.
       if (acao === "desconectar" && canal.provedor === "instagram-graph") await esquecerConta(cliente, membro.workspaceId, id);
+      // Sessão 7: desconectar o WhatsApp oficial apaga o número ligado e o token do cofre, na mesma transação.
+      if (acao === "desconectar" && canal.provedor === "whatsapp-cloud") await esquecerNumero(cliente, membro.workspaceId, id);
       await avancarRevisaoDoEspaco(cliente, membro.workspaceId);
       await avisarCrm(cliente, { workspaceId: membro.workspaceId, tipo: "canal.mudou", canalId: id });
       // B69 (16-06): as Mensagens guardadas enquanto o Canal estava fora do ar saem agora, no MESMO commit da
@@ -381,6 +384,7 @@ export function criarServicoDeCanais(deps: {
         const arquivado = await repositorio.arquivar(membro.workspaceId, id);
         if (!arquivado) return naoEncontrado();
         if (canal.provedor === "instagram-graph") await esquecerConta(cliente, membro.workspaceId, id);
+        if (canal.provedor === "whatsapp-cloud") await esquecerNumero(cliente, membro.workspaceId, id);
         // 4.3.3: arquivar o WhatsApp não oficial apaga a credencial da instância e o segredo do webhook do cofre.
         if (canal.provedor === "whatsapp-nao-oficial") await esquecerCredenciaisDaEvolution(cliente, membro.workspaceId, id);
         await avancarRevisaoDoEspaco(cliente, membro.workspaceId);

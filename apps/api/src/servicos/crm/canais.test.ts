@@ -338,9 +338,12 @@ describeComBanco("ServicoDeCanais — Postgres local", () => {
   describe("Canal que volta ao ar reenfileira as pendentes (16-06, B69, 3.7.1 item 5)", () => {
     const mensagens = criarServicoDeMensagens({ pool, acesso: criarAcessoAoCrmPg(pool) });
 
-    /** Um Canal simulado e conectado com uma Conversa aberta, pronta para receber Mensagens. */
+    /**
+     * Um Canal simulado e conectado com uma Conversa aberta, pronta para receber Mensagens. É o NÃO oficial: o oficial só
+     * escreve com modelo ou dentro da janela (7.2.6), e esta prova é da volta ao ar, não da janela.
+     */
     async function canalComConversa(c: Contexto, numero: string) {
-      const canal = valor(await criar(c, "Comercial", numero));
+      const canal = valor(await servico.criar(c.admin, { provedor: "whatsapp-nao-oficial", nome: "Comercial", identificador: numero }));
       valor(await servico.simularConexao(c.admin, canal.id));
       const contato = await criarRepositorioDeContatosPg(pool()).inserir(c.ws, { nome: "Ana", proprietarioId: "mem_admin", criadoPor: "mem_admin" });
       await criarRepositorioDeContatosPg(pool()).inserirIdentificador(c.ws, contato.id, { tipo: "whatsapp", valor: "+5511987654321", principal: true });
@@ -418,7 +421,7 @@ describeComBanco("ServicoDeCanais — Postgres local", () => {
     it("só as Mensagens do Canal que voltou: o outro Canal do Espaço segue como estava", async () => {
       const c = await espaco("voltaoutro");
       const um = await canalComConversa(c, "+55 11 97777-0203");
-      const outro = valor(await servico.criar(c.admin, { provedor: "whatsapp-cloud", nome: "Suporte", identificador: "+55 11 97777-0204" }));
+      const outro = valor(await servico.criar(c.admin, { provedor: "whatsapp-nao-oficial", nome: "Suporte", identificador: "+55 11 97777-0204" }));
       const contato = await criarRepositorioDeContatosPg(pool()).inserir(c.ws, { nome: "Beto", proprietarioId: "mem_admin", criadoPor: "mem_admin" });
       await criarRepositorioDeContatosPg(pool()).inserirIdentificador(c.ws, contato.id, { tipo: "whatsapp", valor: "+5511911112222", principal: true });
       const conversaDoOutro = await criarRepositorioDeConversasPg(pool()).inserir(c.ws, {

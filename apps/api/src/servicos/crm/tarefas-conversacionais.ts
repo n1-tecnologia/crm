@@ -30,7 +30,7 @@
 import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { nomeDeExibicaoDoContato } from "@n1/dominio/crm/contatos";
-import { validarNovaConversa } from "@n1/dominio/crm/conversas";
+import { validarNovaConversa, type NovaConversa } from "@n1/dominio/crm/conversas";
 import { RESUMO_MAXIMO, type ResumoDaTarefaConversacional, type VinculoParaResumo } from "@n1/dominio/crm/resumo-da-tarefa";
 import { taskWriteRefusal } from "@n1/dominio/derive";
 import { vinculosDoCrmDaTarefa } from "@n1/dominio/derive-conversacional";
@@ -61,7 +61,7 @@ export interface NovaTarefaConversacional {
   readonly contatoId: string;
   readonly canalId: string;
   /** Obrigatória só quando o par (Contato, Canal) não tem Conversa aberta (D-07). */
-  readonly mensagem?: { readonly conteudo: string } | undefined;
+  readonly mensagem?: NovaConversa["mensagem"] | undefined;
   readonly negocioId?: string | undefined;
   readonly title?: string | undefined;
   readonly statusId?: Id | undefined;
@@ -105,7 +105,7 @@ export interface ServicoDeTarefasConversacionais {
   trocarCanal(
     membro: MembroDaSessao,
     taskId: string,
-    entrada: { readonly canalId: string; readonly mensagem?: { readonly conteudo: string } | undefined },
+    entrada: { readonly canalId: string; readonly mensagem?: NovaConversa["mensagem"] | undefined },
   ): Promise<ResultadoCrm<RespostaDaTrocaDeCanal>>;
   /**
    * Liga o Negócio à Tarefa, ou o desliga com `null` (3.3.6). O Negócio tem de estar `ativo` e ser do Contato da
@@ -155,7 +155,7 @@ const mensagemObrigatoria = () =>
 const CONTATO_DO_VINCULO = "contato-do-vinculo";
 
 /** `undefined` quando a Mensagem (se vier) tem forma válida; senão o 400 com o campo que a tela marca. */
-function recusaDeFormaDaMensagem(canalId: string, contatoId: string, mensagem: { readonly conteudo: string } | undefined): ResultadoCrm<never> | undefined {
+function recusaDeFormaDaMensagem(canalId: string, contatoId: string, mensagem: NovaConversa["mensagem"] | undefined): ResultadoCrm<never> | undefined {
   if (mensagem === undefined) return undefined;
   const forma = validarNovaConversa({ canalId, contatoId, mensagem });
   if (forma.ok) return undefined;
@@ -184,7 +184,7 @@ export interface LidoParaConversa {
 export async function lerParaConversa(
   cliente: PoolClient,
   workspaceId: string,
-  entrada: { readonly contatoId: string; readonly canalId: string; readonly mensagem?: { readonly conteudo: string } | undefined },
+  entrada: { readonly contatoId: string; readonly canalId: string; readonly mensagem?: NovaConversa["mensagem"] | undefined },
 ): Promise<ResultadoCrm<LidoParaConversa>> {
   const contatos = criarRepositorioDeContatosPg(cliente);
   // O Contato antes de qualquer Conversa na ordem das travas (como mover e restaurar, 14-05/14-07).

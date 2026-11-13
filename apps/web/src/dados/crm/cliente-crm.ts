@@ -12,12 +12,13 @@
  *
  * Envelope de resposta (ver `apps/api/src/rotas/crm/comum.ts`): sucesso de item
  * `{ ok: true, dados }`, de lista `{ ok: true, itens, total }`, erro
- * `{ ok: false, error, codigo?, campo?, bloqueios? }`.
+ * `{ ok: false, error, codigo?, campo?, bloqueios?, modelos? }`.
  */
 
 import { mutate } from "swr";
 import { clienteDoNavegador } from "@/autenticacao/cliente-navegador";
 import type { BloqueiosCrm } from "@n1/dominio/crm/comum";
+import type { ModeloNaLista } from "@n1/dominio/crm/modelos";
 
 /** Uma recusa da api (ou a falta de sessão/rede) com o que a tela precisa para reagir. */
 export class ErroDeApi extends Error {
@@ -25,11 +26,18 @@ export class ErroDeApi extends Error {
   readonly codigo: string | undefined;
   readonly campo: string | undefined;
   readonly bloqueios: BloqueiosCrm | undefined;
+  /** Sessão 7: na recusa `JANELA_EXPIRADA` do WhatsApp oficial, os modelos aprovados e enviáveis do Canal para escolher no lugar do texto livre. */
+  readonly modelos: readonly ModeloNaLista[] | undefined;
 
   constructor(
     status: number,
     mensagem: string,
-    extra: { readonly codigo?: string | undefined; readonly campo?: string | undefined; readonly bloqueios?: BloqueiosCrm | undefined } = {},
+    extra: {
+      readonly codigo?: string | undefined;
+      readonly campo?: string | undefined;
+      readonly bloqueios?: BloqueiosCrm | undefined;
+      readonly modelos?: readonly ModeloNaLista[] | undefined;
+    } = {},
   ) {
     super(mensagem);
     this.name = "ErroDeApi";
@@ -37,6 +45,7 @@ export class ErroDeApi extends Error {
     this.codigo = extra.codigo;
     this.campo = extra.campo;
     this.bloqueios = extra.bloqueios;
+    this.modelos = extra.modelos;
   }
 }
 
@@ -45,6 +54,7 @@ interface CorpoDeErro {
   readonly codigo?: string;
   readonly campo?: string;
   readonly bloqueios?: BloqueiosCrm;
+  readonly modelos?: readonly ModeloNaLista[];
 }
 
 export async function chamarCrm<T>(
@@ -80,6 +90,7 @@ export async function chamarCrm<T>(
       codigo: corpo.codigo,
       campo: corpo.campo,
       bloqueios: corpo.bloqueios,
+      modelos: corpo.modelos,
     });
   }
   return (await resposta.json()) as T;

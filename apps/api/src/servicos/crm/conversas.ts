@@ -59,20 +59,24 @@ import {
   type ParticipanteDaConversa,
 } from "@n1/dominio/crm/conversas";
 import { capacidadesDoCanal } from "@n1/dominio/crm/capacidades";
-import { FRASE_SO_RESPONDE, statusInicialDeEnvio, type Mensagem } from "@n1/dominio/crm/mensagens";
+import { recusaPorFaltaDeConsentimento } from "@n1/dominio/crm/consentimentos";
+import { textoDoModelo } from "@n1/dominio/crm/modelos";
+import { FRASE_SO_RESPONDE, statusInicialDeEnvio, validarEnvio, type Mensagem } from "@n1/dominio/crm/mensagens";
 import type { Canal } from "@n1/dominio/crm/canais";
 import { avisarCrm } from "../../mensageria/avisar";
 import { enfileirarEnvio } from "../../mensageria/fila-de-saida";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { registrarAtividade } from "../../repositorios/crm/atividades";
 import { criarRepositorioDeCanaisPg } from "../../repositorios/crm/canais";
+import { criarRepositorioDeConsentimentosPg } from "../../repositorios/crm/consentimentos";
 import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
 import { criarRepositorioDeConversasPg } from "../../repositorios/crm/conversas";
 import { criarRepositorioDeMarcacoesPg } from "../../repositorios/crm/marcacoes";
 import { criarRepositorioDeMensagensPg } from "../../repositorios/crm/mensagens";
 import { membroAtivo } from "../../repositorios/crm/membros";
-import { agenteAtivo, nomeDoAtribuido } from "../../repositorios/crm/referencias";
+import { agenteAtivo, finalidadeDeMarketing, nomeDoAtribuido } from "../../repositorios/crm/referencias";
 import { exigir, type AcessoAoCrm } from "./acesso";
+import { modelosDoEnvio } from "./modelo-do-envio";
 import { recusa, sucesso, type ResultadoCrm } from "./resultado";
 import { comTransacao, type FrasesDeRestricao } from "./transacao";
 
@@ -504,10 +508,10 @@ export async function abrirConversaNoCliente(
   if (!canal) return canalNaoEncontrado();
   if (canal.estado === "arquivado") return canalArquivado();
   // Sessão 8 (8.3.4): no Instagram não se puxa conversa. Ela nasce quando o Contato escreve (o webhook).
-  if (capacidadesDoCanal({ channelType: canal.tipo, provider: canal.provedor }).foraDaJanela === "bloqueado") {
+  const capacidades = capacidadesDoCanal({ channelType: canal.tipo, provider: canal.provedor });
+  if (capacidades.foraDaJanela === "bloqueado") {
     return recusa<never>(409, FRASE_SO_RESPONDE, { codigo: "CANAL_SO_RESPONDE", campo: "canalId" });
   }
-
   const contatos = criarRepositorioDeContatosPg(cliente);
   // `for update`: uma mesclagem confirmada no meio faz esta transação esperar e então enxergar
   // `mesclado`, em vez de abrir a Conversa para um Contato que já não aceita escrita (WR-01, RN-CON-14).
@@ -531,6 +535,36 @@ export async function abrirConversaNoCliente(
   const existente = await conversas.abertaDoPar(membro.workspaceId, contato.id, canal.id);
   if (existente) return jaAberta(existente);
 
+  // Sessão 7 (7.2.6 e 7.3.4): no WhatsApp oficial a empresa só abre a conversa com Mensagem de modelo aprovada. A Conversa nova
+  // não tem recebida, então vale a regra de "fora da janela": sem modelo escolhido a recusa vem antes de gravar (e leva os
+  // modelos que a pessoa pode escolher), em vez de a Meta recusar depois (131047) e a Mensagem ficar `falhou`. Depois da
+  // checagem do par: com uma Conversa já aberta a resposta certa é "já existe" (`CONVERSA_JA_ABERTA`).
+  const dosModelos = await modelosDoEnvio(cliente, membro.workspaceId, canal, entrada.mensagem);
+  if (!dosModelos.ok) return dosModelos;
+  const { enviaveis, escolhido, variaveis } = dosModelos.valor;
+  if (capacidades.foraDaJanela === "soModelo") {
+    const envio = validarEnvio({
+      capacidades,
+      ultimaRecebidaEm: null,
+      agora: Date.now(),
+      ...(escolhido ? { modeloId: escolhido.id } : {}),
+      modelosAprovados: enviaveis.map((m) => m.id),
+    });
+    if (!envio.ok) {
+      return recusa<never>(409, envio.error, { codigo: "JANELA_EXPIRADA", campo: envio.field ?? "modelo", ...(enviaveis.length > 0 ? { modelos: enviaveis } : {}) });
+    }
+  }
+  // 3.2.4: o modelo de marketing só sai com consentimento vigente do Contato, também ao ABRIR a conversa.
+  if (escolhido) {
+    const frase = recusaPorFaltaDeConsentimento({
+      categoriaDoModelo: escolhido.categoria,
+      registros: await criarRepositorioDeConsentimentosPg(cliente).listarDoContato(membro.workspaceId, contato.id),
+      finalidadeDeMarketingId: await finalidadeDeMarketing(cliente, membro.workspaceId),
+      tipoDoCanal: canal.tipo,
+    });
+    if (frase !== undefined) return recusa<never>(409, frase, { codigo: "SEM_CONSENTIMENTO", campo: "modelo" });
+  }
+
   const agora = new Date().toISOString();
   const participantes: ParticipanteDaConversa[] = [
     { id: randomUUID(), sujeito: { tipo: "contato", id: contato.id }, papel: "contato", principal: true, entrouEm: agora, saiuEm: null },
@@ -552,8 +586,10 @@ export async function abrirConversaNoCliente(
     canalId: canal.id,
     direcao: "enviada",
     ator: { tipo: "member", id: membro.id },
-    conteudo: entrada.mensagem.conteudo,
+    // Na Mensagem de modelo o texto é o do modelo já preenchido: o atendente lê o que foi mandado, não `{{1}}`.
+    conteudo: escolhido ? textoDoModelo(escolhido, variaveis) : entrada.mensagem.conteudo,
     statusEntrega: statusInicialDeEnvio(canal.conexao),
+    ...(escolhido ? { modeloUsado: { idNoProvedor: escolhido.idNoProvedor, nome: escolhido.nome, idioma: escolhido.idioma, variaveis } } : {}),
   });
   // 3.7.1: o evento nasce no mesmo cliente da transação; se falhar, a Conversa e a Mensagem vão embora juntas.
   await enfileirarEnvio(cliente, membro.workspaceId, primeiraMensagem, canal);

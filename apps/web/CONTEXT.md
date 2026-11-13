@@ -564,3 +564,21 @@ da api e revalida as chaves SWR certas a cada evento, para a Mensagem que chega 
 - **Ainda sem prova ao vivo:** medir as duas abas abaixo de 2 s, derrubar e religar a api, e o `X-Accel-Buffering` atrás
   do nginx são do dono (16-16); o áudio ogg/opus no Safari (pressuposto A5) idem.
 
+
+**O WhatsApp oficial na tela (Sessão 7).** Dois componentes novos em `features/crm/` e uma camada de dados:
+
+- `painel-do-token.tsx` (7.2.5): na ficha do Canal `whatsapp-cloud`, "Conectar" ("Reconectar" em `com_erro`) abre o painel que pede o ID do
+  número, o ID da conta do WhatsApp Business e o token (`conectarWhatsAppOficial`, `POST /canais/:id/whatsapp-oficial/conectar`),
+  no lugar do QR code. O token é o único segredo da tela: campo de senha sem `name` (o navegador não oferece guardá-lo), vive só no
+  estado do componente, é apagado no sucesso e ao fechar, nunca vai a store, chave de SWR, URL nem mensagem de erro (`semOToken`).
+  Depois de conectado, a ficha mostra o número e os dois IDs (`useNumeroDoWhatsAppOficial`), nunca o token.
+- `seletor-de-modelo.tsx` (7.3.5): a escolha de uma Mensagem de modelo aprovada, no lugar do texto livre, nos três lugares em que
+  o WhatsApp oficial exige modelo (o compositor da Caixa de Entrada fora das 24 h ou antes da primeira mensagem do Contato, "Nova
+  Tarefa" e "Trocar o Canal da Tarefa"). Lista só os modelos ENVIÁVEIS do Canal (`useModelosEnviaveis`, de `dados/crm/modelos.ts`),
+  mostra a prévia do texto que o Contato recebe, um campo por variável com `{{1}}` já com o primeiro nome do Contato, e valida com
+  as mesmas regras do servidor (`validarVariaveis`, `textoDoModelo` do domínio). O texto do modelo entra como texto do React, nunca
+  como HTML. A recusa 409 `JANELA_EXPIRADA` traz `modelos` (`ErroDeApi.modelos`); sem modelo enviável, a tela diz para sincronizar
+  ou aprovar um na Meta.
+- A seção "Mensagens de modelo" da ficha lista todos os modelos do Canal (estado, o motivo da rejeição da Meta e o motivo de um
+  aprovado ainda não ser enviável) e o botão "Sincronizar com a Meta" (só para quem pode conectar o Canal, só no oficial conectado
+  de verdade). Nenhuma tela foi aberta num navegador, e nada disto falou com a Meta real.

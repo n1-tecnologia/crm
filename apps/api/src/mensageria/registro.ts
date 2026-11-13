@@ -17,6 +17,7 @@ import { lerChavesDoCofre, lerCredencial, type ChavesDoCofre } from "../servicos
 import { ErroDeProvedor, TIPO_DO_SEGREDO_DO_WEBHOOK, type CanalParaProvedor, type ProvedorDeMensageria } from "./provedor";
 import { criarProvedorEvolution } from "./provedores/evolution/provedor";
 import { provedorInstagramDoAmbiente } from "./provedores/instagram/do-ambiente";
+import { provedorWhatsAppCloudDoAmbiente } from "./provedores/whatsapp-cloud/do-ambiente";
 import { provedorDeTeste } from "./provedores/teste";
 
 export interface RegistroDeProvedores {
@@ -31,12 +32,16 @@ export interface RegistroDeProvedores {
  *
  * Sessão 8: o Instagram (`instagram-graph`) entra pela mesma regra, SÓ com `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET` e
  * `INSTAGRAM_REDIRECT_URI` (ver `provedores/instagram/do-ambiente.ts`).
+ *
+ * Sessão 7: o WhatsApp oficial (`whatsapp-cloud`) entra pela mesma regra, SÓ com `META_APP_SECRET` (ver
+ * `provedores/whatsapp-cloud/do-ambiente.ts`).
  */
 export function registroPadrao(): RegistroDeProvedores {
   const urlDaEvolution = process.env.EVOLUTION_URL?.trim();
   // Sessão 4: a chave global (`EVOLUTION_API_KEY`) só serve para o provedor ler o dono do número ao conferir a conexão.
   const apikeyGlobal = process.env.EVOLUTION_API_KEY?.trim();
   const instagram = provedorInstagramDoAmbiente();
+  const whatsappCloud = provedorWhatsAppCloudDoAmbiente();
   return {
     teste: provedorDeTeste,
     porProvedor: {
@@ -44,6 +49,7 @@ export function registroPadrao(): RegistroDeProvedores {
         ? { "whatsapp-nao-oficial": criarProvedorEvolution({ url: urlDaEvolution, ...(apikeyGlobal ? { apikeyGlobal } : {}) }) }
         : {}),
       ...(instagram ? { "instagram-graph": instagram } : {}),
+      ...(whatsappCloud ? { "whatsapp-cloud": whatsappCloud } : {}),
     },
   };
 }

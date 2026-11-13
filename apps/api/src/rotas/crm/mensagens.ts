@@ -11,9 +11,12 @@
  * integração): não existe rota humana para ela. A do webhook vem com o
  * provedor, autenticada por credencial de serviço. Por isso o corpo é
  * `.strict()` com `direcao: z.enum(DIRECOES_DE_ENVIO)` — sem `recebida` — e
- * recusa `idExterno`, `cargaBruta`, `statusEntrega`, `ator`, `canalId` e
- * `modeloId` (T-08-44): o Canal vem da Conversa, o Ator da sessão e o status da
- * conexão do Canal.
+ * recusa `idExterno`, `cargaBruta`, `statusEntrega`, `ator` e `canalId`
+ * (T-08-44): o Canal vem da Conversa, o Ator da sessão e o status da conexão do
+ * Canal. `modeloId` e `variaveis` (Sessão 7, 7.3) PASSARAM a ser aceitos: a Mensagem
+ * de modelo do WhatsApp oficial. O `modeloId` é só uma escolha entre os modelos do
+ * Canal da Conversa; o serviço confere que ele é desse Canal e está aprovado, e a
+ * rota nunca o trata como identidade nem como estado.
  *
  * Nenhuma resposta leva a carga bruta do provedor (A9, T-08-45): o repositório
  * nem a seleciona nas leituras, e esta rota não tem como pedi-la.
@@ -28,7 +31,7 @@ import { z } from "zod";
 import { LIMITES_CRM } from "@n1/dominio/crm/comum";
 import { DIRECOES_DE_ENVIO, MAX_ANEXOS_POR_MENSAGEM } from "@n1/dominio/crm/mensagens";
 import type { ServicoDeMensagens } from "../../servicos/crm/mensagens";
-import { responder, responderLista, TEXTO_LONGO } from "./comum";
+import { responder, responderLista, TEXTO_LONGO, VARIAVEIS_DO_MODELO } from "./comum";
 
 const ID = z.string().min(1).max(64);
 
@@ -51,9 +54,12 @@ export const NOVA_MENSAGEM = z
     conteudo: TEXTO_LONGO,
     emRespostaAId: ID.optional(),
     anexos: z.array(ANEXO_ENVIADO).max(MAX_ANEXOS_POR_MENSAGEM).optional(),
+    /** 7.3: a Mensagem de modelo (WhatsApp oficial). O `conteudo` pode ficar vazio: o servidor grava o texto do modelo preenchido. */
+    modeloId: ID.optional(),
+    variaveis: VARIAVEIS_DO_MODELO.optional(),
   })
   .strict()
-  .refine((corpo) => corpo.conteudo !== "" || (corpo.anexos?.length ?? 0) > 0, {
+  .refine((corpo) => corpo.conteudo !== "" || (corpo.anexos?.length ?? 0) > 0 || corpo.modeloId !== undefined, {
     message: "Escreva a mensagem ou anexe um arquivo antes de enviar.",
     path: ["conteudo"],
   });

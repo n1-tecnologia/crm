@@ -28,6 +28,7 @@
 
 import { createContext, createElement, useContext, useMemo, type ReactNode } from "react";
 import useSWR from "swr";
+import type { NovaConversa } from "@n1/dominio/crm/conversas";
 import { RESUMO_MAXIMO, type ResumoDaTarefaConversacional, type VinculoParaResumo } from "@n1/dominio/crm/resumo-da-tarefa";
 import { vinculosDoCrmDaTarefa } from "@n1/dominio/derive-conversacional";
 import type { ActorRef, Priority, Task, TaskDate } from "@n1/dominio/types";
@@ -184,7 +185,8 @@ export interface NovaTarefaConversacionalNaTela {
   readonly contatoId: string;
   readonly canalId: string;
   /** Obrigatória só quando o Contato não tem Conversa aberta no Canal (D-07). */
-  readonly mensagem?: { readonly conteudo: string };
+  /** A primeira Mensagem: texto livre OU, no WhatsApp oficial, um modelo do Canal (`modeloId` e `variaveis`; o `conteudo` fica vazio). */
+  readonly mensagem?: NovaConversa["mensagem"];
   readonly negocioId?: string;
   readonly title?: string;
   readonly statusId?: string;
@@ -214,7 +216,7 @@ export async function criarTarefaConversacional(entrada: NovaTarefaConversaciona
 /** 3.3.5: troca o Canal. `mudou: false` é a Tarefa que já estava na Conversa do Canal pedido (nada foi gravado). */
 export async function trocarCanalDaTarefa(
   taskId: string,
-  entrada: { readonly canalId: string; readonly mensagem?: { readonly conteudo: string } },
+  entrada: { readonly canalId: string; readonly mensagem?: NovaConversa["mensagem"] },
 ): Promise<{ readonly task: Task; readonly mudou: boolean; readonly conversa: ConversaDaTarefa }> {
   const { dados } = await chamarCrm<RespostaDaEscrita<{ readonly task: Task; readonly mudou: boolean }>>(`${caminhoDaTarefa(taskId)}/canal`, {
     method: "POST",

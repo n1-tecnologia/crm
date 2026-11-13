@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   DIRECOES_DA_MENSAGEM,
   DIRECOES_DE_ENVIO,
+  FRASE_SO_MODELO_PRIMEIRO,
   FRASE_SO_RESPONDE,
   fraseDaJanelaBloqueada,
   STATUS_DE_ENTREGA,
@@ -115,10 +116,35 @@ describe("validarEnvio (RN-CXE-19 por tipo e provedor)", () => {
     ).toEqual({ ok: true, value: undefined });
   });
 
-  it("oficial sem nenhuma recebida: libera (a janela só existe depois da primeira recebida)", () => {
-    expect(validarEnvio({ capacidades: OFICIAL, ultimaRecebidaEm: null, agora: AGORA, modelosAprovados: [] })).toEqual({
-      ok: true,
-      value: undefined,
+  describe("oficial sem nenhuma recebida (7.2.6): a empresa só abre a conversa com modelo aprovado", () => {
+    it("texto livre é recusado, com o campo modelo e a frase de começar a conversa", () => {
+      const resultado = validarEnvio({ capacidades: OFICIAL, ultimaRecebidaEm: null, agora: AGORA, modelosAprovados: ["m1"] });
+      expect(resultado).toEqual({ ok: false, error: FRASE_SO_MODELO_PRIMEIRO, field: "modelo" });
+    });
+
+    it("sem modelo aprovado no Canal, recusa dizendo que não há como começar", () => {
+      const resultado = validarEnvio({ capacidades: OFICIAL, ultimaRecebidaEm: null, agora: AGORA, modelosAprovados: [] });
+      expect(resultado).toMatchObject({ ok: false, field: "modelo" });
+      expect(!resultado.ok && resultado.error).toMatch(/não dá para começar a conversa/);
+    });
+
+    it("modelo aprovado passa", () => {
+      expect(
+        validarEnvio({ capacidades: OFICIAL, ultimaRecebidaEm: null, agora: AGORA, modeloId: "m1", modelosAprovados: ["m1"] }),
+      ).toEqual({ ok: true, value: undefined });
+    });
+
+    it("modelo que não é do Canal é recusado", () => {
+      expect(
+        validarEnvio({ capacidades: OFICIAL, ultimaRecebidaEm: null, agora: AGORA, modeloId: "x", modelosAprovados: ["m1"] }),
+      ).toMatchObject({ ok: false, field: "modelo" });
+    });
+
+    it("não muda o que não é oficial: o não oficial continua livre sem recebida", () => {
+      expect(validarEnvio({ capacidades: NAO_OFICIAL, ultimaRecebidaEm: null, agora: AGORA, modelosAprovados: [] })).toEqual({
+        ok: true,
+        value: undefined,
+      });
     });
   });
 
@@ -388,5 +414,27 @@ describe("Edição pelo remetente externo (4.4.5; RN-CXE-16)", () => {
       { conteudoAnterior: "a", em: EM },
       { conteudoAnterior: null, em: EM },
     ]);
+  });
+});
+
+describe("validarNovaMensagem com modelo (7.3)", () => {
+  const base = { conversaId: "c1", direcao: "enviada" as const, conteudo: "", modeloId: "mdl_1", variaveis: ["Ana"] };
+
+  it("a Mensagem de modelo passa com o conteúdo vazio: o texto vem do modelo", () => {
+    expect(validarNovaMensagem(base)).toEqual({ ok: true, value: base });
+  });
+
+  it("só a Mensagem enviada usa modelo: a nota interna é recusada no campo modeloId", () => {
+    expect(validarNovaMensagem({ ...base, direcao: "interna" })).toEqual({ ok: false, error: "Só uma Mensagem enviada usa modelo.", field: "modeloId" });
+  });
+
+  it("o modelo não leva arquivo", () => {
+    const anexo = { submissionId: "s", objectId: "o" };
+    expect(validarNovaMensagem({ ...base, anexos: [anexo] })).toEqual({ ok: false, error: "Uma Mensagem de modelo não leva arquivo.", field: "anexos" });
+  });
+
+  it("sem modelo nada muda: o conteúdo vazio sem anexo continua recusado", () => {
+    expect(validarNovaMensagem({ conversaId: "c1", direcao: "enviada", conteudo: "" })).toMatchObject({ ok: false, field: "conteudo" });
+    expect(validarNovaMensagem({ conversaId: "c1", direcao: "enviada", conteudo: "", modeloId: "" })).toMatchObject({ ok: false, field: "conteudo" });
   });
 });

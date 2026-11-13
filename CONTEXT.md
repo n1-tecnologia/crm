@@ -249,6 +249,19 @@ por" oferece só os Canais da Lista. Sem migração. As três decisões da 5.1 f
 Tarefa encerrada da mesma Conversa também reabre enquanto a Conversa não foi resolvida. Ainda não passou por um celular
 (5.3.1) nem por uma Evolution de homologação (5.2.2, o teste existe e é pulado sem as variáveis).
 
+A Sessão 7 (em andamento) liga o WhatsApp oficial, a Cloud API da Meta, como terceiro provedor real da mensageria
+(`apps/api/src/mensageria/provedores/whatsapp-cloud/`, ver o `CONTEXT.md` de lá), no desenho do Instagram: o webhook da Meta
+(`/webhooks/meta/whatsapp`) entra pela fila de entrada e pelo processador, achando o Canal pelo `phone_number_id`
+(`plataforma.whatsapp_cloud_numeros`, migração `015`), e a resposta sai pelo outbox. O Canal conecta por TOKEN colado na ficha
+(`POST /canais/:id/whatsapp-oficial/conectar`: ID do número, ID da conta e token, que só passa pelo corpo e vai ao cofre), não
+por QR code. Só com `META_APP_SECRET` no `api.env` (opcional `META_GRAPH_VERSAO`, padrão `v24.0`). A regra do WhatsApp oficial
+(só Mensagem de modelo fora das 24 h e antes da primeira mensagem do Contato) vale em `validarEnvio` e em abrir Conversa pela
+plataforma, escolhendo um modelo aprovado do Canal (7.3): os modelos são criados e aprovados na Meta e o CRM os **sincroniza**
+(`plataforma.modelos_de_mensagem`, migração `016`; ao conectar, pelo botão da ficha, quando a Meta avisa e, ligado por
+`WHATSAPP_MODELOS_SINCRONIZACAO_ATIVA=true`, de hora em hora). Só se envia o que o CRM sabe preencher (corpo com variáveis de
+texto); os outros aparecem na lista com o motivo. O webhook da Meta deixou de gravar o corpo no log. **Só as leituras falaram com a Meta real** (a fumaça de 2026-11-13, contra o número de teste: o número e a lista de modelos vieram no formato esperado; o envio, o webhook e a mídia seguem sem prova) e os Flows (7.4) dependem
+da Sessão 6, que não começou.
+
 ## Comandos
 
 Todos rodam da raiz:

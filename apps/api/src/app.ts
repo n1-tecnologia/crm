@@ -37,6 +37,8 @@ import { rotasDeWebhookMeta, type OpcoesDeWebhookMeta } from "./rotas/webhook-me
 import { rotasDeWebhooksDeMensageria, type OpcoesDeWebhooksDeMensageria } from "./rotas/webhooks-de-mensageria";
 import { criarEsquecimentoDoInstagram } from "./mensageria/provedores/instagram/desautorizacao";
 import { criarEntradaDoInstagram } from "./mensageria/provedores/instagram/entrada";
+import { criarEntradaDaCloudApi } from "./mensageria/provedores/whatsapp-cloud/entrada";
+import { criarSincronizadorDeModelos } from "./mensageria/provedores/whatsapp-cloud/sincronizacao";
 import { rotasDeIntegracaoDeSolicitacoes } from "./rotas/integracao-solicitacoes";
 import { rotasDeOperacoes } from "./rotas/operacoes";
 import { rotasDeConvites } from "./rotas/convites";
@@ -289,12 +291,18 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
   app.register(rotasDeTarefasPublicas, { workspaceId, ...opcoes.tarefasPublicas });
   // O webhook da Meta chama de servidor, sem JWT: a confiança vem do token de
   // verificação (GET) e da assinatura do corpo (POST), não de Authorization.
+  // Sessão 7 (7.3.2): quem sincroniza os modelos de mensagem quando a Meta avisa que um mudou. Sem timer aqui: a rodada de hora
+  // em hora é do `index.ts` (`WHATSAPP_MODELOS_SINCRONIZACAO_ATIVA`).
+  const sincronizadorDeModelos = criarSincronizadorDeModelos();
   // Sessão 8: sem opções de teste, o Instagram guarda os eventos na fila de entrada da mensageria (o mesmo acordador
   // do processador que o webhook por Canal usa) e atende a desautorização da Meta.
   app.register(
     rotasDeWebhookMeta,
     opcoes.webhookMeta ?? {
       enfileirarInstagram: criarEntradaDoInstagram(),
+      enfileirarWhatsApp: criarEntradaDaCloudApi(),
+      // 7.3.2: a Meta avisa que um modelo mudou; a sincronização roda depois da resposta e nunca a segura.
+      aoMudarModelosDoWhatsApp: (wabaId: string) => void sincronizadorDeModelos.daConta(wabaId),
       esquecerContaDoInstagram: criarEsquecimentoDoInstagram({ pool }),
       ...(opcoes.webhooksDeMensageria?.acordarProcessador ? { acordarProcessador: opcoes.webhooksDeMensageria.acordarProcessador } : {}),
     },

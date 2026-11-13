@@ -11,8 +11,9 @@
  *
  * A página é o mockup inteiro de D-07: o passo a passo do provedor, o espaço
  * reservado do QR/token (marcado "disponível quando a integração chegar", exceto nos provedores que já conectam: o
- * Instagram e, na Sessão 4, o WhatsApp não oficial) e o formulário real, com Fila e Origem padrão. O Canal que conecta
- * por QR code abre a ficha com `?conectar=1`, e o painel do QR code abre sozinho. O botão desabilitado diz o motivo
+ * Instagram e, na Sessão 4, o WhatsApp não oficial e, na Sessão 7, o WhatsApp oficial) e o formulário real, com Fila e
+ * Origem padrão. O Canal que conecta por QR code ou por token abre a ficha com `?conectar=1`, e o painel (do QR code ou
+ * do token) abre sozinho. O botão desabilitado diz o motivo
  * (§11), na mesma ordem que a api aplica: Papel → nome → identificador → forma.
  */
 
@@ -20,7 +21,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { KeyRound, LogIn, QrCode, Server } from "lucide-react";
 import { useState } from "react";
-import { conectaPorQrCode } from "@n1/dominio/crm/canais";
 import { FORMA_DO_IDENTIFICADOR, identificadorCanonico } from "@n1/dominio/operations/canais";
 import { PROVEDORES } from "@n1/dominio/provedores-de-canal";
 import type { ProvedorDeCanal } from "@n1/dominio/types/crm";
@@ -33,8 +33,11 @@ import { Button, CorpoDeTela, Field, PageHeader, Painel, Pilula, Select, TextInp
 
 const DESTINO = "/crm/caixa-de-entrada/configuracoes";
 
-/** Os provedores que já falam com o mundo (Sessão 8 e Sessão 4): o espaço reservado vira instrução. */
-const PROVEDORES_COM_INTEGRACAO: ReadonlySet<ProvedorDeCanal> = new Set<ProvedorDeCanal>(["instagram-graph", "whatsapp-nao-oficial"]);
+/** Os provedores que já falam com o mundo (Sessão 8, Sessão 4 e Sessão 7): o espaço reservado vira instrução. */
+const PROVEDORES_COM_INTEGRACAO: ReadonlySet<ProvedorDeCanal> = new Set<ProvedorDeCanal>(["instagram-graph", "whatsapp-nao-oficial", "whatsapp-cloud"]);
+
+/** Os que abrem a ficha com o painel de conexão já aberto (`?conectar=1`): o QR code (Sessão 4) e o token (Sessão 7). */
+const ABRE_O_PAINEL_NA_FICHA: ReadonlySet<ProvedorDeCanal> = new Set<ProvedorDeCanal>(["whatsapp-nao-oficial", "whatsapp-cloud"]);
 
 /** O ícone do espaço reservado: o que aquele provedor vai pedir quando a integração chegar. */
 const ICONE_DO_ESPACO_RESERVADO: Readonly<Record<ProvedorDeCanal, (props: { readonly className?: string }) => React.ReactNode>> = {
@@ -93,8 +96,8 @@ export function ConectarProvedor({ provedor }: { readonly provedor: ProvedorDeCa
         ...(origemId ? { origemPadraoId: origemId } : {}),
       });
       await rehidratar();
-      // O Canal que conecta por QR code abre a ficha com o painel do QR code já aberto (`?conectar=1`).
-      router.push(`${DESTINO}/canais/${canal.id}${conectaPorQrCode(provedor) ? "?conectar=1" : ""}`);
+      // O Canal que conecta por QR code ou por token abre a ficha com o painel já aberto (`?conectar=1`).
+      router.push(`${DESTINO}/canais/${canal.id}${ABRE_O_PAINEL_NA_FICHA.has(provedor) ? "?conectar=1" : ""}`);
     } catch (falha) {
       if (falha instanceof ErroDeApi) setErro({ texto: falha.message, campo: falha.campo, canalId: falha.bloqueios?.canais?.[0]?.id });
       else setErro({ texto: "Não foi possível criar o Canal.", campo: undefined, canalId: undefined });

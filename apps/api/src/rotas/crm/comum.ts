@@ -12,6 +12,7 @@
 import type { FastifyReply } from "fastify";
 import { z } from "zod";
 import { ESTADOS_CRM, LIMITES_CRM, type Pagina } from "@n1/dominio/crm/comum";
+import { MAX_DA_VARIAVEL } from "@n1/dominio/crm/modelos";
 import type { ResultadoCrm } from "../../servicos/crm/resultado";
 
 export const PARAMS_ID = z.object({ id: z.string().min(1).max(64) }).strict();
@@ -29,6 +30,22 @@ export const QUERY_LISTA = z
 
 export const TEXTO_CURTO = z.string().trim().max(LIMITES_CRM.textoCurto);
 export const TEXTO_LONGO = z.string().trim().max(LIMITES_CRM.textoLongo);
+
+/** Os valores das variáveis de um modelo (7.3): `{{1}}`, `{{2}}`… em ordem. O serviço confere a quantidade e o conteúdo. */
+export const VARIAVEIS_DO_MODELO = z.array(z.string().max(MAX_DA_VARIAVEL)).max(20);
+
+/**
+ * A primeira Mensagem de uma Conversa (7.3): texto livre OU um modelo do Canal com as variáveis (`modeloId`, `variaveis`). Com
+ * modelo o `conteudo` pode ficar de fora: o servidor grava o texto do modelo preenchido. Um dos dois é obrigatório.
+ */
+export const PRIMEIRA_MENSAGEM = z
+  .object({
+    conteudo: TEXTO_LONGO.default(""),
+    modeloId: z.string().min(1).max(64).optional(),
+    variaveis: VARIAVEIS_DO_MODELO.optional(),
+  })
+  .strict()
+  .refine((m) => m.conteudo !== "" || m.modeloId !== undefined, { message: "Escreva a primeira Mensagem da Conversa.", path: ["conteudo"] });
 export const DATA_CIVIL = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a data no formato AAAA-MM-DD.");
 
 export const ENDERECO = z
@@ -58,13 +75,14 @@ export const CAMPOS_ADICIONAIS = z
 /** Traduz o desfecho do serviço em resposta: sucesso de item ou recusa com o status dela. */
 export function responder<T>(reply: FastifyReply, resultado: ResultadoCrm<T>, statusDeSucesso = 200) {
   if (resultado.ok) return reply.status(statusDeSucesso).send({ ok: true, dados: resultado.valor });
-  const { status, error, codigo, campo, bloqueios } = resultado;
+  const { status, error, codigo, campo, bloqueios, modelos } = resultado;
   return reply.status(status).send({
     ok: false,
     error,
     ...(codigo !== undefined ? { codigo } : {}),
     ...(campo !== undefined ? { campo } : {}),
     ...(bloqueios !== undefined ? { bloqueios } : {}),
+    ...(modelos !== undefined ? { modelos } : {}),
   });
 }
 

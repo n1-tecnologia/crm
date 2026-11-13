@@ -72,7 +72,7 @@ describeComBanco("ServicoDeConversas — Postgres local", () => {
     semearCanal(ws, {
       nome: "Comercial",
       tipo: "whatsapp",
-      provedor: "whatsapp-cloud",
+      provedor: "whatsapp-nao-oficial",
       identificadorExterno: extras.identificadorExterno ?? "+5511977770001",
       conexao: "conectada",
     });
@@ -127,7 +127,7 @@ describeComBanco("ServicoDeConversas — Postgres local", () => {
       expect(a.conversa.participantes).toHaveLength(2);
       expect(a.conversa.participantes.map((p) => p.papel).sort()).toEqual(["atendente", "contato"]);
       expect(a.conversa.participantes.find((p) => p.papel === "contato")).toMatchObject({ principal: true, sujeito: { tipo: "contato", id: ana } });
-      expect(a.canal).toMatchObject({ id: canalA, nome: "Comercial", tipo: "whatsapp", provedor: "whatsapp-cloud", conexao: "conectada" });
+      expect(a.canal).toMatchObject({ id: canalA, nome: "Comercial", tipo: "whatsapp", provedor: "whatsapp-nao-oficial", conexao: "conectada" });
       expect(a.primeiraMensagem).toMatchObject({
         conversaId: a.conversa.id,
         canalId: canalA,
@@ -367,7 +367,7 @@ describeComBanco("ServicoDeConversas — Postgres local", () => {
 
       const detalhe = valor(await servico.obter(c.convidado, a.conversa.id));
       expect(detalhe.conversa.id).toBe(a.conversa.id);
-      expect(detalhe.canal).toMatchObject({ id: canalA, nome: "Comercial", provedor: "whatsapp-cloud" });
+      expect(detalhe.canal).toMatchObject({ id: canalA, nome: "Comercial", provedor: "whatsapp-nao-oficial" });
       expect(recusado(await servico.obter(outro.membro, a.conversa.id))).toMatchObject({ status: 404, codigo: "CONVERSA_NAO_ENCONTRADA" });
     });
   });

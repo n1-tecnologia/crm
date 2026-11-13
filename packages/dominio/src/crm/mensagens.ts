@@ -94,7 +94,11 @@ export interface Mensagem {
   readonly assunto: string | null;
   readonly enderecosAdicionais: readonly EnderecoAdicional[];
   readonly emRespostaAId: string | null;
-  readonly modeloUsado: { readonly idNoProvedor: string; readonly nome: string } | null;
+  /**
+   * A Mensagem de modelo que foi enviada (WhatsApp oficial, 7.3): o id e o nome do modelo na Meta e, desde a Sessão 7, o idioma
+   * e as variáveis preenchidas (a entrega os lê para montar o envio). Sem modelo, `null`.
+   */
+  readonly modeloUsado: { readonly idNoProvedor: string; readonly nome: string; readonly idioma?: string; readonly variaveis?: readonly string[] } | null;
   readonly idExterno: string | null;
   readonly statusEntrega: StatusDeEntrega | null;
   readonly statusEntregaEm: string | null;
@@ -135,6 +139,13 @@ export interface NovaMensagem {
   readonly conteudo: string;
   readonly emRespostaAId?: string;
   readonly anexos?: readonly ReferenciaDeAnexoEnviado[];
+  /**
+   * Sessão 7 (7.3): envia uma Mensagem de MODELO do Canal (`plataforma.modelos_de_mensagem`) com `variaveis` preenchendo
+   * `{{1}}`, `{{2}}`… do corpo. O `conteudo` pode ficar vazio: o servidor grava o texto do modelo já preenchido. Só vale para a
+   * Mensagem enviada e sem arquivo.
+   */
+  readonly modeloId?: string | undefined;
+  readonly variaveis?: readonly string[] | undefined;
 }
 
 /**
@@ -148,6 +159,12 @@ export function validarNovaMensagem(entrada: NovaMensagem): OperationResult<Nova
     return fail("Uma Mensagem recebida não é criada por uma pessoa.", "direcao");
   }
   const anexos = entrada.anexos ?? [];
+  if (entrada.modeloId !== undefined && entrada.modeloId !== "") {
+    // 7.3: a Mensagem de modelo é uma Mensagem enviada, sem arquivo; o texto vem do modelo, não da pessoa.
+    if (entrada.direcao !== "enviada") return fail("Só uma Mensagem enviada usa modelo.", "modeloId");
+    if (anexos.length > 0) return fail("Uma Mensagem de modelo não leva arquivo.", "anexos");
+    return ok(entrada);
+  }
   if (anexos.length > MAX_ANEXOS_POR_MENSAGEM) return fail("Uma Mensagem leva um arquivo por vez.", "anexos");
   for (const anexo of anexos) {
     if (anexo.submissionId.trim() === "" || anexo.objectId.trim() === "") {
@@ -196,6 +213,10 @@ export interface EntradaDeEnvio {
 export const FRASE_SO_RESPONDE =
   "Neste Canal só se responde a quem escreveu primeiro: a conversa começa quando o Contato manda a primeira mensagem.";
 
+/** `soModelo` antes da primeira recebida (WhatsApp oficial): a conversa só começa com Mensagem de modelo aprovada. */
+export const FRASE_SO_MODELO_PRIMEIRO =
+  "O Contato ainda não mandou mensagem por este Canal: para começar a conversa, escolha uma Mensagem de modelo aprovada.";
+
 /** `bloqueado` depois da janela: não existe modelo, só o Contato reabre. */
 export function fraseDaJanelaBloqueada(horas: number): string {
   return `Passaram ${horas} h desde a última mensagem do Contato: só ele pode reabrir a conversa.`;
@@ -206,8 +227,9 @@ export function fraseDaJanelaBloqueada(horas: number): string {
  * e a recusa vem ANTES de gravar, para qualquer ator. A janela vale até o
  * instante do fim (a mesma conta de `sendMessage`).
  *   - `livre` (WhatsApp não oficial, E-mail, LinkedIn, Chat do site): texto a qualquer hora.
- *   - `soModelo` (WhatsApp oficial): fora da janela, só Mensagem de modelo aprovada; sem
- *     nenhuma recebida, a janela ainda não existe e o texto passa.
+ *   - `soModelo` (WhatsApp oficial): fora da janela, só Mensagem de modelo aprovada. Sem
+ *     nenhuma recebida a janela ainda não existe, e a empresa só abre a conversa com modelo
+ *     aprovado (Sessão 7, 7.2.6): vale a regra de fora da janela.
  *   - `bloqueado` (Instagram, Sessão 8): não existe modelo. Sem recebida ou fora da
  *     janela, nada sai — só o Contato reabre a conversa.
  */
@@ -222,19 +244,22 @@ export function validarEnvio(entrada: EntradaDeEnvio): OperationResult<void> {
     }
     return ok(undefined);
   }
-  if (horas === undefined || ultimaRecebidaEm === null) return ok(undefined);
-  const fimDaJanela = Date.parse(ultimaRecebidaEm) + horas * 3_600_000;
-  if (agora <= fimDaJanela) return ok(undefined);
+  if (horas === undefined) return ok(undefined);
+  // 7.2.6: sem nenhuma recebida não há janela aberta, e o WhatsApp oficial só deixa a empresa começar com modelo.
+  const semRecebida = ultimaRecebidaEm === null;
+  if (!semRecebida && agora <= Date.parse(ultimaRecebidaEm) + horas * 3_600_000) return ok(undefined);
 
   if (modelosAprovados.length === 0) {
     return fail(
-      "Este Canal não tem Mensagem de modelo aprovada: não dá para enviar fora da janela de resposta.",
+      semRecebida
+        ? "Este Canal não tem Mensagem de modelo aprovada: não dá para começar a conversa."
+        : "Este Canal não tem Mensagem de modelo aprovada: não dá para enviar fora da janela de resposta.",
       "modelo",
     );
   }
   if (modeloId === undefined || modeloId === "") {
     return fail(
-      "A janela de resposta deste Canal expirou. Só é possível enviar uma Mensagem de modelo aprovada.",
+      semRecebida ? FRASE_SO_MODELO_PRIMEIRO : "A janela de resposta deste Canal expirou. Só é possível enviar uma Mensagem de modelo aprovada.",
       "modelo",
     );
   }

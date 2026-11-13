@@ -21,12 +21,14 @@ import { StoreProvider } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
 import { TarefaCompleta } from "@/features/estrutura/tarefa-completa";
 
-const { resumo, conversa, trocar, vincular, criarNegocio, rehidratar, nomes } = vi.hoisted(() => ({
+const { resumo, conversa, trocar, vincular, criarNegocio, rehidratar, nomes, modelos } = vi.hoisted(() => ({
   resumo: { atual: undefined as unknown },
   /** 15-25: o que `POST /crm/nomes` responderia por `tipo:id`, e o que a ficha pediu. */
   nomes: { porAlvo: new Map<string, string | null>(), pedidos: [] as Array<{ tipo: string; id: string }> },
   /** `undefined` = verificando, `null` = sem Conversa aberta, `{ id }` = há uma. */
   conversa: { atual: { id: "cv_1" } as { id: string } | null | undefined },
+  /** O que `useModelosEnviaveis` devolve para o Canal oficial (7.3.5). */
+  modelos: { enviaveis: [] as unknown[], carregando: false },
   trocar: vi.fn(),
   vincular: vi.fn(),
   criarNegocio: vi.fn(),
@@ -82,8 +84,17 @@ vi.mock("@/dados/crm/tarefas-conversacionais", () => ({
   criarNegocioDaTarefa: criarNegocio,
 }));
 
-const canal = (id: string, nome: string, tipo: Canal["tipo"], conexao: Canal["conexao"] = "conectada"): Canal =>
-  ({ id, nome, tipo, provedor: "whatsapp-nao-oficial", conexao, estado: "ativo" }) as unknown as Canal;
+const canal = (id: string, nome: string, tipo: Canal["tipo"], conexao: Canal["conexao"] = "conectada", provedor = "whatsapp-nao-oficial"): Canal =>
+  ({ id, nome, tipo, provedor, conexao, estado: "ativo" }) as unknown as Canal;
+
+// 7.3.5: os modelos do Canal oficial vêm de `useModelosEnviaveis`; os outros provedores nunca os pedem.
+vi.mock("@/dados/crm/modelos", () => ({
+  useModelosEnviaveis: (canalDoPar: { provedor: string } | undefined) => ({
+    oficial: canalDoPar?.provedor === "whatsapp-cloud",
+    enviaveis: canalDoPar?.provedor === "whatsapp-cloud" ? modelos.enviaveis : [],
+    carregando: canalDoPar?.provedor === "whatsapp-cloud" && modelos.carregando,
+  }),
+}));
 
 vi.mock("@/dados/crm/contatos", () => ({
   useContato: () => ({
@@ -101,8 +112,12 @@ vi.mock("@/dados/crm/canais", () => ({
   useCanais: () => ({
     data: {
       ok: true,
-      total: 2,
-      itens: [canal("ck_novo_1", "Atendimento do Resumo", "whatsapp"), canal("ck_novo_2", "E-mail do Suporte", "email")],
+      total: 3,
+      itens: [
+        canal("ck_novo_1", "Atendimento do Resumo", "whatsapp"),
+        canal("ck_novo_2", "E-mail do Suporte", "email"),
+        canal("ck_novo_3", "WhatsApp oficial da Escola", "whatsapp", "conectada", "whatsapp-cloud"),
+      ],
     },
   }),
 }));
@@ -151,9 +166,11 @@ beforeEach(() => {
   montarTarefaConversacional(state);
   const lista = state.lists.find((l) => l.id === state.tasks.find((t) => t.id === TAREFA)?.listId);
   if (!lista) throw new Error("a Lista da Tarefa do seed não existe");
-  lista.canaisDeAtendimento = ["ck_novo_1", "ck_novo_2"];
+  lista.canaisDeAtendimento = ["ck_novo_1", "ck_novo_2", "ck_novo_3"];
   resumo.atual = RESUMO;
   conversa.atual = { id: "cv_1" };
+  modelos.enviaveis = [];
+  modelos.carregando = false;
   nomes.porAlvo = new Map();
   nomes.pedidos = [];
   trocar.mockReset();
@@ -232,6 +249,97 @@ describe("trocar o Canal", () => {
     await waitFor(() => expect(screen.getByText("O Canal E-mail do Suporte está desconectado.")).toBeTruthy());
     expect(rehidratar).not.toHaveBeenCalled();
     expect(screen.getByText("Trocar o Canal da Tarefa")).toBeTruthy();
+  });
+});
+
+/**
+ * 7.3.5 — trocar para o WhatsApp OFICIAL um Contato sem Conversa aberta nele: a Conversa só nasce com Mensagem de modelo aprovada
+ * (7.2.6), então o diálogo troca a "Primeira Mensagem" de texto pelo `SeletorDeModelo` e manda `mensagem: { modeloId, variaveis }`.
+ */
+describe("trocar para o WhatsApp oficial (7.3.5)", () => {
+  const modelo = (id: string, nome: string) => ({
+    id,
+    canalId: "ck_novo_3",
+    idNoProvedor: `meta_${id}`,
+    nome,
+    idioma: "pt_BR",
+    categoria: "utilidade",
+    estado: "aprovado",
+    motivoDeRejeicao: null,
+    componentes: [{ type: "BODY", text: "Olá {{1}}, seu pedido {{2}} saiu." }],
+    quantidadeDeVariaveis: 2,
+    sincronizadoEm: "2026-11-13T12:00:00.000Z",
+    enviavel: true,
+    motivoDeNaoEnviavel: null,
+  });
+  const seletor = () => document.querySelector("[data-seletor-de-modelo]");
+  const campoDaVariavel = (n: number) => screen.getByLabelText(new RegExp(`Variável \\{\\{${n}\\}\\}`)) as HTMLInputElement;
+
+  it("(o) sem Conversa aberta no Canal oficial: o seletor no lugar do texto, Trocar fica desligado até preencher, e a rota leva o modelo", async () => {
+    conversa.atual = null;
+    modelos.enviaveis = [modelo("m1", "pedido_saiu")];
+    trocar.mockResolvedValue({ task: {}, mudou: true, conversa: { id: "cv_3", aberta: true } });
+    montar();
+    abrirOSeletorDoCanal();
+    escolher("WhatsApp oficial da Escola");
+    expect(seletor()).not.toBeNull();
+    expect(screen.queryByLabelText(/Primeira Mensagem/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Trocar o Canal" }));
+    expect(trocar).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("combobox", { name: /Mensagem de modelo/ }));
+    fireEvent.click(screen.getAllByRole("option").find((o) => o.textContent?.includes("pedido_saiu")) as HTMLElement);
+    expect(campoDaVariavel(1).value).toBe("Helena");
+    fireEvent.click(screen.getByRole("button", { name: "Trocar o Canal" }));
+    expect(trocar).not.toHaveBeenCalled();
+
+    fireEvent.change(campoDaVariavel(2), { target: { value: " 99 " } });
+    fireEvent.click(screen.getByRole("button", { name: "Trocar o Canal" }));
+    await waitFor(() =>
+      expect(trocar).toHaveBeenCalledWith(TAREFA, { canalId: "ck_novo_3", mensagem: { conteudo: "", modeloId: "m1", variaveis: ["Helena", "99"] } }),
+    );
+  });
+
+  it("(p) com Conversa aberta no Canal oficial: nem o seletor nem a Mensagem, e a rota leva só o Canal", async () => {
+    conversa.atual = { id: "cv_1" };
+    modelos.enviaveis = [modelo("m1", "pedido_saiu")];
+    trocar.mockResolvedValue({ task: {}, mudou: true, conversa: { id: "cv_1", aberta: false } });
+    montar();
+    abrirOSeletorDoCanal();
+    escolher("WhatsApp oficial da Escola");
+    expect(seletor()).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Trocar o Canal" }));
+    await waitFor(() => expect(trocar).toHaveBeenCalledWith(TAREFA, { canalId: "ck_novo_3" }));
+  });
+
+  it("(q) sem modelo enviável no Canal oficial: diz que falta sincronizar ou aprovar modelos na Meta, e não deixa trocar", () => {
+    conversa.atual = null;
+    modelos.enviaveis = [];
+    montar();
+    abrirOSeletorDoCanal();
+    escolher("WhatsApp oficial da Escola");
+    expect(seletor()).toBeNull();
+    expect(document.querySelector("[data-sem-modelo]")?.textContent).toContain("sincronize os modelos na ficha do Canal ou aprove um na Meta");
+    fireEvent.click(screen.getByRole("button", { name: "Trocar o Canal" }));
+    expect(trocar).not.toHaveBeenCalled();
+  });
+
+  it("(r) a recusa de variável da api aparece uma vez, no seletor, e o diálogo segue aberto com o que foi preenchido", async () => {
+    conversa.atual = null;
+    modelos.enviaveis = [modelo("m1", "pedido_saiu")];
+    trocar.mockRejectedValue(new ErroDeApi(400, "A variável {{2}} não pode ter quebra de linha nem tabulação.", { codigo: "VALOR_INVALIDO", campo: "variaveis" }));
+    montar();
+    abrirOSeletorDoCanal();
+    escolher("WhatsApp oficial da Escola");
+    fireEvent.click(screen.getByRole("combobox", { name: /Mensagem de modelo/ }));
+    fireEvent.click(screen.getAllByRole("option").find((o) => o.textContent?.includes("pedido_saiu")) as HTMLElement);
+    fireEvent.change(campoDaVariavel(2), { target: { value: "99" } });
+    fireEvent.click(screen.getByRole("button", { name: "Trocar o Canal" }));
+
+    await waitFor(() => expect(seletor()?.textContent).toContain("não pode ter quebra de linha nem tabulação"));
+    expect(screen.getAllByText(/não pode ter quebra de linha nem tabulação/)).toHaveLength(1);
+    expect(campoDaVariavel(2).value).toBe("99");
+    expect(rehidratar).not.toHaveBeenCalled();
   });
 });
 
@@ -352,7 +460,7 @@ describe("o fio e as três colunas pelos Vínculos do CRM novo", () => {
     const fio = screen.getByTestId("fio-da-conversa");
     // 5.2.1: o fio da Tarefa é o da Conversa dela (`conversaFixaId`), e o "Responder por" só oferece os Canais da Lista.
     expect(fio.getAttribute("data-conversa-fixa-id")).toBe(CONVERSA);
-    expect(fio.getAttribute("data-canais-da-lista")).toBe("ck_novo_1,ck_novo_2");
+    expect(fio.getAttribute("data-canais-da-lista")).toBe("ck_novo_1,ck_novo_2,ck_novo_3");
     expect(fio.getAttribute("data-contato-id")).toBe(CONTATO);
     expect(fio.getAttribute("data-tarefa-id")).toBe(TAREFA);
     // O Canal vem do resumo (o Canal da Conversa), não do estado.

@@ -222,6 +222,17 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
       mensagemId: mensagem.id,
       destino: { tipo: destino.tipo, valor: valorDoDestino },
       ...(mensagem.conteudo === null ? {} : { conteudo: mensagem.conteudo }),
+      // Sessão 7 (7.3): a Mensagem de modelo sai pelo nome e idioma do modelo; o texto em `conteudo` é só para o fio do CRM.
+      ...(mensagem.modeloUsado?.idioma !== undefined
+        ? {
+            modelo: {
+              idNoProvedor: mensagem.modeloUsado.idNoProvedor,
+              nome: mensagem.modeloUsado.nome,
+              idioma: mensagem.modeloUsado.idioma,
+              variaveis: mensagem.modeloUsado.variaveis ?? [],
+            },
+          }
+        : {}),
       ...(respondida?.idExterno
         ? {
             emRespostaAIdExterno: respondida.idExterno,

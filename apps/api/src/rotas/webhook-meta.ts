@@ -4,15 +4,15 @@
  * `Authorization: Bearer` (`config: { publica: true }`, o mesmo gancho de
  * `/saude`).
  *
- * O WhatsApp oficial ainda SÓ ESCUTA (Sessão 7): confere a origem, registra o
- * corpo no log e responde 200. O Instagram (Sessão 8) entra na mensageria como
- * qualquer provedor: com a assinatura conferida, `enfileirarInstagram`
- * (`mensageria/provedores/instagram/entrada.ts`) acha o Canal de cada conta do
- * corpo, confere a chamada pelo provedor dele e GUARDA cada evento em
- * `plataforma.webhooks_recebidos`; a rota responde 200 e acorda o processador de
- * entrada, que é quem chama `receberMensagem`. Nada é interpretado na requisição.
- * Sem segredo configurado, o Instagram volta a só escutar: evento sem assinatura
- * nunca vira dado, e o corpo dele não vai ao log (tem dado pessoal).
+ * O Instagram (Sessão 8) e o WhatsApp oficial (Sessão 7) entram na mensageria como
+ * qualquer provedor: com a assinatura conferida, `enfileirarInstagram` e
+ * `enfileirarWhatsApp` (`mensageria/provedores/<provedor>/entrada.ts`) acham o Canal
+ * de cada conta ou número do corpo, conferem a chamada pelo provedor dele e GUARDAM
+ * cada evento em `plataforma.webhooks_recebidos`; a rota responde 200 e acorda o
+ * processador de entrada, que é quem chama `receberMensagem`. Nada é interpretado na
+ * requisição. Sem segredo configurado, o canal volta a só escutar: evento sem
+ * assinatura nunca vira dado, e o corpo NUNCA vai ao log (tem número de telefone,
+ * @ e texto de terceiros).
  *
  * Do Instagram também vêm, por formulário com `signed_request`, a desautorização
  * e o pedido de exclusão de dados (`/desautorizar` e `/exclusao-de-dados`), e a
@@ -36,6 +36,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { ChamadaDoWebhook } from "../mensageria/provedor";
 import { codigoDeExclusao, lerCodigoDeExclusao } from "../mensageria/provedores/instagram/desautorizacao";
 import type { ResultadoDaEntradaDoInstagram } from "../mensageria/provedores/instagram/entrada";
+import type { ResultadoDaEntradaDaCloudApi } from "../mensageria/provedores/whatsapp-cloud/entrada";
 import { assinaturaDoCorpoConfere as assinaturaConfere, iguais, lerSignedRequest } from "../mensageria/provedores/meta/assinatura";
 
 export const CAMINHO_WEBHOOK_META_WHATSAPP = "/webhooks/meta/whatsapp";
@@ -55,6 +56,14 @@ export interface OpcoesDeWebhookMeta {
    * Instagram só escuta (é o que os testes das rotas usam); `app.ts` liga a fila de verdade.
    */
   readonly enfileirarInstagram?: (chamada: ChamadaDoWebhook) => Promise<ResultadoDaEntradaDoInstagram>;
+  /** Sessão 7: o mesmo para o WhatsApp oficial. Ausente, ele só escuta. */
+  readonly enfileirarWhatsApp?: (chamada: ChamadaDoWebhook) => Promise<ResultadoDaEntradaDaCloudApi>;
+  /**
+   * Sessão 7 (7.3.2): a Meta avisou que um modelo de mensagem mudou (`message_template_status_update`). Recebe a conta (WABA)
+   * de cada aviso com a assinatura conferida; quem liga sincroniza os modelos dela, sem segurar a resposta. Ausente, o
+   * aviso é ignorado (a sincronização de hora em hora e o botão da ficha cobrem).
+   */
+  readonly aoMudarModelosDoWhatsApp?: (wabaId: string) => void;
   /** Chamado depois do 200 quando algo entrou na fila: acorda o processador de entrada. Nunca derruba a resposta. */
   readonly acordarProcessador?: () => void;
   /** Sessão 8: desliga os Canais do `user_id` da Meta (desautorização e exclusão). Devolve quantos. */
@@ -80,8 +89,10 @@ interface CanalDeWebhook {
   readonly variaveis: string;
   readonly tokenDeVerificacao: () => string | undefined;
   readonly segredos: () => readonly SegredoCandidato[];
-  /** Só o Instagram tem: guarda o evento já conferido na fila de entrada. */
-  readonly enfileirar?: (chamada: ChamadaDoWebhook) => Promise<ResultadoDaEntradaDoInstagram>;
+  /** Guarda o evento já conferido na fila de entrada. Ausente, o canal só escuta. */
+  readonly enfileirar?: (chamada: ChamadaDoWebhook) => Promise<ResultadoDaEntradaDoInstagram | ResultadoDaEntradaDaCloudApi>;
+  /** Só o WhatsApp tem: a Meta avisou que um modelo mudou. */
+  readonly aoMudarModelos?: (wabaId: string) => void;
   readonly acordarProcessador?: () => void;
 }
 
@@ -94,6 +105,23 @@ function cabecalhosEmTexto(cabecalhos: Readonly<Record<string, string | string[]
 
 function texto(valor: unknown): string | undefined {
   return typeof valor === "string" ? valor : undefined;
+}
+
+/** Os campos da Meta que dizem que um modelo de mensagem mudou (estado, categoria). */
+const CAMPOS_DE_MODELO: ReadonlySet<string> = new Set(["message_template_status_update", "template_category_update"]);
+
+/** As contas (WABA, `entry[].id`) de um corpo que tem aviso de modelo alterado, sem repetir. Corpo fora do formato: nenhuma. */
+export function contasComModeloAlterado(corpo: unknown): readonly string[] {
+  const raiz = typeof corpo === "object" && corpo !== null ? (corpo as { entry?: unknown }) : undefined;
+  if (!Array.isArray(raiz?.entry)) return [];
+  const contas = new Set<string>();
+  for (const bruta of raiz.entry) {
+    const entrada = typeof bruta === "object" && bruta !== null ? (bruta as { id?: unknown; changes?: unknown }) : undefined;
+    const id = typeof entrada?.id === "string" ? entrada.id : typeof entrada?.id === "number" ? String(entrada.id) : undefined;
+    if (!id || !Array.isArray(entrada?.changes)) continue;
+    if (entrada.changes.some((c) => typeof c === "object" && c !== null && CAMPOS_DE_MODELO.has(String((c as { field?: unknown }).field)))) contas.add(id);
+  }
+  return [...contas];
 }
 
 function registrarWebhook(app: FastifyInstance, canal: CanalDeWebhook): void {
@@ -144,12 +172,23 @@ function registrarWebhook(app: FastifyInstance, canal: CanalDeWebhook): void {
       );
     }
 
+    // 7.3.2: o aviso de que um modelo mudou. Só com a assinatura conferida; a resposta nunca espera a sincronização.
+    if (canal.aoMudarModelos && segredoUsado) {
+      for (const wabaId of contasComModeloAlterado(corpo?.json)) {
+        try {
+          canal.aoMudarModelos(wabaId);
+        } catch {
+          // O aviso é um atalho: a rodada de hora em hora e o botão da ficha cobrem uma falha dele.
+        }
+      }
+    }
+
     if (canal.enfileirar) {
       if (!segredoUsado) {
         request.log.warn({ rota: "webhook-meta", canal: canal.canal }, "evento sem assinatura conferida: não foi guardado");
         return reply.code(200).send({ ok: true });
       }
-      let resultado: ResultadoDaEntradaDoInstagram;
+      let resultado: ResultadoDaEntradaDoInstagram | ResultadoDaEntradaDaCloudApi;
       try {
         resultado = await canal.enfileirar({
           cabecalhos: cabecalhosEmTexto(request.headers),
@@ -174,9 +213,10 @@ function registrarWebhook(app: FastifyInstance, canal: CanalDeWebhook): void {
       return reply;
     }
 
+    // O corpo NUNCA vai ao log: tem número de telefone e texto de terceiros. Só o que diz que a chamada chegou.
     request.log.info(
-      { rota: "webhook-meta", canal: canal.canal, status: 200, segredo: segredoUsado, payload: corpo?.json ?? null },
-      "webhook da Meta recebido",
+      { rota: "webhook-meta", canal: canal.canal, status: 200, segredo: segredoUsado, bytes: corpo?.bruto.length ?? 0 },
+      "webhook da Meta recebido (só escuta)",
     );
     // A Meta reenvia o que não receber 200 em poucos segundos: responder já.
     return reply.code(200).send({ ok: true });
@@ -208,6 +248,9 @@ export async function rotasDeWebhookMeta(app: FastifyInstance, opcoes: OpcoesDeW
     variaveis: "META_APP_SECRET",
     tokenDeVerificacao,
     segredos: () => [{ nome: "META_APP_SECRET", valor: segredoDoApp() }],
+    ...(opcoes.enfileirarWhatsApp ? { enfileirar: opcoes.enfileirarWhatsApp } : {}),
+    ...(opcoes.aoMudarModelosDoWhatsApp ? { aoMudarModelos: opcoes.aoMudarModelosDoWhatsApp } : {}),
+    ...(opcoes.acordarProcessador ? { acordarProcessador: opcoes.acordarProcessador } : {}),
   });
   const segredosDoInstagram = () => [
     { nome: "INSTAGRAM_APP_SECRET", valor: segredoDoInstagram() },

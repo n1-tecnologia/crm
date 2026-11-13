@@ -24,6 +24,7 @@ import {
   arquivarCanal,
   chaveDeCanais,
   chaveDoCanal,
+  conectarWhatsAppOficial,
   criarCanal,
   desconectarCanal,
   editarCanal,
@@ -166,5 +167,44 @@ describe.each([
 describe("chaveDoCanal", () => {
   it("é /canais/<id>, começando por /canais", () => {
     expect(chaveDoCanal("c1")).toBe("/canais/c1");
+  });
+});
+
+describe("conectarWhatsAppOficial (Sessão 7, 7.2.5)", () => {
+  const TOKEN = "EAAG-token-permanente-de-teste-1234567890";
+  const entrada = { phoneNumberId: "1098765432100", wabaId: "100200300400500", token: TOKEN };
+
+  it("faz UM POST /canais/:id/whatsapp-oficial/conectar com o Bearer, content-type JSON e só as três chaves, e devolve o Canal", async () => {
+    const canal = { id: "uuid-1", nome: "Oficial", conexao: "conectada", conexaoSimulada: false };
+    fetchMock.mockResolvedValueOnce(resposta(200, { ok: true, dados: canal }));
+
+    const conectado = await conectarWhatsAppOficial("uuid-1", entrada);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://api/canais/uuid-1/whatsapp-oficial/conectar");
+    expect(init.method).toBe("POST");
+    const cabecalhos = init.headers as Record<string, string>;
+    expect(cabecalhos["authorization"]).toBe("Bearer tok");
+    expect(cabecalhos["content-type"]).toBe("application/json");
+    expect(Object.keys(JSON.parse(init.body as string) as object).sort()).toEqual(["phoneNumberId", "token", "wabaId"]);
+    expect(JSON.parse(init.body as string)).toEqual(entrada);
+    // O token só viaja no corpo.
+    expect(url).not.toContain(TOKEN);
+    expect(conectado).toEqual(canal);
+    expect(invalidarCrm).toHaveBeenCalledWith("/canais");
+  });
+
+  it("um 409 TOKEN_RECUSADO vira ErroDeApi com status, codigo e campo `token`, e não invalida nada", async () => {
+    fetchMock.mockResolvedValueOnce(
+      resposta(409, { ok: false, error: "A Meta recusou o token.", codigo: "TOKEN_RECUSADO", campo: "token" }),
+    );
+
+    const erro = await conectarWhatsAppOficial("uuid-1", entrada).catch((e: unknown) => e);
+
+    expect(erro).toBeInstanceOf(ErroDeApi);
+    expect(erro).toMatchObject({ status: 409, codigo: "TOKEN_RECUSADO", campo: "token", message: "A Meta recusou o token." });
+    expect((erro as Error).message).not.toContain(TOKEN);
+    expect(invalidarCrm).not.toHaveBeenCalled();
   });
 });

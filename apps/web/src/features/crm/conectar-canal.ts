@@ -5,8 +5,9 @@
  * mora no web e não no domínio.
  *
  * O layout fica; o conteúdo do `espacoReservado` troca quando a integração com
- * o provedor chegar. Credenciais não são pedidas nesta fase (D-03): nada aqui
- * vira campo de formulário.
+ * o provedor chegar. Credenciais não são pedidas AQUI (D-03): nada neste arquivo
+ * vira campo de formulário. O token do WhatsApp oficial (Sessão 7) é pedido na
+ * ficha do Canal, depois de criá-lo (`PainelDoTokenDoWhatsApp`).
  */
 
 import type { ProvedorDeCanal } from "@n1/dominio/types/crm";
@@ -21,13 +22,14 @@ export const ORIENTACAO_DO_PROVEDOR: Readonly<Record<ProvedorDeCanal, Orientacao
   "whatsapp-cloud": {
     quandoUsar: "Para atender em escala pela API oficial da Meta: janela de 24 horas e Mensagens de modelo aprovadas fora dela.",
     passos: [
-      "Tenha uma conta no Meta Business com a empresa verificada.",
-      "Registre o número na plataforma do WhatsApp Business (Cloud API) e confirme-o por SMS ou ligação.",
-      "Gere o token de acesso permanente do aplicativo — ele será pedido aqui quando a integração existir.",
+      "Tenha a empresa verificada no Meta Business e o app da Meta no modo Ao vivo.",
+      "Registre um número dedicado na plataforma do WhatsApp Business (Cloud API), fora do aplicativo WhatsApp, e confirme-o por SMS ou ligação.",
+      "Crie um usuário do sistema no Meta Business e gere o token permanente, com as permissões whatsapp_business_messaging e whatsapp_business_management.",
     ],
     espacoReservado: {
       titulo: "Token de acesso e número verificado",
-      texto: "Aqui entram o token da Cloud API e o número confirmado pela Meta, quando a integração chegar.",
+      texto:
+        "Depois de criar o Canal, a ficha pede o ID do número, o ID da conta do WhatsApp Business e o token. O token fica cifrado no servidor e não volta à tela.",
     },
   },
   "whatsapp-nao-oficial": {

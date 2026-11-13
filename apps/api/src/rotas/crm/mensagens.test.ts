@@ -89,7 +89,7 @@ describe("rotas de Mensagens — serviço falso, sem banco", () => {
     expect(chamadas).toEqual([]);
   });
 
-  it.each(["idExterno", "cargaBruta", "statusEntrega", "ator", "canalId", "modeloId", "workspaceId"])(
+  it.each(["idExterno", "cargaBruta", "statusEntrega", "ator", "canalId", "workspaceId"])(
     "(c) POST /mensagens com %s no corpo responde 400 e o serviço não é chamado",
     async (campo) => {
       const { servico, chamadas } = novoFalso();
@@ -103,6 +103,37 @@ describe("rotas de Mensagens — serviço falso, sem banco", () => {
       expect(chamadas).toEqual([]);
     },
   );
+
+  describe("a Mensagem de modelo (7.3)", () => {
+    const comModelo = { conversaId: "v1", direcao: "enviada", conteudo: "", modeloId: "mdl_1", variaveis: ["Ana"] };
+
+    it("modeloId e variaveis passam ao serviço, e o conteúdo pode ficar vazio (o servidor grava o texto do modelo)", async () => {
+      const { servico, chamadas } = novoFalso();
+      const resposta = await appCom(servico).inject({ method: "POST", url: "/mensagens", headers: AUTORIZACAO, payload: comModelo });
+      expect(resposta.statusCode).toBe(201);
+      expect(chamadas).toHaveLength(1);
+      expect(chamadas[0]![2]).toMatchObject({ modeloId: "mdl_1", variaveis: ["Ana"], conteudo: "" });
+    });
+
+    it.each([
+      ["variaveis que não é lista", { ...comModelo, variaveis: "Ana" }],
+      ["variavel acima de 1024 caracteres", { ...comModelo, variaveis: ["a".repeat(1025)] }],
+      ["variaveis demais (mais de 20)", { ...comModelo, variaveis: Array.from({ length: 21 }, () => "x") }],
+      ["modeloId vazio", { ...comModelo, modeloId: "" }],
+    ])("%s: 400 e o serviço não é chamado", async (_nome, payload) => {
+      const { servico, chamadas } = novoFalso();
+      const resposta = await appCom(servico).inject({ method: "POST", url: "/mensagens", headers: AUTORIZACAO, payload });
+      expect(resposta.statusCode).toBe(400);
+      expect(chamadas).toEqual([]);
+    });
+
+    it("sem texto, sem anexo e sem modelo continua 400", async () => {
+      const { servico, chamadas } = novoFalso();
+      const resposta = await appCom(servico).inject({ method: "POST", url: "/mensagens", headers: AUTORIZACAO, payload: { conversaId: "v1", direcao: "enviada", conteudo: "" } });
+      expect(resposta.statusCode).toBe(400);
+      expect(chamadas).toEqual([]);
+    });
+  });
 
   it("POST /mensagens sem conteúdo (ou só espaços) ou sem conversaId responde 400", async () => {
     const { servico, chamadas } = novoFalso();

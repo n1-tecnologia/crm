@@ -21,9 +21,11 @@
  * de Canal numa sequência de Mensagens (D-13). Toda a conta mora no domínio
  * (`crm/canais-de-resposta`); aqui só se desenha.
  *
- * O modelo novo não tem Rascunho de IA (D-15-11, adiado para a Sessão 16), nem
- * Mensagem de modelo: `plataforma.canais` não guarda modelos. Fora da janela de
- * 24 h do WhatsApp oficial, então, o envio fica desligado dizendo por quê.
+ * O modelo novo não tem Rascunho de IA (D-15-11, adiado para a Sessão 16). A
+ * Mensagem de modelo (Sessão 7, 7.3) existe: no WhatsApp oficial, fora da janela
+ * de 24 h e antes da primeira mensagem do Contato, o compositor troca o texto
+ * livre pelo `SeletorDeModelo` (os modelos aprovados do Canal, com as variáveis).
+ * Sem modelo enviável o envio fica desligado dizendo por quê.
  */
 
 import Link from "next/link";
@@ -46,6 +48,7 @@ import {
 import { useData, useRehidratar, useRun } from "@/dados/store";
 import { ErroDeApi } from "@/dados/crm/cliente-crm";
 import { useCanais } from "@/dados/crm/canais";
+import { useModelosEnviaveis } from "@/dados/crm/modelos";
 import { useContato } from "@/dados/crm/contatos";
 import { abrirConversa, useConversa, useConversas } from "@/dados/crm/conversas";
 import { enviarMensagem, pedirTicketDeAnexo, useMensagens } from "@/dados/crm/mensagens";
@@ -73,6 +76,7 @@ import {
 import { LIMITES_CRM } from "@n1/dominio/crm/comum";
 import { categoriaDaMidia, normalizarTipoDeMidia, tiposAceitosParaOCanal, type CategoriaDeMidia } from "@n1/dominio/crm/midia";
 import type { ReferenciaDeAnexoEnviado } from "@n1/dominio/crm/mensagens";
+import type { ModeloNaLista } from "@n1/dominio/crm/modelos";
 import { nomeDeExibicaoDoContato, ROTULO_DO_TIPO_DE_IDENTIFICADOR } from "@n1/dominio/crm/contatos";
 import { consentimentoVigente } from "@n1/dominio/crm/consentimentos";
 import { recusaDeNotaNoContato, validarNovaNota } from "@n1/dominio/crm/notas";
@@ -84,6 +88,7 @@ import { AnexoDaMensagemNoFio } from "@/features/crm/anexo-da-mensagem";
 import { EstadoDaEntrega } from "@/features/crm/estado-da-entrega";
 import { CitacaoNaBolha, marcaDeEditada, MensagemApagada, ReacoesDaMensagem, resumoDaMensagem } from "@/features/crm/mensagem-alterada-no-fio";
 import { SeletorDeCanalDeResposta } from "@/features/crm/seletor-de-canal";
+import { SeletorDeModelo, SEM_ESCOLHA, type EscolhaDeModelo, type ErroDoSeletor } from "@/features/crm/seletor-de-modelo";
 import { SeparadorDeCanal } from "@/features/crm/separador-de-canal";
 import { MarcaDeConexaoSimulada, SeloDoProvedor } from "@/features/crm/selo-do-provedor";
 import { InstagramIcon, LinkedinIcon } from "@/features/crm/brand-icons";
@@ -251,6 +256,15 @@ export function ConversationThread({
   const [respondendoA, setRespondendoA] = useState<string | null>(null);
   // A Conversa que o próprio fio acabou de abrir: dali em diante é ela que ele segue.
   const [aberta, setAberta] = useState<string | undefined>(undefined);
+  /*
+    7.3.5 — a Mensagem de modelo: o que o `SeletorDeModelo` entregou (modelo e variáveis prontos, ou o que falta), a geração que
+    o reinicia (a `key`), a recusa da api que ele mostra e a lista de modelos que a própria api devolveu na recusa
+    `JANELA_EXPIRADA` (vale quando a leitura dos modelos falhou ou o fio não sabia que a janela estava fechada).
+  */
+  const [escolhaDeModelo, setEscolhaDeModelo] = useState<EscolhaDeModelo>(SEM_ESCOLHA);
+  const [geracaoDoModelo, setGeracaoDoModelo] = useState(0);
+  const [erroDoModelo, setErroDoModelo] = useState<ErroDoSeletor | null>(null);
+  const [modelosDaRecusa, setModelosDaRecusa] = useState<{ readonly canalId: string; readonly itens: readonly ModeloNaLista[] } | undefined>(undefined);
   const [agora] = useState(() => Date.now());
 
   /*
@@ -283,6 +297,9 @@ export function ConversationThread({
     setCanalVisto(canalSelecionado);
     setRegistro(null);
     setAnexo(null);
+    setEscolhaDeModelo(SEM_ESCOLHA);
+    setGeracaoDoModelo((g) => g + 1);
+    setErroDoModelo(null);
   }
 
   const principal = identificadores?.find((i) => i.principal) ?? identificadores?.[0];
@@ -444,12 +461,21 @@ export function ConversationThread({
       : null;
   const janelaFechada = abertaAte !== null && agora > abertaAte.getTime();
   /*
-    RN-CXE-19 — fora da janela, o WhatsApp oficial só aceita Mensagem de modelo
-    aprovada pelo provedor. O Canal novo não guarda modelos, então não há o que
-    escolher: em vez de deixar o envio falhar no clique, o compositor se
-    desliga dizendo por quê. Quem decide de verdade é a api.
+    RN-CXE-19 e 7.2.6 — o WhatsApp oficial só aceita Mensagem de modelo aprovada pelo provedor fora da janela de 24 h E antes
+    da primeira mensagem do Contato (a empresa só abre a conversa com modelo). "Sem nenhuma recebida" só vale quando o fio SABE
+    que não há: sem Conversa, ou uma da lista do Contato com `ultimaRecebidaEm` nulo (a Conversa que só veio de
+    `GET /conversas/:id` não diz). Em vez de deixar o envio falhar no clique, o compositor troca o texto pelo seletor de modelo
+    ou, sem modelo enviável, se desliga dizendo por quê. Quem decide de verdade é a api: a recusa `JANELA_EXPIRADA` traz os
+    modelos (`modelosDaRecusa`) e basta para o seletor aparecer mesmo quando a conta local não fechou a janela.
   */
-  const exigeModelo = janelaFechada && capacidades?.foraDaJanela === "soModelo";
+  const modelos = useModelosEnviaveis(canal);
+  const daRecusa = canal && modelosDaRecusa?.canalId === canal.id ? modelosDaRecusa.itens : [];
+  const modelosParaEscolher = modelos.enviaveis.length > 0 ? modelos.enviaveis : daRecusa;
+  const recebidaConhecida = conversa === undefined || doCanal.some((c) => c.id === conversa.id);
+  const semRecebida = conversa === undefined || (recebidaConhecida && !conversa.ultimaRecebidaEm);
+  const exigeModelo = capacidades?.foraDaJanela === "soModelo" && (janelaFechada || semRecebida || daRecusa.length > 0);
+  const comSeletorDeModelo = exigeModelo && modelosParaEscolher.length > 0;
+  const semModeloParaEnviar = exigeModelo && !modelos.carregando && modelosParaEscolher.length === 0;
   /*
     Sessão 8 — no Instagram não existe modelo: antes da primeira mensagem do
     Contato, ou depois das 24 h, só ele reabre a conversa. A api recusa com as
@@ -462,33 +488,50 @@ export function ConversationThread({
         : FRASE_SO_RESPONDE
       : undefined;
 
+  const motivoDeConexao =
+    canal?.conexao === "com_erro"
+      ? "O Canal está com erro de conexão."
+      : canal?.conexao === "desconectada"
+        ? "O Canal está desconectado. Reconecte-o para enviar."
+        : undefined;
   const bloqueio = enviando
     ? "Enviando a Mensagem…"
     : !canal
       ? "Este Contato não tem Canal."
-      : anexo && !conversa
-        ? "Abra a Conversa com uma Mensagem antes de anexar um arquivo."
-      : draft.trim() === "" && !anexo
-        ? conversa
-          ? "Escreva a mensagem antes de enviar."
-          : "Escreva a primeira Mensagem antes de enviar."
-        : soOContatoReabre
-          ? soOContatoReabre
-          : exigeModelo
-          ? "A janela de resposta expirou e este Canal não tem Mensagem de modelo aprovada: não dá para enviar agora."
-          : janelaFechada
-            ? "A janela de resposta expirou."
-            : canal?.conexao === "com_erro"
-              ? "O Canal está com erro de conexão."
-              : canal?.conexao === "desconectada"
-                ? "O Canal está desconectado. Reconecte-o para enviar."
-                : undefined;
+      : exigeModelo && modelos.carregando && modelosParaEscolher.length === 0
+        ? "Carregando as Mensagens de modelo…"
+        : semModeloParaEnviar
+          ? `${
+              janelaFechada
+                ? "A janela de resposta expirou e este Canal não tem Mensagem de modelo aprovada: não dá para enviar agora."
+                : "O Contato ainda não mandou mensagem por este Canal e ele não tem Mensagem de modelo aprovada: não dá para começar a conversa."
+            } Sincronize os modelos na ficha do Canal ou aprove um na Meta.`
+          : comSeletorDeModelo
+            ? (escolhaDeModelo.pedido === undefined ? escolhaDeModelo.motivo : motivoDeConexao)
+            : anexo && !conversa
+              ? "Abra a Conversa com uma Mensagem antes de anexar um arquivo."
+              : draft.trim() === "" && !anexo
+                ? conversa
+                  ? "Escreva a mensagem antes de enviar."
+                  : "Escreva a primeira Mensagem antes de enviar."
+                : soOContatoReabre
+                  ? soOContatoReabre
+                  : janelaFechada
+                    ? "A janela de resposta expirou."
+                    : motivoDeConexao;
 
   /*
     D-15 — "Responder por": muda a aba. O Canal de nenhuma Conversa existente
     muda (INV-CXE-04), e nada é gravado: a Conversa do outro Canal já existe, ou
     nasce com a primeira Mensagem.
   */
+  /** Depois de enviar, ao trocar de Canal ou a tela mandar outro: o seletor volta ao começo e a recusa antiga some. */
+  const reiniciarModelo = () => {
+    setEscolhaDeModelo(SEM_ESCOLHA);
+    setGeracaoDoModelo((g) => g + 1);
+    setErroDoModelo(null);
+  };
+
   const trocarCanalDeResposta = (canalId: Id) => {
     // 5.2.1: na ficha da Tarefa escolher outro Canal é trocar o Canal DA TAREFA (a ficha confirma e troca o Vínculo): a aba
     // e o compositor ficam onde estão até a Conversa da Tarefa mudar de fato.
@@ -501,6 +544,7 @@ export function ConversationThread({
     onCanalChange?.(canalId);
     setDraft("");
     setAnexo(null);
+    reiniciarModelo();
     setErro(null);
     setAviso(`Respondendo por ${escolhido ? rotuloDoCanalNasTabelas(escolhido) : "outro Canal"}.`);
   };
@@ -522,6 +566,15 @@ export function ConversationThread({
   /** A falha vira a frase da api (janela fechada, sem consentimento, Canal arquivado…) e o texto fica no campo. */
   const recusar = (falha: unknown) => {
     setAviso(null);
+    if (falha instanceof ErroDeApi) {
+      // 7.3: a recusa de variável ou de modelo aparece junto do campo do seletor; a de janela leva os modelos a escolher.
+      if (canal && falha.codigo === "JANELA_EXPIRADA" && falha.modelos && falha.modelos.length > 0) setModelosDaRecusa({ canalId: canal.id, itens: falha.modelos });
+      if (comSeletorDeModelo && (falha.campo === "variaveis" || falha.campo === "modeloId")) {
+        setErroDoModelo({ texto: falha.message, campo: falha.campo });
+        setErro(null);
+        return;
+      }
+    }
     setErro(falha instanceof ErroDeApi ? falha.message : "Não foi possível enviar a Mensagem. Tente de novo.");
   };
 
@@ -535,7 +588,11 @@ export function ConversationThread({
     if (enviandoRef.current || !canal) return;
     enviandoRef.current = true;
     setEnviando(true);
+    setErroDoModelo(null);
+    // 7.3: com o seletor a Mensagem sai como modelo (o servidor grava o texto preenchido); sem ele, o texto livre de sempre.
+    const pedidoDeModelo = comSeletorDeModelo ? escolhaDeModelo.pedido : undefined;
     try {
+      if (comSeletorDeModelo && !pedidoDeModelo) return;
       if (conversa) {
         /*
           Com arquivo (D-16-10): o ticket reserva o objeto (a api já confere tipo, tamanho e Canal), os
@@ -543,7 +600,7 @@ export function ConversationThread({
           arquivo. Se o arquivo não chega ao bucket nada é gravado e ele continua escolhido.
         */
         let anexos: ReferenciaDeAnexoEnviado[] | undefined;
-        if (anexo) {
+        if (anexo && !pedidoDeModelo) {
           const ticket = await pedirTicketDeAnexo({
             conversaId: conversa.id,
             nome: anexo.arquivo.name,
@@ -564,7 +621,8 @@ export function ConversationThread({
         const enviada = await enviarMensagem({
           conversaId: conversa.id,
           direcao: "enviada",
-          conteudo: anexo && draft.trim() === "" ? "" : draft,
+          conteudo: pedidoDeModelo ? "" : anexo && draft.trim() === "" ? "" : draft,
+          ...(pedidoDeModelo ? { modeloId: pedidoDeModelo.modeloId, variaveis: pedidoDeModelo.variaveis } : {}),
           ...(anexos ? { anexos } : {}),
           ...(citando ? { emRespostaAId: citando.id } : {}),
         });
@@ -573,7 +631,11 @@ export function ConversationThread({
         setAnexo(null);
         setAviso("Mensagem enviada.");
       } else {
-        const nova = await abrirConversa({ canalId: canal.id, contatoId, mensagem: { conteudo: draft } });
+        const nova = await abrirConversa({
+          canalId: canal.id,
+          contatoId,
+          mensagem: pedidoDeModelo ? { conteudo: "", modeloId: pedidoDeModelo.modeloId, variaveis: pedidoDeModelo.variaveis } : { conteudo: draft },
+        });
         setAberta(nova.conversa.id);
         setRecemEnviada(nova.primeiraMensagem.id);
         setAviso("Conversa aberta e Mensagem enviada.");
@@ -581,6 +643,7 @@ export function ConversationThread({
       }
       setDraft("");
       setErro(null);
+      reiniciarModelo();
     } catch (falha) {
       recusar(falha);
     } finally {
@@ -670,9 +733,9 @@ export function ConversationThread({
           className="app-base rounded-[var(--r-controle)] px-3 py-2"
           style={{ background: "var(--superficie-2)", color: "var(--texto)" }}
         >
-          {draft.trim() !== "" ? draft : anexo ? `Arquivo: ${anexo.arquivo.name}` : ""}
+          {comSeletorDeModelo ? escolhaDeModelo.texto : draft.trim() !== "" ? draft : anexo ? `Arquivo: ${anexo.arquivo.name}` : ""}
         </p>
-        {draft.trim() !== "" && anexo ? (
+        {!comSeletorDeModelo && draft.trim() !== "" && anexo ? (
           <p className="app-sm mt-2" style={{ color: "var(--texto-3)" }}>
             Com o arquivo {anexo.arquivo.name}
           </p>
@@ -1354,6 +1417,22 @@ export function ConversationThread({
                   {erro}
                 </p>
               ) : null}
+              {/* 7.3.5: no WhatsApp oficial, fora da janela ou antes da primeira mensagem do Contato, a Mensagem sai como modelo aprovado. */}
+              {comSeletorDeModelo ? (
+                <div className="mb-2">
+                  <SeletorDeModelo
+                    key={`${canal?.id ?? ""}:${geracaoDoModelo}`}
+                    modelos={modelosParaEscolher}
+                    primeiroNome={primeiroNome}
+                    disabled={enviando}
+                    erro={erroDoModelo}
+                    onChange={(escolha) => {
+                      setEscolhaDeModelo(escolha);
+                      setErroDoModelo(null);
+                    }}
+                  />
+                </div>
+              ) : null}
               {/*
           O e-mail é o único Canal com assunto e cópias (`hasSubjectAndCopies`).
           Mostrar esses campos nos outros seria prometer um envio que o Canal
@@ -1499,7 +1578,7 @@ export function ConversationThread({
                 ali (features/shell/robo-flutuante.tsx). */}
             <div className="doca-do-robo" style={{ background: "var(--superficie-2)" }}>
               <div className="flex items-end gap-2 px-3 py-2">
-                {categoriasDoCanal.length > 0 ? (
+                {categoriasDoCanal.length > 0 && !comSeletorDeModelo ? (
                   <button
                     type="button"
                     onClick={() => setAnexando((aberto) => !aberto)}
@@ -1519,25 +1598,33 @@ export function ConversationThread({
                   </button>
                 ) : null}
 
-                <label className="sr-only" htmlFor="compositor-ficha">
-                  {conversa ? `Escrever para ${nomeDoContato}` : "Primeira Mensagem"}
-                </label>
-                <textarea
-                  id="compositor-ficha"
-                  value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey && bloqueio === undefined) {
-                      event.preventDefault();
-                      setConfirmandoEnvio(true);
-                    }
-                  }}
-                  rows={1}
-                  disabled={!canal}
-                  placeholder={conversa ? "Digite uma mensagem" : "Escreva a primeira Mensagem"}
-                  className="app-base max-h-40 min-h-10 min-w-0 flex-1 resize-none border-0 bg-[var(--page)] px-4 py-2.5 outline-none [field-sizing:content] placeholder:text-[var(--texto-3)] disabled:opacity-50"
-                  style={{ borderRadius: "calc(var(--controle-h) / 2)" }}
-                />
+                {comSeletorDeModelo ? (
+                  <p data-compositor-de-modelo="true" className="app-sm min-w-0 flex-1 px-2 py-2" style={{ color: "var(--texto-3)" }}>
+                    Esta Mensagem sai como modelo aprovado pela Meta: escolha e preencha acima.
+                  </p>
+                ) : (
+                  <>
+                    <label className="sr-only" htmlFor="compositor-ficha">
+                      {conversa ? `Escrever para ${nomeDoContato}` : "Primeira Mensagem"}
+                    </label>
+                    <textarea
+                      id="compositor-ficha"
+                      value={draft}
+                      onChange={(event) => setDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.shiftKey && bloqueio === undefined) {
+                          event.preventDefault();
+                          setConfirmandoEnvio(true);
+                        }
+                      }}
+                      rows={1}
+                      disabled={!canal}
+                      placeholder={conversa ? "Digite uma mensagem" : "Escreva a primeira Mensagem"}
+                      className="app-base max-h-40 min-h-10 min-w-0 flex-1 resize-none border-0 bg-[var(--page)] px-4 py-2.5 outline-none [field-sizing:content] placeholder:text-[var(--texto-3)] disabled:opacity-50"
+                      style={{ borderRadius: "calc(var(--controle-h) / 2)" }}
+                    />
+                  </>
+                )}
 
                 <Button
                   variant="primary"

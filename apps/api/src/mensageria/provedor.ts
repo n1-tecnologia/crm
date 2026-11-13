@@ -82,7 +82,12 @@ export interface EnvioAoProvedor {
    */
   readonly emRespostaADetalhes?: { readonly nossa: boolean; readonly texto: string };
   readonly assunto?: string;
-  readonly modelo?: { readonly idNoProvedor: string; readonly idioma: string; readonly variaveis: readonly string[] };
+  /**
+   * Sessão 7: a Mensagem de modelo (WhatsApp oficial, fora da janela de 24 h). A Cloud API envia pelo `nome` e pelo idioma,
+   * não pelo id; `idNoProvedor` é o id do modelo na Meta, guardado em `modelo_usado`. `variaveis` preenchem `{{1}}`, `{{2}}`…
+   * do corpo, em ordem.
+   */
+  readonly modelo?: { readonly idNoProvedor: string; readonly nome?: string; readonly idioma: string; readonly variaveis: readonly string[] };
 }
 
 /** `ambiguo`: o provedor pode ter enviado (timeout ou resposta perdida); quem chama nunca reenvia sozinho. */

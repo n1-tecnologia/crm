@@ -1075,3 +1075,15 @@ funções antigas saíram de `derive-conversacional.ts` no 15-42.
   mais `ligadoAoProvedor` (só na leitura da ficha, não é coluna) e `podeSimularConexao(canal)` é a mesma regra para a
   tela.
 
+
+**As Mensagens de modelo do WhatsApp oficial (Sessão 7, 7.3).** `crm/modelos.ts` (sem barril, subcaminho
+`@n1/dominio/crm/modelos`) é a regra pura sobre o modelo no formato da Meta (`componentes`: `HEADER`, `BODY`, `FOOTER`, `BUTTONS`),
+que a `apps/api` e a tela leem igual: `variaveisDoTexto` e `quantidadeDeVariaveis` (as `{{1}}`, `{{2}}`… do corpo),
+`motivoDeNaoEnviavel` e `modeloEnviavel` (só se ENVIA corpo com variáveis de texto, cabeçalho de texto sem variável, rodapé e
+botões fixos; cabeçalho de mídia, variável em botão ou no cabeçalho, autenticação e formatos novos ficam na lista com o
+motivo), `validarVariaveis` (a quantidade certa, nenhuma vazia, sem quebra de linha nem tabulação, até `MAX_DA_VARIAVEL`),
+`textoDoModelo` (o texto que o Contato recebe: cabeçalho, corpo preenchido e rodapé, que vira o `conteudo` da Mensagem) e
+`modeloNaLista` (o modelo mais `enviavel` e `motivoDeNaoEnviavel`, o que a lista da tela recebe). Em `crm/mensagens.ts`,
+`NovaMensagem` ganhou `modeloId` e `variaveis` (a Mensagem de modelo só é `enviada` e sem arquivo; o `conteudo` pode ficar vazio),
+`Mensagem.modeloUsado` guarda também o idioma e as variáveis, e `validarEnvio` com `soModelo` agora exige modelo TAMBÉM antes da
+primeira mensagem do Contato (7.2.6, `FRASE_SO_MODELO_PRIMEIRO`). `NovaConversa.mensagem` aceita o mesmo `modeloId` e `variaveis`.

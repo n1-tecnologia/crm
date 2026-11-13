@@ -286,3 +286,14 @@ describe("identificadorDeResposta (WR-04: a resposta vai por onde o Contato escr
     expect(identificadorDeResposta([], canalWhatsapp, "a")).toBeUndefined();
   });
 });
+
+describe("validarNovaConversa com modelo (7.3)", () => {
+  it("abrir com modelo passa com o conteúdo vazio: o texto vem do modelo", () => {
+    const entrada = { canalId: "k1", contatoId: "p1", mensagem: { conteudo: "", modeloId: "mdl_1", variaveis: ["Ana"] } };
+    expect(validarNovaConversa(entrada)).toEqual({ ok: true, value: entrada });
+  });
+
+  it("sem modelo a primeira Mensagem continua obrigatória", () => {
+    expect(validarNovaConversa({ canalId: "k1", contatoId: "p1", mensagem: { conteudo: "  " } })).toMatchObject({ ok: false, field: "conteudo" });
+  });
+});

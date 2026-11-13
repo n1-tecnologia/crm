@@ -83,6 +83,7 @@ import { DescricaoDaTarefa } from "@/features/estrutura/descricao-da-tarefa";
 import { valorDaLinhaDeTempo } from "@/features/estrutura/tempo";
 import { financeProfileOf, valorDaConta } from "@/features/estrutura/financeiro/lens";
 import { CHANNEL_ICON, ConversationThread } from "@/features/crm/conversation-thread";
+import { SeletorDeModelo, useEscolhaDeModelo } from "@/features/crm/seletor-de-modelo";
 import { SeloDoProvedor } from "@/features/crm/selo-do-provedor";
 import { nomeDoAtribuido, ROTULO_DA_SITUACAO, rotuloDaQualificacao, RostoDoContato } from "@/features/estrutura/cartao-conversacional";
 import {
@@ -276,6 +277,8 @@ export function TarefaCompleta({
   /** O Canal escolhido no seletor, ainda por confirmar: trocar pode pedir a primeira Mensagem (D-07). */
   const [canalNovo, setCanalNovo] = useState<string | null>(null);
   const [mensagemDoCanal, setMensagemDoCanal] = useState("");
+  /** Muda a cada abertura do diálogo de troca: a escolha de modelo de uma abertura anterior não vale na seguinte. */
+  const [geracaoDoCanal, setGeracaoDoCanal] = useState(0);
   const [erroDoCanal, setErroDoCanal] = useState<{ readonly texto: string; readonly campo: string | undefined } | null>(null);
   const [trocandoCanal, setTrocandoCanal] = useState(false);
   const [navegar] = useNavegar();
@@ -318,6 +321,13 @@ export function TarefaCompleta({
   const funisDasTabelas = useFunis({ estado: "ativo", limite: LIMITES_CRM.paginaMaxima }, { pausado: !criandoNegocio });
   // D-07: trocar para um Canal em que o Contato não tem Conversa aberta pede a primeira Mensagem.
   const conversaDoCanalNovo = useConversaAbertaDoPar(contatoIdDoResumo, canalNovo ?? undefined, { pausado: canalNovo === null });
+  // 7.3.5: no WhatsApp oficial a Conversa só nasce com Mensagem de modelo aprovada (7.2.6): no lugar do texto, o seletor.
+  const pedeMensagemDoCanal = canalNovo !== null && (conversaDoCanalNovo.conversa === null || conversaDoCanalNovo.erro !== undefined);
+  const modeloDoCanal = useEscolhaDeModelo(
+    canaisDasTabelas.data?.itens.find((c) => c.id === canalNovo),
+    `${contatoIdDoResumo ?? ""}:${canalNovo ?? ""}:${geracaoDoCanal}`,
+    { pausado: !pedeMensagemDoCanal },
+  );
   // B38a — o que o Membro não alcança não existe para ele: a mesma tela de "não encontrada".
   const task = state.tasks.find(
     (t) => t.id === tarefa && memberSeesTask(state, memberId, t.id),
@@ -849,9 +859,13 @@ export function TarefaCompleta({
             ? { confirmDisabledReason: "Trocando…" }
             : conversaDoCanalNovo.conversa === undefined && conversaDoCanalNovo.erro === undefined
               ? { confirmDisabledReason: "Conferindo a conversa deste Contato neste Canal…" }
-              : (conversaDoCanalNovo.conversa === null || conversaDoCanalNovo.erro !== undefined) && mensagemDoCanal.trim() === ""
-                ? { confirmDisabledReason: "Escreva a primeira Mensagem." }
-                : {})}
+              : pedeMensagemDoCanal && modeloDoCanal.oficial
+                ? modeloDoCanal.motivo !== undefined
+                  ? { confirmDisabledReason: modeloDoCanal.motivo }
+                  : {}
+                : pedeMensagemDoCanal && mensagemDoCanal.trim() === ""
+                  ? { confirmDisabledReason: "Escreva a primeira Mensagem." }
+                  : {})}
           confirmCarregando={trocandoCanal}
           onConfirm={() => {
             const pedeMensagem = conversaDoCanalNovo.conversa === null || conversaDoCanalNovo.erro !== undefined;
@@ -859,34 +873,54 @@ export function TarefaCompleta({
             setTrocandoCanal(true);
             void trocarCanalDaTarefa(task.id, {
               canalId: canalNovo,
-              // O campo só aparece sem Conversa aberta no Canal novo; com ela o corpo não leva a Mensagem.
-              ...(pedeMensagem && mensagemDoCanal.trim() ? { mensagem: { conteudo: mensagemDoCanal.trim() } } : {}),
+              // O campo só aparece sem Conversa aberta no Canal novo; com ela o corpo não leva a Mensagem. No WhatsApp oficial é o modelo escolhido.
+              ...(pedeMensagem && modeloDoCanal.oficial && modeloDoCanal.escolha.pedido
+                ? { mensagem: { conteudo: "", modeloId: modeloDoCanal.escolha.pedido.modeloId, variaveis: modeloDoCanal.escolha.pedido.variaveis } }
+                : pedeMensagem && mensagemDoCanal.trim()
+                  ? { mensagem: { conteudo: mensagemDoCanal.trim() } }
+                  : {}),
             })
               // A5: o `GET /estado` traz o Vínculo novo; se ele falhar a troca já valeu e a revisão do Espaço alcança o store depois.
               .then(async ({ mudou }) => {
                 await rehidratar().catch(() => undefined);
                 setCanalNovo(null);
-                setMensagemDoCanal("");
+                setMensagemDoCanal(""); setGeracaoDoCanal((g) => g + 1);
                 // O fio segue o novo Canal em vez de ficar na aba anterior.
                 setCanalDoFio(null);
                 report({ ok: true }, mudou ? "Canal alterado." : "A Tarefa já conversava por este Canal.");
               })
-              .catch((falha: unknown) =>
+              .catch((falha: unknown) => {
+                modeloDoCanal.aprenderDaRecusa(falha);
                 setErroDoCanal({
                   texto: falha instanceof ErroDeApi ? falha.message : "Não foi possível trocar o Canal. Tente de novo.",
                   campo: falha instanceof ErroDeApi ? falha.campo : undefined,
-                }),
-              )
+                });
+              })
               .finally(() => setTrocandoCanal(false));
           }}
           onCancel={() => {
             setCanalNovo(null);
-            setMensagemDoCanal("");
+            setMensagemDoCanal(""); setGeracaoDoCanal((g) => g + 1);
             setErroDoCanal(null);
           }}
         >
           <div className="grid gap-4">
-            {conversaDoCanalNovo.conversa === null || conversaDoCanalNovo.erro !== undefined ? (
+            {pedeMensagemDoCanal && modeloDoCanal.oficial ? (
+              modeloDoCanal.paraEscolher.length > 0 ? (
+                <SeletorDeModelo
+                  key={`${canalNovo}:${geracaoDoCanal}`}
+                  modelos={modeloDoCanal.paraEscolher}
+                  primeiroNome={contatoDoResumo.nome.split(" ")[0]}
+                  disabled={trocandoCanal}
+                  erro={erroDoCanal?.campo === "variaveis" || erroDoCanal?.campo === "modeloId" ? erroDoCanal : null}
+                  onChange={modeloDoCanal.aoEscolher}
+                />
+              ) : (
+                <p data-sem-modelo="true" className="app-base" style={{ color: "var(--aviso)" }}>
+                  {modeloDoCanal.motivo}
+                </p>
+              )
+            ) : conversaDoCanalNovo.conversa === null || conversaDoCanalNovo.erro !== undefined ? (
               <Field
                 label="Primeira Mensagem"
                 required
@@ -896,7 +930,7 @@ export function TarefaCompleta({
                 {(id) => <TextArea id={id} value={mensagemDoCanal} onChange={setMensagemDoCanal} rows={3} required placeholder="O que você quer dizer ao Contato" />}
               </Field>
             ) : null}
-            {erroDoCanal && (erroDoCanal.campo !== "mensagem" || conversaDoCanalNovo.conversa !== null) ? (
+            {erroDoCanal && !(modeloDoCanal.oficial && (erroDoCanal.campo === "variaveis" || erroDoCanal.campo === "modeloId")) && (erroDoCanal.campo !== "mensagem" || conversaDoCanalNovo.conversa !== null) ? (
               <p role="alert" className="app-base" style={{ color: "var(--erro)" }}>
                 {erroDoCanal.texto}
               </p>
@@ -1389,7 +1423,7 @@ export function TarefaCompleta({
                           onChange={(canalId) => {
                             // O seletor só escolhe: a troca confirma no diálogo, que pede a primeira Mensagem quando precisa (D-07).
                             setErroDoCanal(null);
-                            setMensagemDoCanal("");
+                            setMensagemDoCanal(""); setGeracaoDoCanal((g) => g + 1);
                             setCanalNovo(canalId);
                           }}
                           placeholder={canaisDasTabelas.data === undefined ? "Carregando os Canais…" : "Escolher o Canal"}
@@ -2277,7 +2311,7 @@ export function TarefaCompleta({
                       canaisDaListaIds: state.lists.find((l) => l.id === task.listId)?.canaisDeAtendimento ?? [],
                       aoTrocarCanalDaTarefa: (canalId: Id) => {
                         setErroDoCanal(null);
-                        setMensagemDoCanal("");
+                        setMensagemDoCanal(""); setGeracaoDoCanal((g) => g + 1);
                         setCanalNovo(canalId);
                       },
                     }

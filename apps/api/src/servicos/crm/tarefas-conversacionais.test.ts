@@ -65,9 +65,9 @@ describeComBanco("ServicoDeTarefasConversacionais — Postgres local", () => {
       cliente.release();
     }
     await semearMembro(ws, { id: "mem_convidado_teste", base: "convidado", state: "ativo" });
-    const canal = await semearCanal(ws, { nome: "Comercial", tipo: "whatsapp", provedor: "whatsapp-cloud", identificadorExterno: "+5511977770001", conexao: "conectada" });
+    const canal = await semearCanal(ws, { nome: "Comercial", tipo: "whatsapp", provedor: "whatsapp-nao-oficial", identificadorExterno: "+5511977770001", conexao: "conectada" });
     const canalDesconectado = await semearCanal(ws, { nome: "Antigo", tipo: "whatsapp", provedor: "whatsapp-nao-oficial", identificadorExterno: "+5511977770002", conexao: "desconectada" });
-    const canalSemLista = await semearCanal(ws, { nome: "Suporte", tipo: "whatsapp", provedor: "whatsapp-cloud", identificadorExterno: "+5511977770003", conexao: "conectada" });
+    const canalSemLista = await semearCanal(ws, { nome: "Suporte", tipo: "whatsapp", provedor: "whatsapp-nao-oficial", identificadorExterno: "+5511977770003", conexao: "conectada" });
     const canalEmail = await semearCanal(ws, { nome: "Atendimento por e-mail", tipo: "email", provedor: "email-imap-smtp", identificadorExterno: "atendimento@exemplo.com", conexao: "conectada" });
     await executar(ws, (state) => {
       const lista = state.lists.find((l) => l.id === LISTA);
@@ -716,7 +716,7 @@ describeComBanco("ServicoDeTarefasConversacionais — Postgres local", () => {
       expect(itens[0]).toEqual({
         taskId: "tsk_0",
         contato: { id: marina, nome: "Marina" },
-        canal: { id: e.canal, nome: "Comercial", tipo: "whatsapp", provedor: "whatsapp-cloud", conexao: "conectada" },
+        canal: { id: e.canal, nome: "Comercial", tipo: "whatsapp", provedor: "whatsapp-nao-oficial", conexao: "conectada" },
         ultimaMensagem: { trecho: "Oi, quero renovar", direcao: "recebida", criadoEm: "2026-03-01T10:00:00.000Z" },
         negocio: { id: renovacao, titulo: "Renovação 2027", etapa: "Início" },
         empresa: null,

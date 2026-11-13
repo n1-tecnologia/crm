@@ -519,7 +519,7 @@ devolvê-la. O e2e `canais-fluxo.test.ts` confere a string crua da resposta.
 servidor lê o Canal da tabela como `crm.canais` e o passa como argumento (nada é gravado em `plataforma.registros`);
 ver `persistencia/CONTEXT.md`. O cenário que prova isso por HTTP é `e2e/canais-fluxo.test.ts`.
 
-## Webhooks da Meta — WhatsApp oficial (só escuta) e Instagram (fila de entrada)
+## Webhooks da Meta — WhatsApp oficial e Instagram (os dois pela fila de entrada)
 
 `webhook-meta.ts` — `rotasDeWebhookMeta(app, opcoes)` — `GET` e `POST` em
 `/webhooks/meta/whatsapp` e em `/webhooks/meta/instagram`, sem `Authorization: Bearer`
@@ -551,16 +551,22 @@ Também do Instagram, públicas e conferidas pelo `signed_request`
 A descrição abaixo vale para os dois canais.
 O `GET` é o aperto de mão da Meta ao cadastrar a URL: devolve `hub.challenge` em
 `text/plain` se `hub.verify_token` for `META_WEBHOOK_VERIFY_TOKEN` (sem a variável,
-403 sempre). O `POST` registra o corpo no log e responde 200; com `META_APP_SECRET`
+403 sempre). O `POST` responde 200 sem registrar o corpo no log; com o segredo do canal
 definido exige `X-Hub-Signature-256` (HMAC-SHA256 do corpo CRU — o parser JSON
 deste plugin guarda os bytes, encapsulado, e não vaza para as outras rotas); sem
 ele aceita e avisa no log.
 
-**O WhatsApp oficial ainda não grava nada e não cria Mensagem** (Sessão 7). Quando
-gravar, a porta é `receberMensagem` (`servicos/crm/recebimento.ts`; o gesto
-`registrarRecebida` saiu na Fase 16), pela fila de entrada abaixo, como o Instagram.
-O log dele leva o corpo inteiro — número e texto de quem escreveu — e deve ser
-reduzido quando o formato estiver conhecido. O do Instagram já leva só contagens.
+**Sessão 7: o WhatsApp oficial também entra pela mensageria**, no mesmo desenho: `enfileirarWhatsApp`
+(`mensageria/provedores/whatsapp-cloud/entrada.ts`, ligado em `app.ts`) acha o Canal pelo `metadata.phone_number_id` do
+corpo (`whatsapp_cloud_numeros`), confere a chamada pelo provedor e guarda um item (mensagem ou status) por linha. **O corpo
+do webhook nunca vai ao log**, nem quando a rota só escuta (a versão anterior registrava o corpo inteiro, com número de
+telefone e texto de terceiros). A conexão do número (token) é autenticada e mora em `rotas/crm/whatsapp-oficial.ts`:
+`POST /canais/:id/whatsapp-oficial/conectar` e `GET /canais/:id/whatsapp-oficial/numero`, mais os modelos de mensagem (7.3):
+`GET /canais/:id/modelos` e `POST /canais/:id/modelos/sincronizar`. O aviso da Meta de que um modelo mudou
+(`message_template_status_update`, com a assinatura conferida) dispara a sincronização da conta depois da resposta, nunca a segura.
+A primeira Mensagem de uma Conversa (`POST /conversas`, `POST /tarefas-conversacionais`) é texto OU modelo (`PRIMEIRA_MENSAGEM`
+em `crm/comum.ts`), e `POST /mensagens` aceita `modeloId` e `variaveis`.
+
 
 ## Webhook de mensageria por Canal e tempo real (Fase 16)
 

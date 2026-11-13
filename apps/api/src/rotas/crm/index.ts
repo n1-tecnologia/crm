@@ -51,6 +51,7 @@ import { criarServicoDeNotas, type ServicoDeNotas } from "../../servicos/crm/not
 import { criarServicoDeSucessao, type ServicoDeSucessao } from "../../servicos/crm/sucessao";
 import { criarServicoDeTarefasConversacionais, type ServicoDeTarefasConversacionais } from "../../servicos/crm/tarefas-conversacionais";
 import { criarServicoDeConexaoDoInstagram, type ServicoDeConexaoDoInstagram } from "../../mensageria/provedores/instagram/conexao";
+import { criarServicoDeConexaoDaCloudApi, type ServicoDeConexaoDaCloudApi } from "../../mensageria/provedores/whatsapp-cloud/conexao";
 import { rotasDeAtividades } from "./atividades";
 import { rotasDeCanais } from "./canais";
 import { rotasDeConsentimentos } from "./consentimentos";
@@ -67,6 +68,7 @@ import { rotasDeNotas } from "./notas";
 import { rotasDeSucessao } from "./sucessao";
 import { rotasDeTarefasConversacionais } from "./tarefas-conversacionais";
 import { rotasDoInstagram } from "./instagram";
+import { rotasDoWhatsAppOficial } from "./whatsapp-oficial";
 
 export interface OpcoesDeCrm {
   /** Padrão: o `pool()` do processo. Só é chamado quando uma requisição chega, nunca na montagem. */
@@ -105,6 +107,8 @@ export interface OpcoesDeCrm {
   readonly acesso?: AcessoAoCrm;
   /** Injeção só para teste: troca a conexão do Instagram (Sessão 8) por uma falsa, sem a Meta. */
   readonly instagram?: ServicoDeConexaoDoInstagram;
+  /** Injeção só para teste: troca a conexão do WhatsApp oficial (Sessão 7) por uma falsa, sem a Meta. */
+  readonly whatsappOficial?: ServicoDeConexaoDaCloudApi;
   /**
    * Injeção só para teste (Sessão 4): troca o conector da Evolution do serviço REAL de Canais por um falso. Sem isto, "Conectar" e
    * o "sair da sessão" de desconectar e arquivar falam com a Evolution do ambiente (`EVOLUTION_URL`), que o teste não tem.
@@ -158,4 +162,6 @@ export async function rotasDeCrm(app: FastifyInstance, opcoes: OpcoesDeCrm = {})
   await app.register(rotasDoInicio, { servico: inicio });
   const instagram = opcoes.instagram ?? criarServicoDeConexaoDoInstagram({ pool: obterPool, acesso });
   await app.register(rotasDoInstagram, { servico: instagram });
+  const whatsappOficial = opcoes.whatsappOficial ?? criarServicoDeConexaoDaCloudApi({ pool: obterPool, acesso });
+  await app.register(rotasDoWhatsAppOficial, { servico: whatsappOficial });
 }
