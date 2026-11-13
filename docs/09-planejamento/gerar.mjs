@@ -43,7 +43,11 @@ function subtarefa(t, su, i) {
     l.push(`  - **Recomendo:** ${su.recomendo}`);
     if (!vazio(su.tecnico)) l.push(`  - **Detalhe técnico:** ${su.tecnico}`);
   } else {
-    l.push(`- [ ] **${id} ${su.n}**${su.cam.length ? " " + camadas(su.cam) : ""}`);
+    const andamento = su.feito?.estado;
+    const marca = andamento === "feito" ? "x" : " ";
+    const etiqueta = { feito: " · *feito*", parcial: " · *em parte*", aguarda: " · *aguarda você*", dispensada: " · *dispensada*" }[andamento] || "";
+    l.push(`- [${marca}] **${id} ${su.n}**${su.cam.length ? " " + camadas(su.cam) : ""}${etiqueta}`);
+    if (su.feito) l.push(`  - **Andamento:** plano ${su.feito.plano}${su.feito.nota ? ` — ${su.feito.nota}` : ""}`);
     if (su.prazo) l.push(`  - **Prazo:** até ${dm(su.prazo)}${su.bloqueia ? ` · destrava a Sessão ${su.bloqueia}` : ""}`);
     if (!vazio(su.hoje)) l.push(...passos("Hoje", su.hoje));
     l.push(...passos("O que fazer", su.fazer));
@@ -82,7 +86,7 @@ function sessao(s) {
     if (t.inicio && t.prazo) l.push(`**Período:** ${dm(t.inicio)} a ${dm(t.prazo)}`, "");
     l.push(`**Objetivo:** ${t.objetivo}`, "");
     l.push(`**Pronto quando:** ${t.pronto}`, "");
-    if (!t.subs.length) l.push("_Nenhuma subtarefa ainda._", "");
+    if (!t.subs.length) l.push(t.concluida ? `**Concluída em ${dm(t.concluida.em)}/${t.concluida.em.slice(0, 4)}.** ${t.concluida.nota}` : "_Nenhuma subtarefa ainda._", "");
     else l.push(t.subs.map((su, i) => subtarefa(t, su, i)).join("\n"), "");
   });
   l.push(`**A sessão fica pronta quando:** ${s.pronto}`, "", "---", "");

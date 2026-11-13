@@ -10,6 +10,7 @@ import { SESSOES as c } from "./parte-c.mjs";
 import { SESSOES as d } from "./parte-d.mjs";
 import { SESSOES as e } from "./parte-e.mjs";
 import { SESSOES as f } from "./parte-f.mjs";
+import { aplicarAndamento } from "./andamento.mjs";
 
 const ORDEM = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "T", "T2", "13", "14", "15", "16", "17", "18", "19", "20"];
 
@@ -21,4 +22,5 @@ if (faltando.length) throw new Error(`Sessões faltando nas partes: ${faltando.j
 const sobrando = todas.filter((s) => !ORDEM.includes(s.id)).map((s) => s.id);
 if (sobrando.length) throw new Error(`Sessões fora da ordem conhecida: ${sobrando.join(", ")}`);
 
-export const SESSOES = ORDEM.map((id) => porId.get(id));
+// O andamento (o que já foi feito) vem de andamento.mjs e é aplicado por cima, sem mexer nas partes.
+export const SESSOES = aplicarAndamento(ORDEM.map((id) => porId.get(id)));
