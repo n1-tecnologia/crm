@@ -19,7 +19,7 @@ Este documento é a entrada do `/gsd-discuss-phase` de cada sessão. Os planos d
 
 O **plano** usa a velocidade medida nas Fases 06 a 08 do GSD: 65 dias úteis, com fim em **qui 21/01/2027**.
 
-O cenário **com ajustes** usa o tamanho que a conferência no código encontrou em cada sessão: 102 dias úteis, com fim em **seg 15/03/2027**. É uma estimativa de escopo, mais pessimista que a velocidade do GSD. O número real deve ficar entre os dois; vale reestimar depois das Sessões 0 e 1, com a velocidade medida nelas.
+O cenário **com ajustes** usa o tamanho que a conferência no código encontrou em cada sessão: 100 dias úteis, com fim em **qui 11/03/2027**. É uma estimativa de escopo, mais pessimista que a velocidade do GSD. O número real deve ficar entre os dois; vale reestimar depois das Sessões 0 e 1, com a velocidade medida nelas.
 
 | Sessão | Plano | Com ajustes | Por quê |
 |---|---|---|---|
@@ -28,7 +28,6 @@ O cenário **com ajustes** usa o tamanho que a conferência no código encontrou
 | 3 · Base da mensageria e unificação do CRM | 4 | **13** | +9 dias: o modelo antigo do CRM é usado por cerca de 70 arquivos da tela e 33 do domínio, e a sessão recebeu a Tarefa conversacional (que estava na Sessão 5) e a ponte do Painel. |
 | 4 · WhatsApp não oficial (Evolution API) | 1 | **2** | +1 dia: provisionar a instância é rápido, mas a sessão também liga o QR code na tela, o webhook, o envio de texto e mídia, os tiques de entrega e o número com e sem o nono dígito. |
 | 6 · Ferramentas: Grupos e Comunidades | 3 | **5** | +2 dias: cerca de 12 rotas novas, telas passando a falar por HTTP, sincronização pelo webhook e a página pública do Link de captação. |
-| 7 · WhatsApp oficial (Cloud API) e Flows | 4 | **6** | +2 dias: Cloud API, modelos de mensagem e Flows, incluindo traduzir o Flow para o formato da Meta. Pode virar duas sessões: Cloud API e modelos (4 dias) e Flows (3 dias). |
 | 9 · E-mail | 3 | **4** | +1 dia, ou +2 se a decisão for login OAuth, que o Microsoft 365 exige. |
 | 12 · Superadmin, usuários e permissões | 5 | **7** | +2 dias se for só a Tria (convite real, Papéis e Equipes editáveis, módulos). Cerca de +4 se a plataforma atender várias empresas. |
 | 13 · IA: ligação com o modelo e Chat respondendo | 4 | **5** | +1 dia: cliente do modelo, catálogo, teto de custo, rota com streaming, tela, ações da Sessão, anexos e os dois defeitos. |
@@ -1778,20 +1777,17 @@ Grupos e Comunidades de WhatsApp deixam de ser simulados e passam a ser os grupo
 
 ---
 
-## Sessão 7 · WhatsApp oficial (Cloud API) e Flows
+## Sessão 7 · WhatsApp oficial (Cloud API)
 
-Liga o WhatsApp oficial da Meta (Cloud API): um número da empresa conectado por token, com a janela de 24 h, os modelos de mensagem aprovados pela Meta para falar fora dela e os Flows (formulários interativos dentro do WhatsApp), que só existem na API oficial. Só começa com a empresa verificada na Meta e o número dedicado registrado (7.1).
+Liga o WhatsApp oficial da Meta (Cloud API): um número da empresa conectado por token, com a janela de 24 h e os modelos de mensagem aprovados pela Meta para falar fora dela. Só começa com a empresa verificada na Meta e o número dedicado registrado (7.1).
 
-**Depende de:** Sessão 3, Sessão 6, aprovação da Meta.
-
-> **Ajuste sugerido:** +2 dias: Cloud API, modelos de mensagem e Flows, incluindo traduzir o Flow para o formato da Meta. Pode virar duas sessões: Cloud API e modelos (4 dias) e Flows (3 dias).
+**Depende de:** Sessão 3, aprovação da Meta.
 
 **Ponto de partida:**
 - O Canal `whatsapp-cloud` já nasce pela página de conectar; o quadro do token é só texto (`apps/web/src/features/crm/conectar-canal.ts:21-32`).
 - A janela de 24 h já é aplicada no servidor: `validarEnvio` (`packages/dominio/src/crm/mensagens.ts:162`) recusa fora dela, e o serviço passa `modelosAprovados: []` fixo (`apps/api/src/servicos/crm/mensagens.ts:119`). Fora da janela, nunca sai nada.
 - O modelo de mensagem só existe como tipo (`MessageTemplate`, `packages/dominio/src/types/crm.ts:368`) e no seed; o Canal da tabela nova chega à tela com `messageTemplates: []` (`apps/api/src/persistencia/canais-projetados.ts:55`).
 - A Caixa de Entrada já troca o texto livre por um seletor de modelo quando a janela fecha (`apps/web/src/features/crm/conversation-thread.tsx:345-357` e `:1298`), lendo `channel.messageTemplates` do modelo antigo.
-- Domínio de Flows pronto (`packages/dominio/src/operations/ferramentas/flows.ts`, 27 operações, com versões, telas e componentes) e construtor visual (`apps/web/src/features/ferramentas/flow-builder.tsx`). Publicar, enviar e receber resposta são simulados (`publicarVersao` `:624`, `enviarFlow` `:845`, `receberRespostaDeFlow` `:908`).
 - Da Sessão 3: interface de provedor, webhook com fila de entrada, porta de saída, mídia e CRM unificado. Da Sessão 4: `POST /canais/:id/conectar` e `proximoStatusDeEntrega`.
 
 ### 7.1 Pré-requisitos na Meta
@@ -1800,7 +1796,8 @@ Liga o WhatsApp oficial da Meta (Cloud API): um número da empresa conectado por
 
 **Pronto quando:** Empresa verificada, app ao vivo, número registrado e os cinco dados de 7.1 entregues.
 
-- [ ] **7.1.1 Verificar a empresa no Meta Business** `você`
+- [x] **7.1.1 Verificar a empresa no Meta Business** `você` · *feito*
+  - **Andamento:** plano time, 13/11 — Empresa verificada no Meta Business e revisão do WhatsApp aprovada em 21/10 (whatsapp_business_messaging, whatsapp_business_management e public_profile). Quem me passou foi o Lucas, em 13/11; eu não abri o painel da Meta.
   - **Hoje:** Não iniciado.
   - **O que fazer:**
     1. Em business.facebook.com, abrir Configurações do negócio › Central de segurança › Verificação da empresa.
@@ -1808,7 +1805,8 @@ Liga o WhatsApp oficial da Meta (Cloud API): um número da empresa conectado por
     3. Anotar nesta tarefa o ID do portfólio empresarial.
   - **Pronto quando:** A Central de segurança mostra a empresa como verificada.
   - **Atenção:** Começar na primeira semana do plano: a Meta pode levar de dias a semanas e às vezes pede documentos de novo.
-- [ ] **7.1.2 Separar o número dedicado** `você`
+- [x] **7.1.2 Separar o número dedicado** `você` · *feito*
+  - **Andamento:** plano time, 16/11 — Escolhido: um número novo só para o CRM (final 2583), numa conta do WhatsApp Business nova da empresa, sem parceiro e fora do LeadConnector; os dois números antigos continuam lá. A coexistência com o aplicativo não servia, porque um número que já está na API não volta a ela. O nome de exibição "N1 Digital" estava pendente na análise da Meta em 16/11. Quem me passou foi o Lucas; eu não abri o painel da Meta.
   - **Hoje:** Não iniciado.
   - **O que fazer:**
     1. Ter um número que receba SMS ou ligação e que não esteja em uso no aplicativo WhatsApp. Se estiver, apagar a conta do WhatsApp nele antes (não basta desinstalar).
@@ -1816,7 +1814,8 @@ Liga o WhatsApp oficial da Meta (Cloud API): um número da empresa conectado por
     3. Escolher o nome de exibição seguindo as regras da Meta: o nome da empresa ou da marca, como aparece no site.
   - **Pronto quando:** Número e nome de exibição anotados nesta tarefa.
   - **Atenção:** A Meta tem um modo de coexistência que deixa o mesmo número no aplicativo WhatsApp Business e na API. Conferir se está disponível para a conta antes de apagar a conta do aplicativo.
-- [ ] **7.1.3 Criar o app, registrar o número e gerar o token** `você`
+- [x] **7.1.3 Criar o app, registrar o número e gerar o token** `você` · *feito*
+  - **Andamento:** plano time, 16/11 — App criado e publicado (modo Ao vivo, com as páginas de privacidade e de termos no ar), usuário do sistema com token permanente (conferi na Meta em 13/11: tipo usuário do sistema, sem vencimento e com as duas permissões do WhatsApp) e webhook cadastrado com os campos messages e message_template_status_update. Em 16/11 o time passou o número para uma conta nova, com cobrança em dólar e cartão cadastrado: o número está registrado com PIN de duas etapas (CONNECTED) e o usuário do sistema tem acesso total à conta nova. O PIN está com o Lucas, porque o CRM não o pede nem o registra. Em aberto, do time: o número ainda aparecia vinculado também à conta antiga, e eles o desvinculam depois que funcionou. Quem me passou foi o Lucas; eu não abri o painel da Meta.
   - **Hoje:** Não iniciado.
   - **O que fazer:**
     1. Em developers.facebook.com, criar um app do tipo Empresa, ligado ao portfólio verificado, e adicionar o produto WhatsApp.
@@ -1834,14 +1833,11 @@ Liga o WhatsApp oficial da Meta (Cloud API): um número da empresa conectado por
 
 **Pronto quando:** Um número oficial conectado pela tela conversa pela Caixa de Entrada, com os tiques de entregue e lida.
 
-- [ ] **7.2.1 Como o número oficial se conecta?** `decisão` `web` `api` · *muda o produto*
-  - **Como é hoje:** A página de conectar diz que o token “será pedido aqui quando a integração existir” (`conectar-canal.ts:26`).
-  - **Você decide:**
-    - (A) Manual: a pessoa cola o ID do número, o ID da WABA e o token do usuário do sistema num formulário
-    - (B) Cadastro incorporado da Meta (Embedded Signup): um botão abre o login da Meta e devolve tudo sozinho
-  - **O que muda depois:** (A) cabe nesta sessão e serve para os números da própria empresa. (B) é o que serve para outras empresas conectarem os números delas, mas exige revisão de app, o app como Provedor de Tecnologia e cerca de 2 dias a mais.
-  - **Recomendo:** (A) agora; (B) só se a plataforma for usada por outras empresas.
-- [ ] **7.2.2 Criar o cliente da Cloud API** `api`
+- [x] **7.2.1 Como o número oficial se conecta?** `decisão` `web` `api` · *decidida*
+  - **Decidido:** Escolha A: manual. A pessoa cola o ID do número, o ID da conta do WhatsApp Business e o token do usuário do sistema num formulário. O cadastro incorporado da Meta (Embedded Signup) só entra quando outra empresa for conectar números pela plataforma. Decidido pelo time em 13/11.
+  - **O que muda no plano:** (A) cabe nesta sessão e serve para os números da própria empresa. (B) é o que serve para outras empresas conectarem os números delas, mas exige revisão de app, o app como Provedor de Tecnologia e cerca de 2 dias a mais.
+- [x] **7.2.2 Criar o cliente da Cloud API** `api` · *feito*
+  - **Andamento:** plano commit 41738e2 — Está em `apps/api/src/mensageria/provedores/whatsapp-cloud/cliente.ts` (a pasta mudou em relação ao plano). Envia texto, imagem, vídeo, áudio, documento e modelo; marca como lida, lê os dados do número, inscreve o app, baixa mídia e lista os modelos; os erros da Meta viram transitório, ambíguo ou definitivo (131047 é a recusa de janela). Ficou de fora, e a sessão fechou assim: `subirMidia` (a mídia sai por link do bucket, não por upload), os tipos interativo e reação, e `marcarComoLida` existe mas nada o chama. Provado na Meta real em 13/11: ler o número, listar os modelos (fumaça `npm run whatsapp-oficial:fumaca`) e enviar um modelo, que chegou ao celular; em 17/11 o dono enviou e recebeu mensagens pelo número de produção. A mídia e os códigos de erro reais seguem provados só contra o servidor falso.
   - **Hoje:** Não existe.
   - **O que fazer:**
     1. Criar `apps/api/src/provedores/whatsapp-cloud/cliente.ts`, chamando a Graph API da Meta (`https://graph.facebook.com/<versão>`, com a versão fixa na variável `META_GRAPH_VERSAO`) com o token do Canal tirado do cofre.
@@ -1849,14 +1845,16 @@ Liga o WhatsApp oficial da Meta (Cloud API): um número da empresa conectado por
     3. Os erros da Graph (`error.code`) viram transitório ou permanente, como pede a interface da Sessão 3; o código 131047 (mensagem fora da janela) vira a mesma recusa de janela de `validarEnvio`.
   - **Pronto quando:** Testes em `apps/api/src/provedores/whatsapp-cloud/cliente.test.ts` contra `criarServidorFalso` cobrem cada função e um token vencido.
   - **Atenção:** Conferir os nomes dos campos na versão da Graph API escolhida antes de codificar.
-- [ ] **7.2.3 Conectar pelo token** `api`
+- [x] **7.2.3 Conectar pelo token** `api` · *feito*
+  - **Andamento:** plano commit 41738e2 — `POST /canais/:id/whatsapp-oficial/conectar` lê o número na Meta, confere que é o do Canal, inscreve o app na conta, guarda o token cifrado no cofre e deixa o Canal conectada. Conferido em produção em 13/11: o dono conectou o Canal do número de teste pelo formulário e, na Meta, a conta de teste está inscrita no app. Com o número trocado a rota recusa (provado em teste). Em 17/11 o dono conectou o Canal do número de produção (conta nova) pelo mesmo formulário.
   - **Hoje:** `POST /canais/:id/conectar` (Sessão 4) só trata o não oficial.
   - **O que fazer:**
     1. Para `whatsapp-cloud`, a rota recebe `phoneNumberId`, `wabaId` e `token`, guarda o token no cofre, chama `dadosDoNumero` e confere que `display_phone_number` é o `identificadorExterno` do Canal (por `conferirNumeroConectado`, da Sessão 4).
     2. Inscreve o app na conta (`POST /{waba-id}/subscribed_apps`) para os webhooks chegarem.
     3. Tudo certo: grava `conexao_confirmada` na hora (aqui não há QR code).
   - **Pronto quando:** Teste: com o servidor falso respondendo o número certo, o Canal fica `conectada`; com outro número, fica `desconectada` e a rota devolve “Este token é de outro número.”
-- [ ] **7.2.4 Receber pelo webhook da Meta** `api` `infra`
+- [x] **7.2.4 Receber pelo webhook da Meta** `api` `infra` · *feito*
+  - **Andamento:** plano commit 41738e2 — O webhook responde ao desafio da Meta, confere `X-Hub-Signature-256` contra `META_APP_SECRET` sobre o corpo cru, acha o Canal pelo número, põe cada item na fila e responde 200. Em produção desde 13/11. O primeiro webhook real foi recusado com 401: a chave da Meta no `api.env` da VM aparecia em duas linhas e valia a última, que não era a do app; o dono comentou a linha errada e, logo depois, o log mostrou o webhook guardado na fila e o processador de entrada trabalhando. O corpo do webhook também deixou de ir ao log (antes ia inteiro). O dono disse que a mensagem recebida está funcionando; eu vi o log, não a tela, e não conferi os tiques de entregue e lida vindos da Meta. Em 17/11, no número de produção, o dono disse que enviou e recebeu mensagens pela plataforma; dessa vez eu não vi o log nem a tela.
   - **Hoje:** Não existe.
   - **O que fazer:**
     1. Na rota de webhook da Sessão 3, o tratador `whatsapp-cloud`: no `GET`, responder `hub.challenge` quando `hub.verify_token` é igual à variável `META_WEBHOOK_VERIFY_TOKEN`; no `POST`, conferir a assinatura `X-Hub-Signature-256` contra `META_APP_SECRET` sobre o corpo cru, antes de qualquer leitura.
@@ -1866,14 +1864,16 @@ Liga o WhatsApp oficial da Meta (Cloud API): um número da empresa conectado por
     5. Responder 200 logo depois de pôr na fila de entrada: a Meta reenvia se demorar.
     6. No painel do app da Meta, em WhatsApp › Configuração, cadastrar o endereço do webhook e o token de verificação e assinar o campo `messages`.
   - **Pronto quando:** Teste: corpo com assinatura errada recebe 401 e não entra na fila; um evento `messages` de exemplo cria a Mensagem na Conversa do Contato.
-- [ ] **7.2.5 Formulário de conectar da Cloud API** `web`
+- [x] **7.2.5 Formulário de conectar da Cloud API** `web` · *feito*
+  - **Andamento:** plano commit 41738e2 — O botão Conectar da ficha do Canal oficial abre o formulário com os três campos (ID do número, ID da conta e token, este como campo de senha que nunca volta da api), cada um dizendo onde achar o dado no painel da Meta; os passos genéricos foram trocados pelos de 7.1. O dono o usou em produção em 13/11 e conectou.
   - **Hoje:** Só o quadro reservado “Token de acesso e número verificado” (`conectar-canal.ts:28-31`) e três passos genéricos (`:23-27`).
   - **O que fazer:**
     1. Na ficha do Canal `whatsapp-cloud` (`[canal]/page.tsx`), o botão “Conectar” abre um formulário com três campos (ID do número, ID da conta do WhatsApp Business e token), cada um dizendo onde achar o dado no painel da Meta.
     2. O token é campo de senha, nunca volta da api e não aparece em log.
     3. Trocar os passos de `ORIENTACAO_DO_PROVEDOR` para `whatsapp-cloud` pelos passos de 7.1.
   - **Pronto quando:** Você conecta o número oficial pela tela, sem ajuda, e o Canal fica “conectada”.
-- [ ] **7.2.6 Exigir modelo também antes da primeira mensagem do Contato** `domínio` `web`
+- [x] **7.2.6 Exigir modelo também antes da primeira mensagem do Contato** `domínio` `web` · *feito*
+  - **Andamento:** plano commit 41738e2 — O WhatsApp oficial exige Mensagem de modelo fora das 24 h e também antes da primeira mensagem do Contato (`validarEnvio`, no domínio); a Caixa de Entrada diz isso, e a Conversa nova pela plataforma (Nova Tarefa) segue a mesma regra. Em produção, o envio do hello_world pela interface passou por essa regra e chegou ao celular.
   - **Hoje:** `validarEnvio` libera texto livre quando o Contato nunca mandou nada (`ultimaRecebidaEm === null`, `packages/dominio/src/crm/mensagens.ts:166`). No WhatsApp oficial é o contrário: a empresa só abre conversa com modelo aprovado.
   - **O que fazer:**
     1. Em `validarEnvio`, com `requiresTemplateOutsideWindow` verdadeiro e nenhuma recebida, exigir modelo como se estivesse fora da janela.
@@ -1886,28 +1886,26 @@ Liga o WhatsApp oficial da Meta (Cloud API): um número da empresa conectado por
 
 **Pronto quando:** Fora da janela, a resposta escolhe um modelo aprovado, preenche as variáveis e chega ao celular.
 
-- [ ] **7.3.1 Criar as tabelas de modelos e de respostas de Flow** `banco` `domínio`
+- [x] **7.3.1 Criar a tabela de modelos** `banco` `domínio` · *feito*
+  - **Andamento:** plano commit 41738e2 — A migração `016` (`plataforma.modelos_de_mensagem`, aplicada em produção em 13/11) e `@n1/dominio/crm/modelos`, com as variáveis, o que o CRM sabe preencher e `validarVariaveis`.
   - **Hoje:** A 008 deixou modelos de fora de propósito (comentário da linha 17). O tipo `MessageTemplate` (`types/crm.ts:368`) só tem `providerId`, `name`, `language`, `body`, `category` e `approval`: não tem onde guardar variáveis, cabeçalho e botões.
   - **O que fazer:**
     1. Migração nova com `plataforma.modelos_de_mensagem`: `workspace_id`, `id`, `canal_id` (FK composta para `plataforma.canais`), `id_no_provedor`, `nome`, `idioma`, `categoria` (`utilidade`, `marketing`, `autenticacao`), `estado` (`aprovado`, `pendente`, `rejeitado`, `pausado`, `desativado`), `motivo_rejeicao`, `componentes` (jsonb, como a Meta devolve), `quantidade_de_variaveis` e `sincronizado_em`; único por (`workspace_id`, `canal_id`, `nome`, `idioma`).
-    2. Na mesma migração, `plataforma.respostas_de_flow` (ver 7.4): `workspace_id`, `id`, `mensagem_id` (FK composta para `plataforma.mensagens`), `flow_id`, `versao_id`, `valores` (jsonb), `nao_conforme` e `recebida_em`.
-    3. No domínio, `packages/dominio/src/crm/modelos.ts` com o tipo `ModeloDeMensagem` em camelCase e `validarVariaveis(modelo, valores)`: quantidade certa e nenhuma vazia.
+    2. No domínio, `packages/dominio/src/crm/modelos.ts` com o tipo `ModeloDeMensagem` em camelCase e `validarVariaveis(modelo, valores)`: quantidade certa e nenhuma vazia.
   - **Pronto quando:** `npm run migrar -w @n1/api -- --seco` lista a migração nova, ela está aplicada em homologação, e há testes de `validarVariaveis`.
-- [ ] **7.3.2 Sincronizar os modelos com a Meta** `api`
+- [x] **7.3.2 Sincronizar os modelos com a Meta** `api` · *feito*
+  - **Andamento:** plano commit 41738e2 — A lista é lida da Meta (paginada, só no mesmo endereço) ao conectar, pelo botão Sincronizar da ficha e quando chega o aviso de mudança de modelo; a rodada de hora em hora existe, mas fica desligada até alguém ligar `WHATSAPP_MODELOS_SINCRONIZACAO_ATIVA`. Rota `GET /canais/:id/modelos`. Provado na Meta real: a leitura (cinco modelos na conta de teste, três enviáveis agora). Não provado: a mudança de estado por aviso da Meta e a paginação (a conta de teste cabe numa página).
   - **Hoje:** Não existe.
   - **O que fazer:**
     1. `sincronizarModelos(canal)` em `apps/api/src/provedores/whatsapp-cloud/modelos.ts`: lê `GET /{waba-id}/message_templates` (paginado) e grava na tabela nova, apagando os que sumiram na Meta.
     2. Roda ao conectar o Canal, de hora em hora e quando chega o webhook `message_template_status_update` (assinar esse campo no painel do app).
     3. Rota `GET /canais/:id/modelos` em `apps/api/src/rotas/crm/canais.ts`, para a tela.
   - **Pronto quando:** Um modelo criado no Gerenciador do WhatsApp aparece em `GET /canais/:id/modelos`, e quando a Meta o aprova o estado muda sozinho.
-- [ ] **7.3.3 Criar modelos pela plataforma?** `decisão` `web` `api` · *muda o produto*
-  - **Como é hoje:** A ficha do Canal só lista modelos (`[canal]/page.tsx:210-252`), sem criar.
-  - **Você decide:**
-    - (A) Só sincronizar: os modelos são criados no Gerenciador do WhatsApp, na Meta
-    - (B) Criar e mandar para aprovação pela plataforma (`POST /{waba-id}/message_templates`)
-  - **O que muda depois:** (A) cabe nesta sessão. (B) soma cerca de 1,5 dia: formulário com corpo, variáveis com exemplo, cabeçalho e botões, e as regras de categoria da Meta.
-  - **Recomendo:** (A) agora; (B) se os modelos mudarem toda semana.
-- [ ] **7.3.4 Usar os modelos aprovados no envio** `domínio` `api`
+- [x] **7.3.3 Criar modelos pela plataforma?** `decisão` `web` `api` · *decidida*
+  - **Decidido:** Escolha A: só sincronizar. Os modelos são criados e aprovados no Gerenciador do WhatsApp, na Meta. Criar pela plataforma (B) fica para se os modelos mudarem toda semana. Decidido pelo time em 13/11.
+  - **O que muda no plano:** (A) cabe nesta sessão. (B) soma cerca de 1,5 dia: formulário com corpo, variáveis com exemplo, cabeçalho e botões, e as regras de categoria da Meta.
+- [x] **7.3.4 Usar os modelos aprovados no envio** `domínio` `api` · *feito*
+  - **Andamento:** plano commit 41738e2 — A Mensagem e a rota ganharam `modeloId` e `variaveis`; o serviço lê os modelos aprovados do Canal, valida as variáveis, grava o texto final em `conteudo` e o `modelo_usado` (id, nome, idioma e variáveis), e o provedor envia como mensagem de modelo. Sem modelo, a recusa é 409 `JANELA_EXPIRADA` com a lista dos que dá para escolher. Só saem corpo com variáveis de texto, cabeçalho de texto sem variável, rodapé e botões fixos: modelos com cabeçalho de imagem, carrossel ou variável em botão aparecem na lista com o motivo e não são enviados. Provado na Meta real: o hello_world (sem variável) chegou ao celular em 13/11; um modelo com variáveis ainda não foi enviado de verdade. Os modelos da conta nova (um de marketing e um de utilidade com {{1}} = nome) estavam em análise na Meta em 16/11.
   - **Hoje:** `modelosAprovados: []` está fixo em `apps/api/src/servicos/crm/mensagens.ts:119`. `NovaMensagem` (`packages/dominio/src/crm/mensagens.ts:103`) e o esquema `NOVA_MENSAGEM` (`apps/api/src/rotas/crm/mensagens.ts:40`) não têm campo de modelo.
   - **O que fazer:**
     1. Acrescentar `modeloId` e `variaveis` a `NovaMensagem` e ao esquema da rota.
@@ -1916,7 +1914,8 @@ Liga o WhatsApp oficial da Meta (Cloud API): um número da empresa conectado por
     4. O provedor envia como mensagem `template`, com os `components` e os parâmetros.
     5. Na recusa `JANELA_EXPIRADA`, devolver a lista de modelos aprovados do Canal.
   - **Pronto quando:** Teste em `apps/api/src/servicos/crm/mensagens.test.ts`: fora da janela, sem modelo, dá 409 `JANELA_EXPIRADA` com a lista de modelos; com modelo aprovado e variáveis, grava `modelo_usado` e sai pelo provedor.
-- [ ] **7.3.5 Escolher o modelo na Caixa de Entrada** `web`
+- [x] **7.3.5 Escolher o modelo na Caixa de Entrada** `web` · *feito*
+  - **Andamento:** plano commit 41738e2 — O seletor de modelo (no compositor da Caixa de Entrada, em Nova Tarefa e em Trocar o Canal da Tarefa) lê `GET /canais/:id/modelos`, mostra a prévia do texto e um campo por variável, com `{{1}}` já preenchida com o primeiro nome do Contato; a ficha do Canal lista os modelos com o motivo de não saírem. O dono escolheu o hello_world e o enviou pela interface em 13/11, e ele chegou ao celular; o preenchimento de variáveis na tela só foi provado em teste.
   - **Hoje:** O seletor existe (`conversation-thread.tsx:345-357` e `:1298`), mas lê `channel.messageTemplates`, que chega vazio para o Canal da tabela nova, e não pede variáveis. (O plano anterior dizia que não existia.)
   - **O que fazer:**
     1. Ler os modelos aprovados de `GET /canais/:id/modelos` (função nova em `apps/web/src/dados/crm/canais.ts`).
@@ -1924,59 +1923,7 @@ Liga o WhatsApp oficial da Meta (Cloud API): um número da empresa conectado por
     3. Na ficha do Canal (`[canal]/page.tsx:210-252`), a lista de modelos lê a mesma rota e mostra o motivo de rejeição.
   - **Pronto quando:** Numa Conversa com a janela fechada, escolher um modelo, preencher a variável e enviar faz a mensagem chegar ao celular.
 
-### 7.4 Flows
-
-**Objetivo:** Mandar formulários interativos pelo WhatsApp e guardar as respostas. Hoje o construtor monta o Flow, mas publicar, enviar e receber são de mentira, e o documento gerado não está no formato que a Meta aceita.
-
-**Pronto quando:** Um Flow publicado pela tela aparece na Meta, é enviado a um Contato, e a resposta fica guardada e pode ser copiada para o Contato por uma Automação.
-
-- [ ] **7.4.1 Quais Flows entram nesta sessão?** `decisão` · *muda o produto*
-  - **Como é hoje:** O domínio tem Flows simples (telas que navegam e concluem) e Flows com ponto de troca de dados (`definirPontoDeTrocaDeDados`, `flows.ts:224`), em que o WhatsApp chama um servidor nosso a cada tela, com o corpo cifrado.
-  - **Você decide:**
-    - (A) Só Flows sem ponto de troca de dados
-    - (B) Os dois
-  - **O que muda depois:** (A) cabe nesta sessão. (B) soma cerca de 2 dias: o endereço público, a cifra com a chave enviada à Meta e responder em poucos segundos a cada tela.
-  - **Recomendo:** (A), escondendo o ponto de troca de dados na tela até haver um caso de uso.
-- [ ] **7.4.2 Gerar o JSON do Flow no formato da Meta** `domínio`
-  - **Hoje:** `definicaoPublicavel` (`packages/dominio/src/operations/ferramentas/flows-validacao.ts:249`) gera um documento com os nomes do domínio em português (`type: c.tipo`, como `campoDeTexto`, `formulario` e `rodape`, e propriedades como `rotulo`), que a Meta não aceita.
-  - **O que fazer:**
-    1. Nova função `flowJsonDaMeta(flow, versao)` em `packages/dominio/src/operations/ferramentas/flow-json-meta.ts`, que traduz cada `TipoDeComponente` (`types/ferramentas.ts:240`) para o componente da Meta (ex.: `titulo` → `TextHeading`, `campoDeTexto` → `TextInput`, `areaDeTexto` → `TextArea`, `escolhaUnica` → `RadioButtonsGroup`, `multiplaEscolha` → `CheckboxGroup`, `menuSuspenso` → `Dropdown`, `seletorDeData` → `DatePicker`, `consentimento` → `OptIn`, `formulario` → `Form`, `condicional` → `If`, `rodape` → `Footer`) e cada `TipoDeAcao` para a ação da Meta (`navegar` → `navigate`, `concluir` → `complete`, `trocaDeDados` → `data_exchange`, `abrirEndereco` → `open_url`, `atualizarDados` → `update_data`).
-    2. `version` sai de `versaoDeEsquemaDoFlow` (`capacidades.ts:44`, hoje 6.3).
-    3. Componente sem equivalente na versão do esquema: a validação de `flows-validacao.ts` recusa antes de publicar.
-  - **Pronto quando:** Teste com o Flow do seed (`seed-ferramentas.ts`): o JSON gerado, colado no construtor de Flows do Gerenciador do WhatsApp, não mostra erro.
-  - **Atenção:** Conferir a tabela de componentes e ações na documentação da versão de esquema escolhida.
-- [ ] **7.4.3 Publicar o Flow na Meta** `api` `web` `domínio`
-  - **Hoje:** `publicarVersao` (`flows.ts:624`) inventa o id com `gerarIdentificadorDeFlow` e marca `publicado` sem falar com ninguém.
-  - **O que fazer:**
-    1. Rota `POST /ferramentas/flows/:id/publicar` em `apps/api/src/rotas/ferramentas.ts`, no padrão de 6.4: conferir no domínio; criar o Flow na Meta na primeira vez (`POST /{waba-id}/flows`, com nome e categoria); subir o JSON (`POST /{flow-id}/assets`, arquivo `flow.json`); ler `validation_errors` e, se houver, devolver as mensagens; publicar (`POST /{flow-id}/publish`); gravar com `publicarVersao` recebendo o id real em `doProvedor`.
-    2. `despublicarFlow` (`flows.ts:662`) chama `POST /{flow-id}/deprecate`; `sincronizarFlow` (`flows.ts:796`) lê `GET /{flow-id}` para o estado na Meta.
-    3. Tirar `publicarVersao`, `despublicarFlow`, `sincronizarFlow` e `enviarFlow` de `OPERACOES` em `registro.ts`; o botão de publicar de `flow-builder.tsx` e de `flow-popup.tsx` chama a rota.
-  - **Pronto quando:** Publicar pela tela faz o Flow aparecer como publicado no Gerenciador do WhatsApp; um erro de validação da Meta aparece na tela com o texto dela.
-- [ ] **7.4.4 Enviar o Flow e receber a resposta** `api` `domínio`
-  - **Hoje:** `enviarFlow` (`flows.ts:845`) grava no modelo antigo pelo `sendMessage` e confere a capacidade por `CHANNEL_CAPABILITIES[canal.channelType]` (`:859`), que deixa o não oficial enviar Flow. `receberRespostaDeFlow` (`:908`) inventa o id da resposta com `gerarIdentificadorDeResposta`.
-  - **O que fazer:**
-    1. Trocar a conferência de `:859` por `capacidadesDeAtivosDoCanal` (6.2).
-    2. Enviar pela porta de saída uma mensagem `interactive` do tipo `flow`, com `flow_id`, `flow_cta` (o rótulo do botão), `flow_action: navigate`, a tela inicial e `flow_token` igual ao id da Mensagem enviada. Fora da janela, só por modelo com botão de Flow.
-    3. No webhook da Cloud API, a mensagem `interactive` do tipo `nfm_reply` traz `response_json`: achar a Mensagem de origem pelo `flow_token` e chamar `receberRespostaDeFlow` com os valores e o id da mensagem como `identificadorDeRespostaDoProvedor`.
-    4. Gravar a resposta estruturada em `plataforma.respostas_de_flow` (7.3), porque `plataforma.mensagens` não tem campo para ela.
-  - **Pronto quando:** Enviar um Flow a um Contato real, preencher no celular e concluir grava uma linha em `plataforma.respostas_de_flow`, e a resposta aparece no fio da Conversa.
-- [ ] **7.4.5 Copiar as respostas para o Contato por Automação** `domínio` `web`
-  - **Hoje:** Pela regra RN-FLW-14, o Contato não muda sozinho com a resposta: `receberRespostaDeFlow` emite o evento `respostaDeFlowRecebida` (`flows.ts:943`) para as Automações. Mas a ação `contato.definirCampo` (`runAction` em `packages/dominio/src/operations/ferramentas/automacoes.ts`) só grava um valor fixo (`spec.value`), não o que o Contato respondeu. (O plano anterior mandava gravar no Contato direto, o que fere a regra.)
-  - **O que fazer:**
-    1. Escrever no catálogo de Automações em código (Sessão 18) a Automação “Copiar resposta de Flow para o Contato”: gatilho no evento `respostaDeFlowRecebida` (`flows.ts:943`), parâmetros “qual Flow” e “de qual campo do Flow para qual Campo do Contato”.
-    2. Ela grava no Contato da tabela nova (`plataforma.contatos`), conforme a unificação da Sessão 3.
-    3. Não mexer no editor visual de Automações: ele sai na Sessão 18, como decidido em 19/10.
-  - **Pronto quando:** Teste: uma Automação “Resposta de Flow recebida → definir o Campo E-mail com o campo `email` do Flow” grava no Contato o e-mail que veio na resposta.
-  - **Atenção:** Se a Sessão 7 vier antes da 16, esta Automação nasce como exemplo do catálogo e a 18.2 reaproveita o formato.
-- [ ] **7.4.6 Levar as Mensagens de Flow para as tabelas novas e apagar o resto do modelo antigo** `domínio` `api` `banco`
-  - **Hoje:** Envios e respostas de Flow são contados pelas Mensagens antigas: `enviosDoFlow` e `respostasDoFlow` (`packages/dominio/src/derive-ferramentas.ts:275` e `:287`) e `receiveMessage` (`packages/dominio/src/operations/ferramentas/flows.ts:922`).
-  - **O que fazer:**
-    1. Trocar as três funções para ler e gravar nas tabelas de respostas de Flow criadas na 7.3.
-    2. Copiar o que existir em `plataforma.registros` e apagar as linhas antigas.
-    3. Com isso, o tipo `Conversation` antigo deixa de ter uso: apagar o tipo, as operações e a coleção `conversations` de `colecoes.ts` e `state.ts`.
-  - **Pronto quando:** `npm run check` passa sem o tipo `Conversation` antigo, e um Flow enviado e respondido aparece contado na tela do Flow.
-
-**A sessão fica pronta quando:** Um número oficial conectado pela tela conversa pela Caixa de Entrada; fora da janela de 24 h, a resposta só sai escolhendo um modelo aprovado, e chega; um Flow publicado pela tela aparece na conta da Meta, é enviado a um Contato e a resposta dele fica guardada na Conversa.
+**A sessão fica pronta quando:** Um número oficial conectado pela tela conversa pela Caixa de Entrada; fora da janela de 24 h, a resposta só sai escolhendo um modelo aprovado, e chega.
 
 ---
 

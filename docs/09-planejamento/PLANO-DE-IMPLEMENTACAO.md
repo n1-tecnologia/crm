@@ -34,7 +34,7 @@ Um plano leva em média de 3 a 25 minutos de execução. O que ocupa o calendár
 | 4 | WhatsApp não oficial (Evolution API) | 1 | qua 04/11 | qua 04/11 | 3 |
 | 5 | Lista conversacional | 2 | qui 05/11 | sex 06/11 | 4 |
 | 6 | Ferramentas: Grupos e Comunidades | 3 | seg 09/11 | qua 11/11 | 4 |
-| 7 | WhatsApp oficial (Cloud API) e Flows | 4 | qui 12/11 | ter 17/11 | 3, 6, aprovação Meta |
+| 7 | WhatsApp oficial (Cloud API) | 4 | qui 12/11 | ter 17/11 | 3, aprovação Meta |
 | 8 | Instagram | 3 | qua 18/11 | seg 23/11 | 3, aprovação Meta |
 | 9 | E-mail | 3 | ter 24/11 | qui 26/11 | 3 |
 | 10 | Canal Reunião: investigação | 2 | sex 27/11 | seg 30/11 | 5 |
@@ -51,7 +51,7 @@ Um plano leva em média de 3 a 25 minutos de execução. O que ocupa o calendár
 | 19 | Saída do protótipo: LGPD, rotinas e dados reais | 3 | qua 13/01 | sex 15/01 | 1, 3, 18 |
 | 20 | Painel | 4 | seg 18/01 | qui 21/01 | 3, 19 |
 
-**Total: 65 dias úteis, com fim em qui 21/01/2027.** Com os ajustes que a conferência no código sugere, 102 dias úteis e fim em seg 15/03/2027 (ver [TAREFAS-POR-SESSAO.md](TAREFAS-POR-SESSAO.md#prazos-plano-e-com-ajustes)). Esta tabela é gerada por `gerar.mjs`.
+**Total: 65 dias úteis, com fim em qui 21/01/2027.** Com os ajustes que a conferência no código sugere, 100 dias úteis e fim em qui 11/03/2027 (ver [TAREFAS-POR-SESSAO.md](TAREFAS-POR-SESSAO.md#prazos-plano-e-com-ajustes)). Esta tabela é gerada por `gerar.mjs`.
 <!-- TABELA:FIM -->
 
 ---
@@ -137,15 +137,14 @@ Estava bloqueada pela Evolution. O modelo (`modeloDeTarefa`, `canaisDeAtendiment
 
 **Pronto quando:** ao escolher um número, aparecem os Grupos e Comunidades reais dele, e uma mudança feita aqui aparece no WhatsApp.
 
-> **Atenção, Flows:** WhatsApp Flows é um recurso da API oficial da Meta. A Evolution, que é a API não oficial, não cria nem envia Flows. Por isso os Flows foram para a Sessão 7 (ver [Decisões](#decisões-que-preciso-de-você)).
+> **Atenção, Flows:** WhatsApp Flows é um recurso da API oficial da Meta. A Evolution, que é a API não oficial, não cria nem envia Flows. Por isso os Flows ficam fora do plano por enquanto (decidido em 16/11, ver [Decisões](#decisões-que-preciso-de-você)).
 
-## Sessão 7 · WhatsApp oficial (Cloud API) e Flows
+## Sessão 7 · WhatsApp oficial (Cloud API)
 
 - Conectar um número pela Cloud API da Meta, receber e enviar.
 - **Janela de 24 h:** fora dela, só se envia modelo de mensagem aprovado pela Meta. Isso exige tela para gerir os modelos e acompanhar a aprovação.
-- **Flows:** criar e enviar, e gravar as respostas no Contato.
 
-**Pronto quando:** um número oficial conversa pela Caixa de Entrada, um modelo aprovado sai fora da janela e um Flow enviado grava a resposta.
+**Pronto quando:** um número oficial conversa pela Caixa de Entrada e um modelo aprovado sai fora da janela.
 
 ## Sessão 8 · Instagram
 
@@ -313,7 +312,7 @@ Começar **na primeira semana**, porque os prazos correm por fora e podem atrasa
 
 1. **Fases 02 e 04 do Financeiro:** terminar, mover para o v2.0 ou encerrar? (Sessão 0)
 2. **Superadmin:** fica acima dos Espaços de Trabalho? A plataforma vai atender mais de uma empresa? (Sessão 12)
-3. **Flows do WhatsApp:** concorda em levá-los para a API oficial (Sessão 7), já que a Evolution não os suporta? Ou eles ficam fora por enquanto?
+3. **Flows do WhatsApp:** decidido em 16/11, ficam fora por enquanto. Não entram na Sessão 7 e voltam ao plano só se o dono pedir.
 4. **E-mail:** IMAP/SMTP genérico, que serve para qualquer caixa, ou integração direta com Gmail e Outlook? (Sessão 9)
 5. **Ordem:** a IA vem depois dos Canais porque os Agentes agem sobre as Conversas. Se a IA for mais urgente, as Sessões 13 a 18 podem vir logo depois da Sessão 4, e os demais Canais andam três semanas.
 

@@ -622,26 +622,24 @@ export const SESSOES = [
   },
   {
     "id": "7",
-    "n": "WhatsApp oficial (Cloud API) e Flows",
+    "n": "WhatsApp oficial (Cloud API)",
     "dias": [
       4,
-      6
+      4
     ],
     "dep": [
-      "3",
-      "6"
+      "3"
     ],
     "meta": true,
-    "desc": "Liga o WhatsApp oficial da Meta (Cloud API): um número da empresa conectado por token, com a janela de 24 h, os modelos de mensagem aprovados pela Meta para falar fora dela e os Flows (formulários interativos dentro do WhatsApp), que só existem na API oficial. Só começa com a empresa verificada na Meta e o número dedicado registrado (7.1).",
+    "desc": "Liga o WhatsApp oficial da Meta (Cloud API): um número da empresa conectado por token, com a janela de 24 h e os modelos de mensagem aprovados pela Meta para falar fora dela. Só começa com a empresa verificada na Meta e o número dedicado registrado (7.1).",
     "partida": [
       "O Canal `whatsapp-cloud` já nasce pela página de conectar; o quadro do token é só texto (`apps/web/src/features/crm/conectar-canal.ts:21-32`).",
       "A janela de 24 h já é aplicada no servidor: `validarEnvio` (`packages/dominio/src/crm/mensagens.ts:162`) recusa fora dela, e o serviço passa `modelosAprovados: []` fixo (`apps/api/src/servicos/crm/mensagens.ts:119`). Fora da janela, nunca sai nada.",
       "O modelo de mensagem só existe como tipo (`MessageTemplate`, `packages/dominio/src/types/crm.ts:368`) e no seed; o Canal da tabela nova chega à tela com `messageTemplates: []` (`apps/api/src/persistencia/canais-projetados.ts:55`).",
       "A Caixa de Entrada já troca o texto livre por um seletor de modelo quando a janela fecha (`apps/web/src/features/crm/conversation-thread.tsx:345-357` e `:1298`), lendo `channel.messageTemplates` do modelo antigo.",
-      "Domínio de Flows pronto (`packages/dominio/src/operations/ferramentas/flows.ts`, 27 operações, com versões, telas e componentes) e construtor visual (`apps/web/src/features/ferramentas/flow-builder.tsx`). Publicar, enviar e receber resposta são simulados (`publicarVersao` `:624`, `enviarFlow` `:845`, `receberRespostaDeFlow` `:908`).",
       "Da Sessão 3: interface de provedor, webhook com fila de entrada, porta de saída, mídia e CRM unificado. Da Sessão 4: `POST /canais/:id/conectar` e `proximoStatusDeEntrega`."
     ],
-    "pronto": "Um número oficial conectado pela tela conversa pela Caixa de Entrada; fora da janela de 24 h, a resposta só sai escolhendo um modelo aprovado, e chega; um Flow publicado pela tela aparece na conta da Meta, é enviado a um Contato e a resposta dele fica guardada na Conversa.",
+    "pronto": "Um número oficial conectado pela tela conversa pela Caixa de Entrada; fora da janela de 24 h, a resposta só sai escolhendo um modelo aprovado, e chega.",
     "tarefas": [
       {
         "id": "7.1",
@@ -798,7 +796,7 @@ export const SESSOES = [
         "pronto": "Fora da janela, a resposta escolhe um modelo aprovado, preenche as variáveis e chega ao celular.",
         "subs": [
           {
-            "n": "Criar as tabelas de modelos e de respostas de Flow",
+            "n": "Criar a tabela de modelos",
             "cam": [
               "banco",
               "dom"
@@ -806,7 +804,6 @@ export const SESSOES = [
             "hoje": "A 008 deixou modelos de fora de propósito (comentário da linha 17). O tipo `MessageTemplate` (`types/crm.ts:368`) só tem `providerId`, `name`, `language`, `body`, `category` e `approval`: não tem onde guardar variáveis, cabeçalho e botões.",
             "fazer": [
               "Migração nova com `plataforma.modelos_de_mensagem`: `workspace_id`, `id`, `canal_id` (FK composta para `plataforma.canais`), `id_no_provedor`, `nome`, `idioma`, `categoria` (`utilidade`, `marketing`, `autenticacao`), `estado` (`aprovado`, `pendente`, `rejeitado`, `pausado`, `desativado`), `motivo_rejeicao`, `componentes` (jsonb, como a Meta devolve), `quantidade_de_variaveis` e `sincronizado_em`; único por (`workspace_id`, `canal_id`, `nome`, `idioma`).",
-              "Na mesma migração, `plataforma.respostas_de_flow` (ver 7.4): `workspace_id`, `id`, `mensagem_id` (FK composta para `plataforma.mensagens`), `flow_id`, `versao_id`, `valores` (jsonb), `nao_conforme` e `recebida_em`.",
               "No domínio, `packages/dominio/src/crm/modelos.ts` com o tipo `ModeloDeMensagem` em camelCase e `validarVariaveis(modelo, valores)`: quantidade certa e nenhuma vazia."
             ],
             "pronto": "`npm run migrar -w @n1/api -- --seco` lista a migração nova, ela está aplicada em homologação, e há testes de `validarVariaveis`."
@@ -871,106 +868,8 @@ export const SESSOES = [
             "pronto": "Numa Conversa com a janela fechada, escolher um modelo, preencher a variável e enviar faz a mensagem chegar ao celular."
           }
         ]
-      },
-      {
-        "id": "7.4",
-        "n": "Flows",
-        "objetivo": "Mandar formulários interativos pelo WhatsApp e guardar as respostas. Hoje o construtor monta o Flow, mas publicar, enviar e receber são de mentira, e o documento gerado não está no formato que a Meta aceita.",
-        "pronto": "Um Flow publicado pela tela aparece na Meta, é enviado a um Contato, e a resposta fica guardada e pode ser copiada para o Contato por uma Automação.",
-        "subs": [
-          {
-            "n": "Quais Flows entram nesta sessão?",
-            "cam": [
-              "dec"
-            ],
-            "decisao": true,
-            "hoje": "O domínio tem Flows simples (telas que navegam e concluem) e Flows com ponto de troca de dados (`definirPontoDeTrocaDeDados`, `flows.ts:224`), em que o WhatsApp chama um servidor nosso a cada tela, com o corpo cifrado.",
-            "opcoes": [
-              "(A) Só Flows sem ponto de troca de dados",
-              "(B) Os dois"
-            ],
-            "muda": "(A) cabe nesta sessão. (B) soma cerca de 2 dias: o endereço público, a cifra com a chave enviada à Meta e responder em poucos segundos a cada tela.",
-            "recomendo": "(A), escondendo o ponto de troca de dados na tela até haver um caso de uso.",
-            "peso": "produto"
-          },
-          {
-            "n": "Gerar o JSON do Flow no formato da Meta",
-            "cam": [
-              "dom"
-            ],
-            "hoje": "`definicaoPublicavel` (`packages/dominio/src/operations/ferramentas/flows-validacao.ts:249`) gera um documento com os nomes do domínio em português (`type: c.tipo`, como `campoDeTexto`, `formulario` e `rodape`, e propriedades como `rotulo`), que a Meta não aceita.",
-            "fazer": [
-              "Nova função `flowJsonDaMeta(flow, versao)` em `packages/dominio/src/operations/ferramentas/flow-json-meta.ts`, que traduz cada `TipoDeComponente` (`types/ferramentas.ts:240`) para o componente da Meta (ex.: `titulo` → `TextHeading`, `campoDeTexto` → `TextInput`, `areaDeTexto` → `TextArea`, `escolhaUnica` → `RadioButtonsGroup`, `multiplaEscolha` → `CheckboxGroup`, `menuSuspenso` → `Dropdown`, `seletorDeData` → `DatePicker`, `consentimento` → `OptIn`, `formulario` → `Form`, `condicional` → `If`, `rodape` → `Footer`) e cada `TipoDeAcao` para a ação da Meta (`navegar` → `navigate`, `concluir` → `complete`, `trocaDeDados` → `data_exchange`, `abrirEndereco` → `open_url`, `atualizarDados` → `update_data`).",
-              "`version` sai de `versaoDeEsquemaDoFlow` (`capacidades.ts:44`, hoje 6.3).",
-              "Componente sem equivalente na versão do esquema: a validação de `flows-validacao.ts` recusa antes de publicar."
-            ],
-            "pronto": "Teste com o Flow do seed (`seed-ferramentas.ts`): o JSON gerado, colado no construtor de Flows do Gerenciador do WhatsApp, não mostra erro.",
-            "nota": "Conferir a tabela de componentes e ações na documentação da versão de esquema escolhida."
-          },
-          {
-            "n": "Publicar o Flow na Meta",
-            "cam": [
-              "api",
-              "web",
-              "dom"
-            ],
-            "hoje": "`publicarVersao` (`flows.ts:624`) inventa o id com `gerarIdentificadorDeFlow` e marca `publicado` sem falar com ninguém.",
-            "fazer": [
-              "Rota `POST /ferramentas/flows/:id/publicar` em `apps/api/src/rotas/ferramentas.ts`, no padrão de 6.4: conferir no domínio; criar o Flow na Meta na primeira vez (`POST /{waba-id}/flows`, com nome e categoria); subir o JSON (`POST /{flow-id}/assets`, arquivo `flow.json`); ler `validation_errors` e, se houver, devolver as mensagens; publicar (`POST /{flow-id}/publish`); gravar com `publicarVersao` recebendo o id real em `doProvedor`.",
-              "`despublicarFlow` (`flows.ts:662`) chama `POST /{flow-id}/deprecate`; `sincronizarFlow` (`flows.ts:796`) lê `GET /{flow-id}` para o estado na Meta.",
-              "Tirar `publicarVersao`, `despublicarFlow`, `sincronizarFlow` e `enviarFlow` de `OPERACOES` em `registro.ts`; o botão de publicar de `flow-builder.tsx` e de `flow-popup.tsx` chama a rota."
-            ],
-            "pronto": "Publicar pela tela faz o Flow aparecer como publicado no Gerenciador do WhatsApp; um erro de validação da Meta aparece na tela com o texto dela."
-          },
-          {
-            "n": "Enviar o Flow e receber a resposta",
-            "cam": [
-              "api",
-              "dom"
-            ],
-            "hoje": "`enviarFlow` (`flows.ts:845`) grava no modelo antigo pelo `sendMessage` e confere a capacidade por `CHANNEL_CAPABILITIES[canal.channelType]` (`:859`), que deixa o não oficial enviar Flow. `receberRespostaDeFlow` (`:908`) inventa o id da resposta com `gerarIdentificadorDeResposta`.",
-            "fazer": [
-              "Trocar a conferência de `:859` por `capacidadesDeAtivosDoCanal` (6.2).",
-              "Enviar pela porta de saída uma mensagem `interactive` do tipo `flow`, com `flow_id`, `flow_cta` (o rótulo do botão), `flow_action: navigate`, a tela inicial e `flow_token` igual ao id da Mensagem enviada. Fora da janela, só por modelo com botão de Flow.",
-              "No webhook da Cloud API, a mensagem `interactive` do tipo `nfm_reply` traz `response_json`: achar a Mensagem de origem pelo `flow_token` e chamar `receberRespostaDeFlow` com os valores e o id da mensagem como `identificadorDeRespostaDoProvedor`.",
-              "Gravar a resposta estruturada em `plataforma.respostas_de_flow` (7.3), porque `plataforma.mensagens` não tem campo para ela."
-            ],
-            "pronto": "Enviar um Flow a um Contato real, preencher no celular e concluir grava uma linha em `plataforma.respostas_de_flow`, e a resposta aparece no fio da Conversa."
-          },
-          {
-            "n": "Copiar as respostas para o Contato por Automação",
-            "cam": [
-              "dom",
-              "web"
-            ],
-            "hoje": "Pela regra RN-FLW-14, o Contato não muda sozinho com a resposta: `receberRespostaDeFlow` emite o evento `respostaDeFlowRecebida` (`flows.ts:943`) para as Automações. Mas a ação `contato.definirCampo` (`runAction` em `packages/dominio/src/operations/ferramentas/automacoes.ts`) só grava um valor fixo (`spec.value`), não o que o Contato respondeu. (O plano anterior mandava gravar no Contato direto, o que fere a regra.)",
-            "fazer": [
-              "Escrever no catálogo de Automações em código (Sessão 18) a Automação “Copiar resposta de Flow para o Contato”: gatilho no evento `respostaDeFlowRecebida` (`flows.ts:943`), parâmetros “qual Flow” e “de qual campo do Flow para qual Campo do Contato”.",
-              "Ela grava no Contato da tabela nova (`plataforma.contatos`), conforme a unificação da Sessão 3.",
-              "Não mexer no editor visual de Automações: ele sai na Sessão 18, como decidido em 19/10."
-            ],
-            "pronto": "Teste: uma Automação “Resposta de Flow recebida → definir o Campo E-mail com o campo `email` do Flow” grava no Contato o e-mail que veio na resposta.",
-            "nota": "Se a Sessão 7 vier antes da 16, esta Automação nasce como exemplo do catálogo e a 18.2 reaproveita o formato."
-          },
-          {
-            "n": "Levar as Mensagens de Flow para as tabelas novas e apagar o resto do modelo antigo",
-            "cam": [
-              "dom",
-              "api",
-              "banco"
-            ],
-            "hoje": "Envios e respostas de Flow são contados pelas Mensagens antigas: `enviosDoFlow` e `respostasDoFlow` (`packages/dominio/src/derive-ferramentas.ts:275` e `:287`) e `receiveMessage` (`packages/dominio/src/operations/ferramentas/flows.ts:922`).",
-            "fazer": [
-              "Trocar as três funções para ler e gravar nas tabelas de respostas de Flow criadas na 7.3.",
-              "Copiar o que existir em `plataforma.registros` e apagar as linhas antigas.",
-              "Com isso, o tipo `Conversation` antigo deixa de ter uso: apagar o tipo, as operações e a coleção `conversations` de `colecoes.ts` e `state.ts`."
-            ],
-            "pronto": "`npm run check` passa sem o tipo `Conversation` antigo, e um Flow enviado e respondido aparece contado na tela do Flow."
-          }
-        ]
       }
-    ],
-    "ajuste": "+2 dias: Cloud API, modelos de mensagem e Flows, incluindo traduzir o Flow para o formato da Meta. Pode virar duas sessões: Cloud API e modelos (4 dias) e Flows (3 dias)."
+    ]
   },
   {
     "id": "8",
