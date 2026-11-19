@@ -72,6 +72,12 @@ SNI, autenticação, queda, silêncio).
   memória do processo. Nunca é commitado (T-17-04) e só chega ao cliente como `ca` injetada pelo teste (T-17-05): o
   código de produção não ganha nenhum desvio de TLS. **Exige `openssl` no PATH**; sem ele o teste falha alto.
 - **Nenhum teste fala com caixa real**, Google ou Microsoft.
+- **`fechar()` espera 50 ms antes de derrubar os sockets** (17-03): destruir, no mesmo instante, o socket cru de um
+  handshake TLS que o cliente acabou de recusar (certificado inválido) derruba o processo do Node com `SIGSEGV` (Node
+  24.14). Quem testa "sem a CA" não precisa fazer nada; só não troque o respiro por um `destroy()` imediato.
+- **143 e 587 (STARTTLS) não têm dublê próprio:** o IMAP e o SMTP falsos só falam TLS direto. O que um teste precisa de
+  um servidor SEM STARTTLS (para provar que a plataforma o recusa) monta ele mesmo, um `SMTPServer` com
+  `disabledCommands: ["STARTTLS"]` ou um `node:net` que só saúda (ver `provedores/email/erros.test.ts`).
 
 **Resultado do spike (pressuposto A1): o `imapkit` 5.3.2 serviu.** Não foi preciso o dublê escrito à mão. Entrega TLS
 programático (`secureConnection` + `credentials`), XOAUTH2 que o `imapflow` aceita, inserção por API de controle,

@@ -296,8 +296,12 @@ export async function iniciarServidorDeEmailFalso(
       for (const socket of socketsSmtp) socket.destroy();
     },
     async fechar() {
-      for (const socket of sockets) socket.destroy();
-      for (const socket of socketsSmtp) socket.destroy();
+      // Destruir NO MESMO INSTANTE o socket cru de um handshake TLS que o cliente acabou de recusar (certificado inválido)
+      // derruba o processo do Node (SIGSEGV, Node 24.14, achado no 17-03). Um respiro deixa o TLS terminar de se desfazer;
+      // o que ainda estiver aberto depois dele é derrubado.
+      await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      for (const socket of sockets) if (!socket.destroyed) socket.destroy();
+      for (const socket of socketsSmtp) if (!socket.destroyed) socket.destroy();
       await Promise.all([imap.stop(), new Promise<void>((resolve) => smtp.close(() => resolve()))]);
     },
   };
