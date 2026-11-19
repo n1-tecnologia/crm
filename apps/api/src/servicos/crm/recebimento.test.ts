@@ -899,5 +899,115 @@ describeComBanco("ServicoDeRecebimento — Postgres local", () => {
       const nada = recusado(await servico.receberMensagem(c.ws, c.canalId, email({ idExterno: "s3@x", conteudo: "  ", assunto: "   " })));
       expect(nada).toMatchObject({ status: 400, codigo: "VALOR_INVALIDO" });
     });
+
+    it("a resposta de um colega no mesmo fio entra na Conversa do cliente, com o remetente verdadeiro, sem trocar o Contato (D-17-15)", async () => {
+      const c = await espacoDeEmail("fio-colega");
+      const a = valor(await servico.receberMensagem(c.ws, c.canalId, email()));
+      const enviada = await gravarEnviada(c.ws, c.canalId, a.conversa.id, "n1.resp@nossa.com");
+
+      const r = valor(
+        await servico.receberMensagem(
+          c.ws,
+          c.canalId,
+          email({
+            idExterno: "colega1@x",
+            remetente: { tipo: "email", valor: "Colega@Empresa.com", nomeExibido: "Colega" },
+            conteudo: "Concordo com o valor",
+            emRespostaAIdExterno: "n1.resp@nossa.com",
+          }),
+        ),
+      );
+
+      expect(r).toMatchObject({ contatoNovo: true, conversaNova: false, repetida: false });
+      expect(r.conversa.id).toBe(a.conversa.id);
+      expect(r.conversa.contatoId).toBe(a.contatoId);
+      expect(r.contatoId).toBe(a.contatoId);
+      expect(r.mensagem.emRespostaAId).toBe(enviada);
+      expect(r.mensagem.remetenteExterno).toBe("Colega@Empresa.com");
+      expect(await contar(c.ws, "conversas")).toBe(1);
+      expect(await contar(c.ws, "contatos")).toBe(2);
+
+      // O Identificador da Mensagem é o do colega (Contato à parte), não o do cliente.
+      const colega = (
+        await pool().query<{ contato_id: string; valor: string; id: string }>(
+          "select contato_id, valor, id from plataforma.contato_identificadores where workspace_id = $1 and tipo = 'email' and valor = 'colega@empresa.com'",
+          [c.ws],
+        )
+      ).rows[0]!;
+      expect(colega.contato_id).not.toBe(a.contatoId);
+      expect(r.mensagem.identificadorId).toBe(colega.id);
+    });
+
+    it("um In-Reply-To que aponta para Mensagem de OUTRO Canal do mesmo Espaço não acha nada e segue a regra do par", async () => {
+      const c = await espacoDeEmail("fio-outro-canal");
+      const outroCanal = await semearCanal(c.ws, {
+        nome: "Financeiro",
+        tipo: "email",
+        provedor: "email-imap-smtp",
+        identificadorExterno: "financeiro@nossa.com",
+        conexao: "conectada",
+        configuradoPor: "mem_dona",
+      });
+      const doOutro = valor(await servico.receberMensagem(c.ws, outroCanal, email({ idExterno: "o1@x", remetente: { tipo: "email", valor: "outro@empresa.com" } })));
+      await gravarEnviada(c.ws, outroCanal, doOutro.conversa.id, "n1.alheia@nossa.com");
+
+      const r = valor(await servico.receberMensagem(c.ws, c.canalId, email({ idExterno: "forjada@x", emRespostaAIdExterno: "n1.alheia@nossa.com", referencias: ["o1@x"] })));
+
+      expect(r.conversaNova).toBe(true);
+      expect(r.conversa.id).not.toBe(doOutro.conversa.id);
+      expect(r.conversa.canalId).toBe(c.canalId);
+      expect(r.mensagem.emRespostaAId).toBeNull();
+    });
+
+    it("a Conversa do fio na lixeira não reabre: a resposta cai na regra do par e abre outra Conversa", async () => {
+      const c = await espacoDeEmail("fio-lixeira");
+      const a = valor(await servico.receberMensagem(c.ws, c.canalId, email()));
+      await prepararConversa(c.ws, a.conversa.id, { situacao: "resolvida", resolvidaHaHoras: 1, naLixeira: true });
+
+      const r = valor(await servico.receberMensagem(c.ws, c.canalId, email({ idExterno: "l1@x", emRespostaAIdExterno: "a@x" })));
+
+      expect(r).toMatchObject({ conversaNova: true, conversaReaberta: false });
+      expect(r.conversa.id).not.toBe(a.conversa.id);
+      expect(await lerConversa(c.ws, a.conversa.id)).toMatchObject({ situacao: "resolvida", estado: "na_lixeira", reaberturas: 0 });
+    });
+
+    it("o assunto \"Re: ...\" sem cabeçalho de fio nunca junta com a Conversa resolvida de outro Contato", async () => {
+      const c = await espacoDeEmail("fio-assunto");
+      const a = valor(await servico.receberMensagem(c.ws, c.canalId, email({ assunto: "Orçamento" })));
+      await prepararConversa(c.ws, a.conversa.id, { situacao: "resolvida", resolvidaHaHoras: 1 });
+
+      const r = valor(
+        await servico.receberMensagem(c.ws, c.canalId, email({ idExterno: "re1@x", remetente: { tipo: "email", valor: "outra@empresa.com" }, assunto: "Re: Orçamento" })),
+      );
+
+      expect(r).toMatchObject({ conversaNova: true, contatoNovo: true });
+      expect(r.conversa.id).not.toBe(a.conversa.id);
+      expect(await lerConversa(c.ws, a.conversa.id)).toMatchObject({ situacao: "resolvida", reaberturas: 0 });
+    });
+
+    it("o remetente em maiúsculas acha o Contato que já existe (D-17-12) e o Contato novo nasce automatico_mensagem com o nome do cabeçalho", async () => {
+      const c = await espacoDeEmail("remetente-caixa");
+      const a = valor(await servico.receberMensagem(c.ws, c.canalId, email({ remetente: { tipo: "email", valor: CLIENTE, nomeExibido: "Cliente Real" } })));
+      const b = valor(await servico.receberMensagem(c.ws, c.canalId, email({ idExterno: "b2@x", remetente: { tipo: "email", valor: "Cliente@Empresa.COM" } })));
+
+      expect(b).toMatchObject({ contatoNovo: false, conversaNova: false });
+      expect(b.contatoId).toBe(a.contatoId);
+
+      const contato = (
+        await pool().query<{ nome: string | null; modo_criacao: string }>("select nome, modo_criacao from plataforma.contatos where workspace_id = $1 and id = $2", [c.ws, a.contatoId])
+      ).rows[0]!;
+      expect(contato).toEqual({ nome: "Cliente Real", modo_criacao: "automatico_mensagem" });
+    });
+
+    it("o Contato arquivado que escreve por e-mail volta a ativo (D-17-12)", async () => {
+      const c = await espacoDeEmail("remetente-arquivado");
+      const a = valor(await servico.receberMensagem(c.ws, c.canalId, email()));
+      await pool().query("update plataforma.contatos set estado = 'arquivado' where workspace_id = $1 and id = $2", [c.ws, a.contatoId]);
+
+      valor(await servico.receberMensagem(c.ws, c.canalId, email({ idExterno: "ar@x", remetente: { tipo: "email", valor: "CLIENTE@empresa.com" } })));
+
+      const { rows } = await pool().query<{ estado: string }>("select estado from plataforma.contatos where workspace_id = $1 and id = $2", [c.ws, a.contatoId]);
+      expect(rows[0]!.estado).toBe("ativo");
+    });
   });
 });
