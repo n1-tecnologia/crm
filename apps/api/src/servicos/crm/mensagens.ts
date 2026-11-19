@@ -62,6 +62,8 @@ import { textoDoModelo, type ModeloDeMensagem } from "@n1/dominio/crm/modelos";
 import { categoriaDaMidia, ehDocumento, normalizarTipoDeMidia, TIPOS_ACEITOS_NA_MENSAGEM, tiposAceitosParaOCanal } from "@n1/dominio/crm/midia";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { avisarCrm } from "../../mensageria/avisar";
+import { limparHtmlDoEmail } from "../../mensageria/provedores/email/html";
+import { TETO_DO_HTML_GUARDADO_BYTES } from "../../mensageria/provedores/email/traduzir";
 import { enfileirarEnvio, reenfileirarEnvio } from "../../mensageria/fila-de-saida";
 import { criarRepositorioDeCanaisPg } from "../../repositorios/crm/canais";
 import { criarRepositorioDeConsentimentosPg } from "../../repositorios/crm/consentimentos";
@@ -105,6 +107,8 @@ export interface ServicoDeMensagens {
   pedirTicketDeAnexo(membro: MembroDaSessao, entrada: EntradaDeTicketDeAnexo): Promise<ResultadoCrm<TicketDeAnexo>>;
   /** 16-09: uma URL assinada nova do anexo `indice` da Mensagem; só quem pode ler a Conversa. */
   urlDoAnexo(membro: MembroDaSessao, mensagemId: string, indice: number): Promise<ResultadoCrm<UrlDeAnexo>>;
+  /** 17-11 (D-17-13): o HTML do e-mail recebido, lido do bucket e já limpo. Só quem pode ler a Mensagem; o original nunca sai. */
+  corpoHtml(membro: MembroDaSessao, mensagemId: string): Promise<ResultadoCrm<{ readonly html: string }>>;
 }
 
 /** Rede de SQLSTATE: a FK composta de "em resposta a" (INV-CXE-10) vira esta frase, sem o nome dela. */
@@ -114,6 +118,8 @@ const FRASES: FrasesDeRestricao = {
     error: "A Mensagem respondida é de outra Conversa.",
   },
 };
+
+const semCorpoHtml = () => recusa<never>(404, "Esta mensagem não tem corpo formatado.", { codigo: "SEM_CORPO_HTML" });
 
 const conversaNaoEncontrada = () =>
   recusa<never>(404, "Conversa não encontrada.", { codigo: "CONVERSA_NAO_ENCONTRADA", campo: "conversaId" });
@@ -462,6 +468,36 @@ export function criarServicoDeMensagens(deps: {
       // Documento, XML e zip saem SEMPRE como anexo para baixar; imagem, áudio e vídeo abrem no próprio <img>/<audio>/<video>.
       const url = await noArmazenamento(() => armazenamento.urlAssinada(chave, ehDocumento(anexo.tipoDeMidia) ? { download: anexo.nome } : undefined));
       return sucesso({ url: url.downloadUrl, expiraEm: url.expiresAt.toISOString() });
+    },
+
+    async corpoHtml(membro, mensagemId) {
+      const negado = await exigir(deps.acesso, membro, "ler", "mensagem");
+      if (negado) return { ok: false, ...negado };
+
+      const pool = deps.pool();
+      // O Espaço é o da sessão: uma Mensagem de outro Espaço é "não encontrada", nunca "sem permissão" (T-17-43).
+      const mensagem = await criarRepositorioDeMensagensPg(pool).obter(membro.workspaceId, mensagemId);
+      if (!mensagem) return recusa<never>(404, "Mensagem não encontrada.", { codigo: "MENSAGEM_NAO_ENCONTRADA" });
+      const conversa = await criarRepositorioDeConversasPg(pool).obter(membro.workspaceId, mensagem.conversaId);
+      if (!conversa) return conversaNaoEncontrada();
+
+      const guardado = mensagem.corpoHtml;
+      if (!guardado) return semCorpoHtml();
+      // Rede de segurança: a chave tem de ser do Espaço da sessão, seja qual for o que a linha diga.
+      if (!guardado.objectKey.startsWith(`workspace/${membro.workspaceId}/`)) return semCorpoHtml();
+
+      const chave = guardado.objectKey;
+      let bytes: Uint8Array;
+      try {
+        bytes = await noArmazenamento(() => armazenamento.baixar(chave, { tetoBytes: TETO_DO_HTML_GUARDADO_BYTES }));
+      } catch (erro) {
+        // Maior do que o leitor guardaria: não se serve. Qualquer outra falha do bucket sobe só com o código, sem a chave.
+        if (erro instanceof Error && erro.message === "armazenamento_indisponivel: objeto_grande_demais") return semCorpoHtml();
+        throw erro;
+      }
+      // `fatal: false`: bytes inválidos viram U+FFFD em vez de derrubar a leitura; o HTML original nunca é devolvido nem logado.
+      const html = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+      return sucesso({ html: limparHtmlDoEmail(html) });
     },
   };
 }

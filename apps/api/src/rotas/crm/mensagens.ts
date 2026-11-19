@@ -6,6 +6,7 @@
  *   POST /mensagens/{id}/reenviar                        "Tentar de novo" na Mensagem que falhou — 200 (16-06)
  *   POST mensagens/anexos                                o ticket para subir um arquivo ao bucket — 200 (16-09)
  *   GET  /mensagens/{id}/anexos/{indice}                 uma URL assinada nova do anexo — 200 (16-09)
+ *   GET  /mensagens/{id}/corpo-html                      o HTML do e-mail recebido, já limpo, em `{ html }` — 200 (17-11)
  *
  * A `recebida` entra SÓ por `receberMensagem` (`servicos/crm/recebimento.ts`, a porta da
  * integração): não existe rota humana para ela. A do webhook vem com o
@@ -112,6 +113,13 @@ export async function rotasDeMensagens(app: FastifyInstance, opcoes: { readonly 
   rotas.get("/mensagens/:id/anexos/:indice", { schema: { params: PARAMS_DE_ANEXO } }, async (request, reply) =>
     responder(reply, await servico.urlDoAnexo(request.membro, request.params.id, request.params.indice)),
   );
+
+  // D-17-13: JSON, nunca `text/html` (nada é servido como página pelo domínio da api) e nunca em cache. O HTML original
+  // não sai por aqui: o serviço só devolve o que passou por `limparHtmlDoEmail`.
+  rotas.get("/mensagens/:id/corpo-html", { schema: { params: PARAMS_DE_MENSAGEM } }, async (request, reply) => {
+    reply.header("Cache-Control", "no-store");
+    return responder(reply, await servico.corpoHtml(request.membro, request.params.id));
+  });
 
   // Sem corpo: o Membro, o Espaço e a Mensagem vêm da sessão e do `:id`. Herda o JWT e o 403 do Membro suspenso.
   rotas.post("/mensagens/:id/reenviar", { schema: { params: PARAMS_DE_MENSAGEM } }, async (request, reply) =>

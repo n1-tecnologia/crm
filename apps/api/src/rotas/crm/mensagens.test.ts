@@ -65,6 +65,10 @@ describe("rotas de Mensagens — serviço falso, sem banco", () => {
         chamadas.push(["urlDoAnexo", ...a]);
         return Promise.resolve(sucesso({ url: "https://armazenamento-falso.test/objeto/k", expiraEm: "2026-11-09T19:00:00.000Z" }));
       },
+      corpoHtml: (...a) => {
+        chamadas.push(["corpoHtml", ...a]);
+        return Promise.resolve(sucesso({ html: "<p>oi</p>" }));
+      },
     };
     return { servico, chamadas };
   }
@@ -317,6 +321,21 @@ describe("rotas de Mensagens — serviço falso, sem banco", () => {
     expect(chamadas[0]?.[1]).toMatchObject({ id: "mem_maryane" });
     expect(chamadas[0]?.[2]).toBe("m1");
     expect(chamadas[0]?.[3]).toBe(2);
+  });
+
+  it("(17-11) GET /mensagens/{id}/corpo-html sem Authorization responde 401; com ele repassa o Membro e o id, devolve JSON e proíbe cache", async () => {
+    const { servico, chamadas } = novoFalso();
+    const app = appCom(servico);
+    expect((await app.inject({ method: "GET", url: "/mensagens/m1/corpo-html" })).statusCode).toBe(401);
+    expect(chamadas).toEqual([]);
+
+    const resposta = await app.inject({ method: "GET", url: "/mensagens/m1/corpo-html", headers: AUTORIZACAO });
+    expect(resposta.statusCode).toBe(200);
+    expect(resposta.headers["cache-control"]).toBe("no-store");
+    expect(String(resposta.headers["content-type"])).toContain("application/json");
+    expect(resposta.json()).toEqual({ ok: true, dados: { html: "<p>oi</p>" } });
+    expect(chamadas[0]?.[0]).toBe("corpoHtml");
+    expect(chamadas[0]?.[2]).toBe("m1");
   });
 
   it.each(["-1", "abc", "1.5", ""])("(16-09) GET /mensagens/{id}/anexos/%s com índice inválido responde 400 ou 404 e o serviço não é chamado", async (indice) => {
