@@ -981,11 +981,11 @@ Plans:
 **Goal:** Quem usa a plataforma conecta a própria caixa de e-mail pela ficha do Canal (senha ou senha de app, ou login do Google e da Microsoft); o e-mail recebido vira Conversa no Contato do remetente e a resposta sai pela mesma caixa, no mesmo fio, com assunto, cópias e anexo. Escopo e tarefas: Sessão 9 de `docs/09-planejamento/TAREFAS-POR-SESSAO.md` (9.1 a 9.4). Decidido pelo dono em 2026-11-19: IMAP/SMTP com senha ou senha de app **e** com login OAuth; Gmail API e Microsoft Graph ficam fora.
 **Requirements**: EML-01 a EML-07 (IDs locais da fase, definidos em `17-CONTEXT.md` `<domain>`)
 **Depends on:** Phase 16
-**Plans:** 16 plans em 7 ondas (17-02, 17-04 e 17-16 têm checkpoints do dono: legitimidade dos pacotes, o formato da `017` e da credencial, e a prova com caixas reais; nenhum plano autônomo toca produção)
+**Plans:** 1/16 plans executed em 7 ondas (17-02, 17-04 e 17-16 têm checkpoints do dono: legitimidade dos pacotes, o formato da `017` e da credencial, e a prova com caixas reais; nenhum plano autônomo toca produção)
 
 Plans:
 **Wave 1**
-- [ ] 17-01-PLAN.md — domínio: o fio (`mensagemRespondida`, cabeçalhos da resposta), o que não vira Conversa (D-17-11), `NovaMensagem` com assunto, cópias e até 10 arquivos em 20 MB
+- [x] 17-01-PLAN.md — domínio: o fio (`mensagemRespondida`, cabeçalhos da resposta), o que não vira Conversa (D-17-11), `NovaMensagem` com assunto, cópias e até 10 arquivos em 20 MB
 - [ ] 17-02-PLAN.md — portão dos pacotes (checkpoint), instalação com versão exata e os dublês de IMAP e SMTP (spike do `imapkit`)
 - [ ] 17-04-PLAN.md — checkpoint da porta de mão única (D-17-05), migração `017`, credencial `v: 1`, repositório e coleta que poupa a fila
 

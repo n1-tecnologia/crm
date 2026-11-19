@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 17
 current_phase_name: "E-mail: conectar a caixa, receber e enviar (Sessão 9)"
 status: executing
-stopped_at: Phase 17 planned (16 plans, 7 waves); Phase 16 still has 16-22 pending the owner checkpoint
-last_updated: "2026-11-19T16:48:55.756Z"
+stopped_at: Completed 17-01-PLAN.md
+last_updated: "2026-11-19T17:40:07.401Z"
 last_activity: 2026-11-19
-last_activity_desc: Phase 17 planned (16 plans in 7 waves)
-state_head: 2d9825a2bdcb4349ee65dff0dbc04acadbf42e18
+last_activity_desc: Phase 17 execution started
+state_head: 661b1fa669ccb7f57062d8014e1c537c2a07d5e3
 progress:
   total_phases: 17
   completed_phases: 6
   total_plans: 310
-  completed_plans: 290
+  completed_plans: 291
 milestone_name: milestone
 ---
 
@@ -24,14 +24,14 @@ milestone_name: milestone
 See: .planning/PROJECT.md (updated 2026-10-29)
 
 **Core value:** Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de ponta a ponta sem abrir o ClickUp — dados no Postgres próprio, regras de `@n1/dominio` intactas.
-**Current focus:** Phase 17 — E-mail: conectar a caixa, receber e enviar (Sessão 9): planejada, aguarda a revisão do dono antes de `/gsd-execute-phase 17`. A Fase 16 segue com o 16-22 parado no checkpoint do dono.
+**Current focus:** Phase 17 — E-mail: conectar a caixa, receber e enviar (Sessão 9)
 
 ## Current Position
 
-Phase: 17 (E-mail: conectar a caixa, receber e enviar (Sessão 9)) — READY TO EXECUTE
-Plan: 0 of 16 executed (Fase 17, planejada em 2026-11-19). Fase 16: 21 de 22 executados (lacunas 16-17 a 16-22); o 16-22 segue parado no checkpoint do dono
-Status: Ready to execute (Fase 17)
-Last activity: 2026-11-19 — Phase 17 planned (16 plans in 7 waves)
+Phase: 17 (E-mail: conectar a caixa, receber e enviar (Sessão 9)) — EXECUTING
+Plan: 2 of 16 (17-01 executado)
+Status: Ready to execute
+Last activity: 2026-11-19 — Phase 17 execution started
 
 > Nota: `phase.complete` apontou a Fase 2 como "próxima" por ela estar sem `[x]` no ROADMAP; corrigido à mão para a Fase 16 (que declara `Depends on: Phase 15`). As Fases 2, 4 e 8 seguem abertas no ROADMAP e não foram tocadas.
 
@@ -509,6 +509,7 @@ Progress: [██████░░░░] 63%
 | Phase 16 P19 | 7 min | 2 tasks | 7 files |
 | Phase 16 P20 | 25 min | 2 tasks | 7 files |
 | Phase 16 P21 | 3 min | 2 tasks | 9 files |
+| Phase 17 P01 | 4 min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -921,6 +922,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-19T14:29:24.607Z
-Stopped at: Phase 17 context gathered
-Resume file: .planning/phases/17-e-mail-conectar-a-caixa-receber-e-enviar-sess-o-9/17-CONTEXT.md
+Last session: 2026-11-19T17:40:07.113Z
+Stopped at: Completed 17-01-PLAN.md
+Resume file: None
