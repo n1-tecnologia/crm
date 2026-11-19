@@ -1,0 +1,244 @@
+/**
+ * Ligar uma caixa de e-mail a um Canal por senha ou senha de app (Fase 17, 17-05, EML-01, D-17-03).
+ *
+ *   conectarPorSenha → abre o IMAP e o SMTP pela fábrica (a guarda de rede de D-17-07 vale em toda abertura) e SÓ COM OS
+ *                      DOIS DE PÉ grava, numa transação: a credencial no cofre, a conta, o cursor da INBOX no `UIDNEXT`
+ *                      daquele momento (D-17-08: o que já está na caixa fica para trás) e o Canal `conectada` (não
+ *                      simulado). As Mensagens `pendente` do Canal voltam à fila de saída no mesmo commit (B69)
+ *   conta            → o que a ficha mostra: endereço, tipo de login, servidores, o motivo da queda e quais botões de
+ *                      login (Google, Microsoft) o servidor tem. Nunca a senha, o usuário nem token
+ *
+ * Todo pedido à rede acontece ANTES da transação: a transação só grava e não fica aberta esperando um servidor lento
+ * (T-17-23). O IMAP é testado primeiro; se ele falha, o SMTP nem é tentado (a pessoa corrige um de cada vez).
+ *
+ * A senha entra uma vez, no corpo, e daqui só vai à fábrica e ao cofre. Nada aqui chama registro, e a frase de toda recusa
+ * vem de `classificarErroDeConexao` (frase fixa; o texto do servidor só depois de ele autenticar, filtrado) (T-17-19).
+ * O login do Google e da Microsoft (17-12 e 17-13) reaproveita este núcleo: verificar, depois gravar numa transação.
+ */
+
+import type { Pool, PoolClient } from "pg";
+import { proximaConexao, type Canal } from "@n1/dominio/crm/canais";
+import type { MembroDaSessao } from "../../../plugins/autenticacao";
+import { criarRepositorioDeCanaisPg } from "../../../repositorios/crm/canais";
+import { avancarRevisaoDoEspaco } from "../../../repositorios/crm/referencias";
+import { lerChavesDoCofre, type ChavesDoCofre } from "../../../servicos/cofre";
+import { exigir, type AcessoAoCrm } from "../../../servicos/crm/acesso";
+import { recusa, sucesso, type ResultadoCrm } from "../../../servicos/crm/resultado";
+import { comTransacao, type FrasesDeRestricao } from "../../../servicos/crm/transacao";
+import { avisarCrm } from "../../avisar";
+import { reenfileirarPendentesDoCanal } from "../../fila-de-saida";
+import {
+  PREDEFINICOES_DE_SERVIDOR,
+  lerConfiguracaoDoOauth,
+  servicosDaConfiguracao,
+  type ConfiguracaoDoOauth,
+  type EnderecoDeServidor,
+  type PredefinicaoDeServidor,
+  type ServicosDisponiveis,
+} from "./configuracao";
+import { guardarCredencialDoEmail } from "./credencial";
+import { classificarErroDeConexao, type FalhaDeConexao } from "./erros";
+import { criarFabricaDeConexao, type FabricaDeConexao, type ResultadoDaVerificacaoImap } from "./fabrica-de-conexao";
+import type { ServicoDeEmail } from "./rede";
+import { contaDoCanal, gravarConta, gravarCursor, limparQueda, type TipoDeLoginDoEmail } from "./repositorio";
+
+export interface DependenciasDoEmail {
+  readonly pool: () => Pool;
+  readonly acesso: AcessoAoCrm;
+  /** Padrão: a fábrica de produção (guarda de rede, portas 993/143/465/587, certificado sempre conferido). Testes injetam a do dublê. */
+  readonly fabrica?: FabricaDeConexao;
+  readonly chaves?: () => ChavesDoCofre;
+  /** Padrão: o ambiente. `undefined` deixa o login do Google e da Microsoft desligado. */
+  readonly configuracaoDoOauth?: () => ConfiguracaoDoOauth | undefined;
+  readonly agora?: () => number;
+}
+
+export interface EntradaDeSenha {
+  readonly usuario: string;
+  readonly senha: string;
+  /** O servidor escolhe o host e a porta; o cliente só diz o nome. */
+  readonly predefinicao?: PredefinicaoDeServidor;
+  readonly imap?: EnderecoDeServidor;
+  readonly smtp?: EnderecoDeServidor;
+}
+
+export interface ContaParaAFichaDoEmail {
+  readonly endereco: string;
+  readonly tipoDeLogin: TipoDeLoginDoEmail;
+  readonly imap: EnderecoDeServidor;
+  readonly smtp: EnderecoDeServidor;
+  readonly conectadaEm: string;
+  readonly motivoDaQueda: string | null;
+  readonly caiuEm: string | null;
+}
+
+export interface ServicoDeConexaoDoEmail {
+  conectarPorSenha(membro: MembroDaSessao, canalId: string, entrada: EntradaDeSenha): Promise<ResultadoCrm<Canal>>;
+  conta(
+    membro: MembroDaSessao,
+    canalId: string,
+  ): Promise<ResultadoCrm<{ readonly conta: ContaParaAFichaDoEmail | null; readonly servicosDisponiveis: ServicosDisponiveis }>>;
+}
+
+const FRASES: FrasesDeRestricao = {};
+
+const PROVEDOR = "email-imap-smtp";
+
+const naoEncontrado = () => recusa<never>(404, "Canal não encontrado.", { codigo: "CANAL_NAO_ENCONTRADO" });
+
+const naoEhEmail = () => recusa<never>(409, "Este Canal não é de e-mail.", { codigo: "PROVEDOR_ERRADO" });
+
+const semServidores = () =>
+  recusa<never>(422, "Escolha Gmail ou Outlook, ou informe o servidor IMAP e o SMTP.", { codigo: "SERVIDORES_AUSENTES" });
+
+const semCofre = () =>
+  recusa<never>(503, "O cofre de credenciais não está configurado neste ambiente (COFRE_CHAVE): a senha não teria onde ficar.", {
+    codigo: "COFRE_NAO_CONFIGURADO",
+  });
+
+/** A recusa que a tela mostra: a frase fixa da classificação, e o que o servidor disse só se ele chegou a autenticar. */
+function recusaDeConexao(falha: FalhaDeConexao) {
+  const frase = falha.fraseDoServidor ? `${falha.frase} O servidor respondeu: ${falha.fraseDoServidor}` : falha.frase;
+  return recusa<never>(422, frase, { codigo: "CONEXAO_RECUSADA", campo: falha.servico });
+}
+
+export function criarServicoDeConexaoDoEmail(deps: DependenciasDoEmail): ServicoDeConexaoDoEmail {
+  const fabrica = deps.fabrica ?? criarFabricaDeConexao();
+  const chaves = deps.chaves ?? (() => lerChavesDoCofre());
+  const configuracaoDoOauth =
+    deps.configuracaoDoOauth ??
+    (() => {
+      try {
+        return lerConfiguracaoDoOauth();
+      } catch {
+        // Uma URI de retorno inválida desliga o login; a conexão por senha segue de pé.
+        return undefined;
+      }
+    });
+
+  /** O Canal de e-mail deste Espaço, ou a recusa. */
+  async function canalDeEmail(conexao: Pool | PoolClient, membro: MembroDaSessao, canalId: string, travar = false) {
+    const canal = await criarRepositorioDeCanaisPg(conexao).obter(membro.workspaceId, canalId, { travar });
+    if (!canal) return naoEncontrado();
+    if (canal.provedor !== PROVEDOR) return naoEhEmail();
+    return sucesso(canal);
+  }
+
+  /** Os servidores da conta: a predefinição do SERVIDOR, ou os que a pessoa digitou (a guarda decide se servem). */
+  function servidoresDe(entrada: EntradaDeSenha): { readonly imap: EnderecoDeServidor; readonly smtp: EnderecoDeServidor } | undefined {
+    if (entrada.predefinicao !== undefined) return PREDEFINICOES_DE_SERVIDOR[entrada.predefinicao];
+    if (entrada.imap && entrada.smtp) return { imap: entrada.imap, smtp: entrada.smtp };
+    return undefined;
+  }
+
+  /** Abre, autentica e fecha. Sem exceção: a falha vira a frase de produto, com o campo (`imap` ou `smtp`) que a causou. */
+  async function verificar<T>(servico: ServicoDeEmail, senha: string, abrir: () => Promise<T>): Promise<{ ok: true; valor: T } | { ok: false; falha: FalhaDeConexao }> {
+    try {
+      return { ok: true, valor: await abrir() };
+    } catch (erro) {
+      return { ok: false, falha: classificarErroDeConexao(erro, servico, [senha]) };
+    }
+  }
+
+  return {
+    async conectarPorSenha(membro, canalId, entrada) {
+      const negado = await exigir(deps.acesso, membro, "conectar", "canal");
+      if (negado) return { ok: false, ...negado };
+
+      const achado = await canalDeEmail(deps.pool(), membro, canalId);
+      if (!achado.ok) return achado;
+      const canal = achado.valor;
+      const pode = proximaConexao(canal, "conexao_confirmada");
+      if (!pode.ok) return recusa(409, pode.error, { codigo: "TRANSICAO_INVALIDA" });
+
+      const servidores = servidoresDe(entrada);
+      if (!servidores) return semServidores();
+
+      // O cofre antes da rede: sem ele não há onde guardar a senha, e não se abre conexão à toa.
+      let cofre: ChavesDoCofre;
+      try {
+        cofre = chaves();
+      } catch {
+        return semCofre();
+      }
+
+      const auth = { tipo: "senha" as const, usuario: entrada.usuario, senha: entrada.senha };
+
+      // A rede, FORA da transação. O IMAP primeiro: se ele falha, o SMTP nem é tentado.
+      const imap = await verificar<ResultadoDaVerificacaoImap>("imap", entrada.senha, () =>
+        fabrica.verificarImap({ host: servidores.imap.host, porta: servidores.imap.porta, auth }),
+      );
+      if (!imap.ok) return recusaDeConexao(imap.falha);
+      const smtp = await verificar<void>("smtp", entrada.senha, () =>
+        fabrica.verificarSmtp({ host: servidores.smtp.host, porta: servidores.smtp.porta, auth }),
+      );
+      if (!smtp.ok) return recusaDeConexao(smtp.falha);
+
+      const lido = imap.valor;
+      return comTransacao(
+        deps.pool,
+        async (transacao) => {
+          // A linha do Espaço antes da do Canal: a mesma ordem das outras escritas de Canal (evita `40P01`).
+          await transacao.query("select 1 from plataforma.workspaces where workspace_id = $1 for update", [membro.workspaceId]);
+          const deNovo = await canalDeEmail(transacao, membro, canal.id, true);
+          if (!deNovo.ok) return deNovo;
+          const alvo = proximaConexao(deNovo.valor, "conexao_confirmada");
+          if (!alvo.ok) return recusa(409, alvo.error, { codigo: "TRANSICAO_INVALIDA" });
+
+          const dono = { workspaceId: membro.workspaceId, canalId: canal.id };
+          await guardarCredencialDoEmail(transacao, cofre, dono, { v: 1, tipo: "senha", usuario: entrada.usuario, senha: entrada.senha });
+          await gravarConta(transacao, {
+            ...dono,
+            // A conta é a do Canal: o endereço que a pessoa criou o Canal para receber.
+            endereco: deNovo.valor.identificadorExterno,
+            tipoDeLogin: "senha",
+            imap: servidores.imap,
+            smtp: servidores.smtp,
+            pastaEnviados: lido.pastaEnviados ?? null,
+            conectadaPor: membro.id,
+          });
+          await limparQueda(transacao, membro.workspaceId, canal.id);
+          // D-17-08: o leitor começa no que chegar DEPOIS de agora; o que já estava na caixa não vira Conversa.
+          await gravarCursor(transacao, membro.workspaceId, canal.id, {
+            pasta: "INBOX",
+            uidValidity: lido.uidValidity,
+            proximoUid: lido.uidNext,
+          });
+          const conectado = await criarRepositorioDeCanaisPg(transacao).definirConexao(membro.workspaceId, canal.id, alvo.value);
+          if (!conectado) return naoEncontrado();
+          await avancarRevisaoDoEspaco(transacao, membro.workspaceId);
+          await avisarCrm(transacao, { workspaceId: membro.workspaceId, tipo: "canal.mudou", canalId: canal.id });
+          // B69: o que foi escrito com o Canal fora do ar sai agora, no MESMO commit da conexão.
+          await reenfileirarPendentesDoCanal(transacao, membro.workspaceId, canal.id);
+          return sucesso(conectado);
+        },
+        FRASES,
+      );
+    },
+
+    async conta(membro, canalId) {
+      const negado = await exigir(deps.acesso, membro, "ler", "canal");
+      if (negado) return { ok: false, ...negado };
+      const achado = await canalDeEmail(deps.pool(), membro, canalId);
+      if (!achado.ok) return achado;
+
+      const ligada = await contaDoCanal(deps.pool(), membro.workspaceId, canalId);
+      const servicosDisponiveis = servicosDaConfiguracao(configuracaoDoOauth());
+      // Só o que a ficha mostra: `contaExternaId`, `conectadaPor` e o resto da linha ficam no banco.
+      return sucesso({
+        conta: ligada
+          ? {
+              endereco: ligada.endereco,
+              tipoDeLogin: ligada.tipoDeLogin,
+              imap: ligada.imap,
+              smtp: ligada.smtp,
+              conectadaEm: ligada.conectadaEm,
+              motivoDaQueda: ligada.motivoDaQueda,
+              caiuEm: ligada.caiuEm,
+            }
+          : null,
+        servicosDisponiveis,
+      });
+    },
+  };
+}
