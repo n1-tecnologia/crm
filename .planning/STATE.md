@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 17
 current_phase_name: "E-mail: conectar a caixa, receber e enviar (Sessão 9)"
 status: executing
-stopped_at: Completed 17-02-PLAN.md
-last_updated: "2026-11-19T20:47:59.116Z"
+stopped_at: Completed 17-04-PLAN.md
+last_updated: "2026-11-19T21:21:30.655Z"
 last_activity: 2026-11-19
 last_activity_desc: Phase 17 execution started
-state_head: 73beeea78c714970fab70d38aa521281c55886a0
+state_head: 72bfcca5b7023aeb46f3aea3ab2d9900c566bb5b
 progress:
   total_phases: 17
   completed_phases: 6
   total_plans: 310
-  completed_plans: 292
+  completed_plans: 293
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 17 (E-mail: conectar a caixa, receber e enviar (Sessão 9)) — EXECUTING
-Plan: 3 of 16 (17-01 e 17-02 executados)
+Plan: 4 of 16 (17-01 e 17-02 executados)
 Status: Ready to execute
 Last activity: 2026-11-19 — Phase 17 execution started
 
@@ -511,6 +511,7 @@ Progress: [██████░░░░] 63%
 | Phase 16 P21 | 3 min | 2 tasks | 9 files |
 | Phase 17 P01 | 4 min | 3 tasks | 6 files |
 | Phase 17 P02 | 25min | 3 tasks | 6 files |
+| Phase 17 P04 | 40min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -864,6 +865,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 16]: 16-21: a resposta sai para o Identificador da última recebida da Conversa (identificadorDeResposta no domínio), conferido na lista do Contato da Conversa; senão o principal (WR-04)
 - [Phase 17]: 17-02: o imapkit serviu como dublê do IMAP (A1 confirmado); a árvore de caixas é uma só por servidor, quem precisa de duas caixas sobe dois dublês
 - [Phase 17]: 17-02: os @types de nodemailer, mailparser e smtp-server ficam de fora (os pacotes trazem os próprios tipos); certificado de teste gerado na hora pelo openssl, nunca commitado
+- [Phase 17]: D-17-05: porta de mão única = duas-tabelas (email_contas, cursores_de_canal, mensagens.corpo_html; credencial JSON v: 1 no cofre), escolhida pelo dono em 2026-11-19
+- [Phase 17]: 17-04: a coleta de órfãos só considera em uso linha de webhooks_recebidos pendente ou processando; processado e falhou são finais
 
 ### Pending Todos
 
@@ -925,6 +928,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-19T20:47:58.827Z
-Stopped at: Completed 17-02-PLAN.md
+Last session: 2026-11-19T21:21:30.251Z
+Stopped at: Completed 17-04-PLAN.md
 Resume file: None
