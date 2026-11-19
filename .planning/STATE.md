@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 17
 current_phase_name: "E-mail: conectar a caixa, receber e enviar (Sessão 9)"
 status: executing
-stopped_at: Completed 17-12-PLAN.md
-last_updated: "2026-11-19T23:05:15.589Z"
+stopped_at: Completed 17-10-PLAN.md
+last_updated: "2026-11-19T23:34:31.353Z"
 last_activity: 2026-11-19
 last_activity_desc: Phase 17 execution started
-state_head: fdcb94bbe523b0a61bb083ac0fdb7b0e50941d26
+state_head: e3bcd6e8c92c0991d056776ff5624da394658fd4
 progress:
   total_phases: 17
   completed_phases: 6
   total_plans: 310
-  completed_plans: 301
+  completed_plans: 302
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 17 (E-mail: conectar a caixa, receber e enviar (Sessão 9)) — EXECUTING
-Plan: 12 of 16 (17-01 a 17-04 executados)
+Plan: 13 of 16 (17-01 a 17-04 executados)
 Status: Ready to execute
 Last activity: 2026-11-19 — Phase 17 execution started
 
@@ -520,6 +520,7 @@ Progress: [██████░░░░] 63%
 | Phase 17 P09 | 45min | 3 tasks | 10 files |
 | Phase 17 P11 | 14min | 2 tasks | 6 files |
 | Phase 17 P12 | 55min | 3 tasks | 14 files |
+| Phase 17 P10 | 50min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -888,6 +889,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 17]: 17-12: o state do login do e-mail vale uma vez por processo (nonce consumido depois de conferir Membro e Espaco); entre processos o garante e o codigo de uso unico do servico, o PKCE e a transicao do Canal
 - [Phase 17]: 17-12: so invalid_grant, interaction_required, consent_required e invalid_client derrubam a conexao OAuth; erro desconhecido de renovacao e transitorio
 - [Phase 17]: 17-12: a prova da caixa e o login XOAUTH2 com user = endereco do Canal; o id_token so pre-confere a frase (A9/A11/A12 seguem como pressupostos a confirmar na prova real 9.4.4)
+- [Phase 17]: 17-10: a trava por Canal do leitor de e-mail usa hashtextextended (64 bits) numa conexao pg.Client dedicada fora do pool; recusou_login e acesso permanente derrubam o Canal e param a sessao, o resto so reconecta com espera crescente
 
 ### Pending Todos
 
@@ -949,6 +951,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-19T23:05:15.271Z
-Stopped at: Completed 17-12-PLAN.md
+Last session: 2026-11-19T23:34:31.046Z
+Stopped at: Completed 17-10-PLAN.md
 Resume file: None
