@@ -168,10 +168,14 @@ function normalizarHost(bruto: string): { host: string; literal: 4 | 6 | 0 } | u
   const familia = /^[0-9a-f:.]+$/.test(host) ? isIP(host) : 0;
   if (familia === 4 || familia === 6) return { host, literal: familia };
 
+  // `domainToASCII` lê o host como parte de uma URL e corta em `/`, `?`, `#` e `@`: confere o texto antes. Só ASCII em
+  // `[a-z0-9.-]` ou caracteres de IDN (acima do ASCII).
+  if (/[\u0000-\u007f]/.test(host.replace(/[a-z0-9.-]/g, ""))) return undefined;
   const ascii = domainToASCII(host);
   if (ascii === "" || ascii.length > 253 || /[^a-z0-9.-]/.test(ascii)) return undefined;
   const rotulos = ascii.split(".");
-  if (rotulos.some((r) => r === "" || r.length > 63)) return undefined;
+  // Rótulos LDH (letras, dígitos e hífen no meio), de 1 a 63 caracteres.
+  if (rotulos.some((r) => r.length > 63 || !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(r))) return undefined;
   // Um nome cujo último rótulo é só número ou hexadecimal ("127.1", "0x7f.1") é um IPv4 disfarçado: o `getaddrinfo` o lê
   // como endereço. Nenhum domínio real termina assim.
   const ultimo = rotulos[rotulos.length - 1]!;
