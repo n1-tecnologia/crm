@@ -1,0 +1,11 @@
+Message-ID: <lista-1@boletim.example>
+Date: Wed, 19 Nov 2026 13:00:00 -0300
+From: Boletim <boletim@boletim.example>
+To: vendas@caixa.test
+Subject: Novidades da semana
+Precedence: bulk
+List-Unsubscribe: <mailto:sair@boletim.example>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Confira as novidades da semana.

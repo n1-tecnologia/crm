@@ -1,0 +1,12 @@
+Message-ID: <resposta-1@empresa.example>
+Date: Wed, 19 Nov 2026 11:00:00 -0300
+From: Cliente <cliente@empresa.example>
+To: vendas@caixa.test
+Subject: Re: Pedido 42
+In-Reply-To: <a@x.example>
+References: <r1@x.example>
+ <r2@x.example> <a@x.example>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Obrigado, pode confirmar o prazo?
