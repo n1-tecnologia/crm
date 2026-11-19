@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 17
 current_phase_name: "E-mail: conectar a caixa, receber e enviar (Sessão 9)"
 status: executing
-stopped_at: Completed 17-04-PLAN.md
-last_updated: "2026-11-19T21:21:30.655Z"
+stopped_at: Completed 17-03-PLAN.md
+last_updated: "2026-11-19T21:37:58.968Z"
 last_activity: 2026-11-19
 last_activity_desc: Phase 17 execution started
-state_head: 72bfcca5b7023aeb46f3aea3ab2d9900c566bb5b
+state_head: a1d78d776cf85ed9db47dc303af0b61267cde7b7
 progress:
   total_phases: 17
   completed_phases: 6
   total_plans: 310
-  completed_plans: 293
+  completed_plans: 294
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 17 (E-mail: conectar a caixa, receber e enviar (Sessão 9)) — EXECUTING
-Plan: 4 of 16 (17-01 e 17-02 executados)
+Plan: 5 of 16 (17-01 a 17-04 executados)
 Status: Ready to execute
 Last activity: 2026-11-19 — Phase 17 execution started
 
@@ -512,6 +512,7 @@ Progress: [██████░░░░] 63%
 | Phase 17 P01 | 4 min | 3 tasks | 6 files |
 | Phase 17 P02 | 25min | 3 tasks | 6 files |
 | Phase 17 P04 | 40min | 3 tasks | 10 files |
+| Phase 17 P03 | 40min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -867,6 +868,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 17]: 17-02: os @types de nodemailer, mailparser e smtp-server ficam de fora (os pacotes trazem os próprios tipos); certificado de teste gerado na hora pelo openssl, nunca commitado
 - [Phase 17]: D-17-05: porta de mão única = duas-tabelas (email_contas, cursores_de_canal, mensagens.corpo_html; credencial JSON v: 1 no cofre), escolhida pelo dono em 2026-11-19
 - [Phase 17]: 17-04: a coleta de órfãos só considera em uso linha de webhooks_recebidos pendente ou processando; processado e falhou são finais
+- [Phase 17]: 17-03: host com / ? # @ e nome com ultimo rotulo numerico ou 0x sao recusados antes de resolver (domainToASCII le o host como URL)
+- [Phase 17]: 17-03: erro do nodemailer vem como ESOCKET com originalCode; a classificacao olha os dois e o certificado vence; ETLS de STARTTLS recusado e protocolo
 
 ### Pending Todos
 
@@ -928,6 +931,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-19T21:21:30.251Z
-Stopped at: Completed 17-04-PLAN.md
+Last session: 2026-11-19T21:37:53.746Z
+Stopped at: Completed 17-03-PLAN.md
 Resume file: None
