@@ -139,6 +139,15 @@ const FRASES_DO_ERRO_DO_LOGIN = {
 
 const FORMA_DE_ENDERECO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** `googlemail.com` é a mesma caixa de `gmail.com` (T-17-59). Só vale para o Google; a Microsoft compara pela forma do Canal. */
+const comoGmail = (endereco: string) => endereco.trim().toLowerCase().replace(/@googlemail\.com$/, "@gmail.com");
+
+/** O endereço que o serviço informou é o do Canal? Só pré-conferência: a prova é o XOAUTH2 com o endereço do Canal. */
+function mesmaCaixa(canal: Canal, informado: string, servico: ServicoDeLogin): boolean {
+  if (servico !== "google") return contaDoProvedorConfere(canal, informado);
+  return contaDoProvedorConfere({ tipo: canal.tipo, identificadorExterno: comoGmail(canal.identificadorExterno) }, comoGmail(informado));
+}
+
 /** A recusa que a tela mostra: a frase fixa da classificação, e o que o servidor disse só se ele chegou a autenticar. */
 function recusaDeConexao(falha: FalhaDeConexao) {
   const frase = falha.fraseDoServidor ? `${falha.frase} O servidor respondeu: ${falha.fraseDoServidor}` : falha.frase;
@@ -352,7 +361,14 @@ export function criarServicoDeConexaoDoEmail(deps: DependenciasDoEmail): Servico
 
       // Só pré-conferência: o endereço do `id_token` é mutável e "não garantido" (A9, A11). A prova é o login na caixa, abaixo.
       const informado = tokens.conta.email;
-      if (informado !== undefined && FORMA_DE_ENDERECO.test(informado) && !contaDoProvedorConfere(canal, informado)) {
+      // Google (EML-02): o endereço do `id_token` só vale com `email_verified` verdadeiro; sem isso, outra pessoa poderia ter
+      // criado uma conta com o endereço dos outros. A ausência do campo conta como não verificado.
+      if (servico === "google" && informado !== undefined && FORMA_DE_ENDERECO.test(informado) && tokens.conta.emailVerificado !== true) {
+        return recusa(409, `O Google não confirmou o endereço ${informado}. Entre com a conta da própria caixa, ${canal.identificadorExterno}.`, {
+          codigo: "CONTA_DIFERENTE",
+        });
+      }
+      if (informado !== undefined && FORMA_DE_ENDERECO.test(informado) && !mesmaCaixa(canal, informado, servico)) {
         return recusa(409, `Você entrou com ${informado}, mas este Canal é da caixa ${canal.identificadorExterno}. Entre com a conta da própria caixa.`, {
           codigo: "CONTA_DIFERENTE",
         });

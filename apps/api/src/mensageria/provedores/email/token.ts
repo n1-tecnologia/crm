@@ -1,7 +1,7 @@
 /**
  * Os renovadores do token de acesso do login do e-mail, montados a partir da configuração do ambiente (Fase 17, 17-12,
  * D-17-20). É a ponte entre a porta de acesso (`credencial.ts`, que só conhece `RenovadorDeToken`) e o cliente de cada serviço
- * (`oauth/microsoft.ts`; o 17-13 acrescenta o do Google).
+ * (`oauth/microsoft.ts` e `oauth/google.ts`).
  *
  * A renovação é preguiçosa e mora na porta: quem lê ou envia pede `acessoParaUsar(canal)` e, quando faltam menos de 5 min,
  * a porta chama o `renovar` daqui e grava o token novo (e o de renovação novo, quando o serviço o gira) no cofre. Sem o par
@@ -11,6 +11,7 @@
 import type { ConfiguracaoDoOauth, ServicoDeLogin } from "./configuracao";
 import type { RenovadorDeToken } from "./credencial";
 import type { ClienteOauthDoEmail } from "./oauth/comum";
+import { criarClienteGoogle } from "./oauth/google";
 import { criarClienteMicrosoft } from "./oauth/microsoft";
 
 export interface ConfiguracaoDeUmApp {
@@ -24,6 +25,7 @@ export type FabricasDeClienteOauth = Partial<Record<ServicoDeLogin, (config: Con
 
 /** As fábricas de produção: os endereços reais de cada serviço. */
 export const CLIENTES_DE_PRODUCAO: FabricasDeClienteOauth = {
+  google: (config) => criarClienteGoogle(config),
   microsoft: (config) => criarClienteMicrosoft(config),
 };
 

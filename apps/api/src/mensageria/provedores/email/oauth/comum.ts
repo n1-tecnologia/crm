@@ -19,6 +19,8 @@ export interface ContaDoLogin {
   readonly email?: string;
   /** O identificador estável da conta no serviço: `oid:tid` na Microsoft, `sub` no Google. */
   readonly idEstavel?: string;
+  /** O serviço diz que confirmou o `email` (`email_verified` do Google). Ausente quando o serviço não informa (Microsoft). */
+  readonly emailVerificado?: boolean;
 }
 
 export interface TokensDoLogin {
@@ -61,6 +63,8 @@ export class ErroDoLogin extends Error {
 /** O que sai do `id_token`: nada mais que isto é lido. */
 export interface DadosDoIdToken {
   readonly email?: string;
+  /** `email_verified`: o Google o manda como booleano (ou, em alguns pontos, como a palavra "true"). */
+  readonly emailVerificado?: boolean;
   readonly sub?: string;
   readonly oid?: string;
   readonly tid?: string;
@@ -93,11 +97,13 @@ export function lerIdToken(idToken: string | undefined, opcoes: { readonly clien
 
   const candidato = texto(c.email) ?? texto(c.preferred_username);
   const email = candidato !== undefined && candidato.includes("@") ? candidato.trim() : undefined;
+  const verificado = c.email_verified === true || c.email_verified === "true" ? true : c.email_verified === false || c.email_verified === "false" ? false : undefined;
   const sub = texto(c.sub);
   const oid = texto(c.oid);
   const tid = texto(c.tid);
   return {
     ...(email !== undefined ? { email } : {}),
+    ...(verificado !== undefined ? { emailVerificado: verificado } : {}),
     ...(sub !== undefined ? { sub } : {}),
     ...(oid !== undefined ? { oid } : {}),
     ...(tid !== undefined ? { tid } : {}),
