@@ -31,6 +31,7 @@ import { fail, ok, type OperationResult } from "../state";
 import type { ConexaoDoCanal } from "./canais";
 import { LIMITES_CRM } from "./comum";
 import { categoriaDaMidia } from "./midia";
+import { normalizarEmail } from "./normalizacao";
 
 export const DIRECOES_DA_MENSAGEM = ["recebida", "enviada", "interna"] as const satisfies readonly DirecaoDaMensagem[];
 export type DirecaoDaMensagem = "recebida" | "enviada" | "interna";
@@ -93,6 +94,11 @@ export interface Mensagem {
   readonly anexos: readonly AnexoDaMensagem[];
   readonly assunto: string | null;
   readonly enderecosAdicionais: readonly EnderecoAdicional[];
+  /**
+   * O HTML do e-mail recebido, guardado no bucket (D-17-13): o servidor o limpa só na hora de mostrar e nada o serve cru.
+   * Opcional para nenhum construtor de Mensagem existente (testes, seed, web) quebrar; a coluna nasce na 017.
+   */
+  readonly corpoHtml?: CorpoHtmlDaMensagem | null;
   readonly emRespostaAId: string | null;
   /**
    * A Mensagem de modelo que foi enviada (WhatsApp oficial, 7.3): o id e o nome do modelo na Meta e, desde a Sessão 7, o idioma
@@ -146,31 +152,92 @@ export interface NovaMensagem {
    */
   readonly modeloId?: string | undefined;
   readonly variaveis?: readonly string[] | undefined;
+  /** Só para o Canal que tem assunto e cópias (`hasSubjectAndCopies`, o e-mail): vira o `Subject`, sem quebra de linha (D-17-19). */
   readonly assunto?: string | undefined;
+  /** Para, cópia e cópia oculta além do Contato (D-17-19); só o Canal com `hasSubjectAndCopies` aceita. */
   readonly enderecosAdicionais?: readonly EnderecoAdicional[] | undefined;
 }
 
+/**
+ * As duas capacidades do Canal que mudam o que uma Mensagem nova pode levar. Declaradas em linha, e não importadas de
+ * `ChannelCapabilities`, para esta regra não criar ciclo com `capacidades.ts`; quem chama passa `capacidadesDoCanal(...)`.
+ */
 export interface CanalDaNovaMensagem {
   readonly capacidades: { readonly hasSubjectAndCopies: boolean; readonly multimodalInOneMessage: boolean };
 }
 
 export const LIMITE_DO_ASSUNTO = 500;
 export const MAX_ENDERECOS_ADICIONAIS = 100;
+/** O e-mail leva vários arquivos numa Mensagem só (`multimodalInOneMessage`); os outros Canais seguem com `MAX_ANEXOS_POR_MENSAGEM`. */
 export const MAX_ANEXOS_POR_EMAIL = 10;
+
+/** Quantos arquivos uma Mensagem deste Canal leva (D-17-18). */
+export function maxAnexosDoCanal(capacidades: { readonly multimodalInOneMessage: boolean }): number {
+  return capacidades.multimodalInOneMessage ? MAX_ANEXOS_POR_EMAIL : MAX_ANEXOS_POR_MENSAGEM;
+}
+
+/** O teto do TOTAL de arquivos de um e-mail enviado: acima disso muitos servidores recusam (D-17-18). */
 export const TETO_DO_EMAIL_ENVIADO_BYTES = 20 * 1024 * 1024;
 export const FRASE_DO_TETO_DO_EMAIL = "O e-mail passa de 20 MB: muitos servidores recusam.";
 
+/** O HTML do e-mail recebido, guardado no bucket (D-17-13). A chave não dá acesso a nada: quem o abre passa pelo servidor. */
 export interface CorpoHtmlDaMensagem {
   readonly objectKey: string;
   readonly tamanhoBytes: number;
 }
 
-export function maxAnexosDoCanal(_capacidades: { readonly multimodalInOneMessage: boolean }): number {
-  return 0;
+/** D-17-18: a soma dos tamanhos dos arquivos do e-mail, já confirmados no bucket, não passa de 20 MB. */
+export function validarTamanhoDoEmail(tamanhosEmBytes: readonly number[]): OperationResult<void> {
+  const total = tamanhosEmBytes.reduce((soma, tamanho) => soma + tamanho, 0);
+  if (total > TETO_DO_EMAIL_ENVIADO_BYTES) return fail(FRASE_DO_TETO_DO_EMAIL, "anexos");
+  return ok(undefined);
 }
 
-export function validarTamanhoDoEmail(_tamanhosEmBytes: readonly number[]): OperationResult<void> {
-  return ok(undefined);
+const TEM_QUEBRA_DE_LINHA = /[\r\n]/;
+// Qualquer caractere de controle: código abaixo de 0x20 ou o DEL (0x7F).
+const TEM_CARACTERE_DE_CONTROLE = /[\u0000-\u001F\u007F]/;
+const FRASE_SEM_ASSUNTO_NEM_COPIAS = "Este Canal não tem assunto nem cópias.";
+const TIPOS_DE_ENDERECO = ["para", "copia", "copiaOculta"] as const;
+
+/**
+ * D-17-19, T-17-01: o assunto e os endereços adicionais viram CABEÇALHO de e-mail, então uma quebra de linha neles seria
+ * injeção de cabeçalho (`Bcc:` escondido). Recusa antes de qualquer outra regra de conteúdo; devolve os endereços na forma de
+ * `normalizarEmail`. Assunto em branco conta como ausente.
+ */
+function validarAssuntoECopias(
+  entrada: NovaMensagem,
+  capacidades: CanalDaNovaMensagem["capacidades"],
+): OperationResult<readonly EnderecoAdicional[] | undefined> {
+  const assunto = entrada.assunto?.trim() ?? "";
+  const adicionais = entrada.enderecosAdicionais ?? [];
+  if (assunto !== "") {
+    if (!capacidades.hasSubjectAndCopies) return fail(FRASE_SEM_ASSUNTO_NEM_COPIAS, "assunto");
+    if (TEM_QUEBRA_DE_LINHA.test(assunto)) return fail("O assunto não pode ter quebra de linha.", "assunto");
+    if (TEM_CARACTERE_DE_CONTROLE.test(assunto)) return fail("O assunto não pode ter caracteres de controle.", "assunto");
+    if (assunto.length > LIMITE_DO_ASSUNTO) return fail(`O assunto vai até ${LIMITE_DO_ASSUNTO} caracteres.`, "assunto");
+  }
+  if (adicionais.length === 0) return ok(undefined);
+  if (!capacidades.hasSubjectAndCopies) return fail(FRASE_SEM_ASSUNTO_NEM_COPIAS, "enderecosAdicionais");
+  if (adicionais.length > MAX_ENDERECOS_ADICIONAIS) {
+    return fail(`Uma Mensagem leva até ${MAX_ENDERECOS_ADICIONAIS} endereços além do Contato.`, "enderecosAdicionais");
+  }
+  const normalizados: EnderecoAdicional[] = [];
+  for (const adicional of adicionais) {
+    if (!(TIPOS_DE_ENDERECO as readonly string[]).includes(adicional.tipo)) {
+      return fail("Escolha se o endereço é Para, Cópia ou Cópia oculta.", "enderecosAdicionais");
+    }
+    const endereco = normalizarEmail(adicional.endereco);
+    if (!endereco.ok) return fail(endereco.error, "enderecosAdicionais");
+    if (adicional.nomeExibido !== undefined && TEM_CARACTERE_DE_CONTROLE.test(adicional.nomeExibido)) {
+      return fail("O nome de um endereço não pode ter quebra de linha.", "enderecosAdicionais");
+    }
+    normalizados.push(
+      adicional.nomeExibido === undefined
+        ? { tipo: adicional.tipo, endereco: endereco.value }
+        : { tipo: adicional.tipo, endereco: endereco.value, nomeExibido: adicional.nomeExibido },
+    );
+  }
+  return ok(normalizados);
 }
 
 /**
@@ -178,11 +245,16 @@ export function validarTamanhoDoEmail(_tamanhosEmBytes: readonly number[]): Oper
  * B67). INV-CXE-07: texto OU anexo. O anexo é só a referência do arquivo que a
  * pessoa subiu; o servidor confere o arquivo (tipo, tamanho, assinatura) antes de gravar.
  */
-export function validarNovaMensagem(entrada: NovaMensagem): OperationResult<NovaMensagem> {
+export function validarNovaMensagem(entrada: NovaMensagem, canal?: CanalDaNovaMensagem): OperationResult<NovaMensagem> {
   if (entrada.conversaId.trim() === "") return fail("Escolha a Conversa da Mensagem.", "conversaId");
   if (!(DIRECOES_DE_ENVIO as readonly string[]).includes(entrada.direcao)) {
     return fail("Uma Mensagem recebida não é criada por uma pessoa.", "direcao");
   }
+  // Sem o Canal, vale a regra de antes do e-mail: nada de assunto nem cópias e um arquivo só.
+  const capacidades = canal?.capacidades ?? { hasSubjectAndCopies: false, multimodalInOneMessage: false };
+  const copias = validarAssuntoECopias(entrada, capacidades);
+  if (!copias.ok) return copias;
+  if (copias.value !== undefined) entrada = { ...entrada, enderecosAdicionais: copias.value };
   const anexos = entrada.anexos ?? [];
   if (entrada.modeloId !== undefined && entrada.modeloId !== "") {
     // 7.3: a Mensagem de modelo é uma Mensagem enviada, sem arquivo; o texto vem do modelo, não da pessoa.
@@ -190,7 +262,10 @@ export function validarNovaMensagem(entrada: NovaMensagem): OperationResult<Nova
     if (anexos.length > 0) return fail("Uma Mensagem de modelo não leva arquivo.", "anexos");
     return ok(entrada);
   }
-  if (anexos.length > MAX_ANEXOS_POR_MENSAGEM) return fail("Uma Mensagem leva um arquivo por vez.", "anexos");
+  const maxAnexos = maxAnexosDoCanal(capacidades);
+  if (anexos.length > maxAnexos) {
+    return fail(maxAnexos === MAX_ANEXOS_POR_MENSAGEM ? "Uma Mensagem leva um arquivo por vez." : `Um e-mail leva até ${maxAnexos} arquivos.`, "anexos");
+  }
   for (const anexo of anexos) {
     if (anexo.submissionId.trim() === "" || anexo.objectId.trim() === "") {
       return fail("O arquivo anexado não foi reconhecido. Envie-o de novo.", "anexos");

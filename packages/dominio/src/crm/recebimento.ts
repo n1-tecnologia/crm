@@ -12,6 +12,7 @@
  */
 
 import type { EstadoDoContato, TipoIdentificadorContato } from "./contatos";
+import type { AnexoDaMensagem, CorpoHtmlDaMensagem, EnderecoAdicional } from "./mensagens";
 
 /** O padrão do seed (`inbox.reopenWindowHours`) quando o Espaço não tem a linha `inbox`. */
 export const JANELA_DE_REABERTURA_PADRAO_HORAS = 72;
@@ -47,6 +48,17 @@ export interface RecebidaDoProvedor {
    * `enviada` pelo Canal (`destinoDaDigitadaNoAparelho` decide a Conversa). Ausente = a Mensagem veio do Contato.
    */
   readonly digitadaNoAparelho?: boolean;
+  /** E-mail (D-17-10): Para, Cópia e Cópia oculta além do remetente; entram na Mensagem como `enderecosAdicionais`. */
+  readonly enderecosAdicionais?: readonly EnderecoAdicional[];
+  /** E-mail (D-17-14): os ids de `References`, já limpos por `idLimpo`, do mais antigo ao mais novo; a busca do fio os usa. */
+  readonly referencias?: readonly string[];
+  /**
+   * O provedor que já guardou os arquivos no bucket (o leitor de e-mail, que tem os bytes do `mailparser`): com eles o
+   * processador não baixa nada e a Mensagem nasce com estes anexos.
+   */
+  readonly anexosGuardados?: readonly AnexoDaMensagem[];
+  /** E-mail (D-17-13): o corpo HTML já guardado no bucket; a Mensagem o referencia por `Mensagem.corpoHtml`. */
+  readonly corpoHtml?: CorpoHtmlDaMensagem;
 }
 
 export type DestinoDaRecebida =
@@ -118,11 +130,20 @@ export function contatoDaRecebida(estado: EstadoDoContato): AcaoSobreOContato {
   }
 }
 
+/** Para onde vai o e-mail cuja Mensagem respondida foi achada pelo fio (D-17-14, D-17-15). */
 export type DestinoDoFio =
   | { readonly acao: "usar"; readonly conversaId: string; readonly voltaParaAberta: boolean }
   | { readonly acao: "reabrir"; readonly conversaId: string }
   | { readonly acao: "seguir_regra_do_par" };
 
-export function destinoDoFio(_conversa: { readonly id: string; readonly situacao: string; readonly estado: string }): DestinoDoFio {
-  return { acao: "seguir_regra_do_par" };
+/**
+ * D-17-15: a Conversa achada pelo fio decide sozinha, SEM olhar o Contato nem a janela de reabertura. O Contato da Conversa
+ * achada nunca muda: se outra pessoa responde no fio (um colega em cópia), a Mensagem entra na Conversa do Contato original
+ * e o colega vira Contato à parte. Aberta usa; pendente volta a aberta; resolvida reabre; na lixeira nunca reabre (a lixeira só
+ * guarda resolvidas, `conversas_lixeira_ck`) e cai na regra do par (`destinoDaRecebida`).
+ */
+export function destinoDoFio(conversa: { readonly id: string; readonly situacao: string; readonly estado: string }): DestinoDoFio {
+  if (conversa.estado === "na_lixeira") return { acao: "seguir_regra_do_par" };
+  if (conversa.situacao === "resolvida") return { acao: "reabrir", conversaId: conversa.id };
+  return { acao: "usar", conversaId: conversa.id, voltaParaAberta: conversa.situacao === "pendente" };
 }
