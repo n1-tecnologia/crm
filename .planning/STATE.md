@@ -1,18 +1,18 @@
 ---
 gsd_state_version: "1.0"
 milestone: v1.0
-current_phase: 16
-current_phase_name: "Base da mensageria: entrada, saída, tempo real e mídia"
+current_phase: 17
+current_phase_name: "E-mail: conectar a caixa, receber e enviar (Sessão 9)"
 status: executing
-stopped_at: Phase 17 context gathered
-last_updated: "2026-11-19T14:29:25.327Z"
-last_activity: 2026-11-10
-last_activity_desc: Phase 16 execution started
-state_head: 354a1c30632ee1721059b7c7f55bce4f2572d7fb
+stopped_at: Phase 17 planned (16 plans, 7 waves); Phase 16 still has 16-22 pending the owner checkpoint
+last_updated: "2026-11-19T16:48:55.756Z"
+last_activity: 2026-11-19
+last_activity_desc: Phase 17 planned (16 plans in 7 waves)
+state_head: 2d9825a2bdcb4349ee65dff0dbc04acadbf42e18
 progress:
   total_phases: 17
   completed_phases: 6
-  total_plans: 294
+  total_plans: 310
   completed_plans: 290
 milestone_name: milestone
 ---
@@ -24,14 +24,14 @@ milestone_name: milestone
 See: .planning/PROJECT.md (updated 2026-10-29)
 
 **Core value:** Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de ponta a ponta sem abrir o ClickUp — dados no Postgres próprio, regras de `@n1/dominio` intactas.
-**Current focus:** Phase 16 — Base da mensageria: entrada, saída, tempo real e mídia
+**Current focus:** Phase 17 — E-mail: conectar a caixa, receber e enviar (Sessão 9): planejada, aguarda a revisão do dono antes de `/gsd-execute-phase 17`. A Fase 16 segue com o 16-22 parado no checkpoint do dono.
 
 ## Current Position
 
-Phase: 16 (Base da mensageria: entrada, saída, tempo real e mídia) — EXECUTING
-Plan: 21 of 22 executed (lacunas 16-17 a 16-22); próximo 16-22
-Status: Ready to execute
-Last activity: 2026-11-10 — Phase 16 execution started
+Phase: 17 (E-mail: conectar a caixa, receber e enviar (Sessão 9)) — READY TO EXECUTE
+Plan: 0 of 16 executed (Fase 17, planejada em 2026-11-19). Fase 16: 21 de 22 executados (lacunas 16-17 a 16-22); o 16-22 segue parado no checkpoint do dono
+Status: Ready to execute (Fase 17)
+Last activity: 2026-11-19 — Phase 17 planned (16 plans in 7 waves)
 
 > Nota: `phase.complete` apontou a Fase 2 como "próxima" por ela estar sem `[x]` no ROADMAP; corrigido à mão para a Fase 16 (que declara `Depends on: Phase 15`). As Fases 2, 4 e 8 seguem abertas no ROADMAP e não foram tocadas.
 

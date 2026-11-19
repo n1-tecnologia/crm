@@ -979,12 +979,40 @@ Plans:
 ### Phase 17: E-mail: conectar a caixa, receber e enviar (Sessão 9)
 
 **Goal:** Quem usa a plataforma conecta a própria caixa de e-mail pela ficha do Canal (senha ou senha de app, ou login do Google e da Microsoft); o e-mail recebido vira Conversa no Contato do remetente e a resposta sai pela mesma caixa, no mesmo fio, com assunto, cópias e anexo. Escopo e tarefas: Sessão 9 de `docs/09-planejamento/TAREFAS-POR-SESSAO.md` (9.1 a 9.4). Decidido pelo dono em 2026-11-19: IMAP/SMTP com senha ou senha de app **e** com login OAuth; Gmail API e Microsoft Graph ficam fora.
-**Requirements**: TBD
+**Requirements**: EML-01 a EML-07 (IDs locais da fase, definidos em `17-CONTEXT.md` `<domain>`)
 **Depends on:** Phase 16
-**Plans:** 0 plans
+**Plans:** 16 plans em 7 ondas (17-02, 17-04 e 17-16 têm checkpoints do dono: legitimidade dos pacotes, o formato da `017` e da credencial, e a prova com caixas reais; nenhum plano autônomo toca produção)
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 17 to break down)
+**Wave 1**
+- [ ] 17-01-PLAN.md — domínio: o fio (`mensagemRespondida`, cabeçalhos da resposta), o que não vira Conversa (D-17-11), `NovaMensagem` com assunto, cópias e até 10 arquivos em 20 MB
+- [ ] 17-02-PLAN.md — portão dos pacotes (checkpoint), instalação com versão exata e os dublês de IMAP e SMTP (spike do `imapkit`)
+- [ ] 17-04-PLAN.md — checkpoint da porta de mão única (D-17-05), migração `017`, credencial `v: 1`, repositório e coleta que poupa a fila
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 17-03-PLAN.md — guarda de rede (D-17-07), fábrica de conexão no IP conferido e erro classificado
+- [ ] 17-06-PLAN.md — entrada: o fio em `receberMensagem` (D-17-14, D-17-15), contrato `semWebhook`, anexos já guardados
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 17-05-PLAN.md — conectar por senha (`POST /canais/:id/email/conectar`), conta na ficha, esquecer ao desconectar e a queda (D-17-20)
+- [ ] 17-07-PLAN.md — saída: assunto e cópias no `POST /mensagens`, envio com o fio e o id gravado antes, `baixar` do bucket
+- [ ] 17-08-PLAN.md — receber: o MIME interpretado na fila com o cursor, filtros, anexos e HTML pela mídia da Fase 16
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 17-09-PLAN.md — enviar pelo SMTP (cópia oculta só no envelope, ambíguo, `APPEND`) e o provedor `email-imap-smtp` registrado
+- [ ] 17-11-PLAN.md — o HTML do e-mail limpo ao servir (`GET /mensagens/:id/corpo-html`, D-17-13)
+- [ ] 17-12-PLAN.md — entrar com a Microsoft (`state` + PKCE, prova por XOAUTH2, renovação com rotação)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+- [ ] 17-10-PLAN.md — o leitor IMAP por `EMAIL_LEITOR_ATIVO` (IDLE, 2 min, trava na conexão dedicada) e a troca de três e-mails e2e
+- [ ] 17-13-PLAN.md — entrar com o Google e revogar ao desconectar
+- [ ] 17-15-PLAN.md — tela: assunto, cópias, cópia oculta, vários arquivos e o e-mail formatado na moldura isolada
+
+**Wave 6** *(blocked on Wave 5 completion)*
+- [ ] 17-14-PLAN.md — tela: os três caminhos na ficha, "Outro servidor", página de retorno e a queda com motivo
+
+**Wave 7** *(blocked on Wave 6 completion)*
+- [ ] 17-16-PLAN.md — produção com o leitor desligado, documentos das camadas, gate e a prova com caixas reais (checkpoint do dono)
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*
