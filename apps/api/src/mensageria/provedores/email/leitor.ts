@@ -98,6 +98,11 @@ export interface OpcoesDoLeitorDeEmail {
   readonly esperaDoAnexoMs?: number;
   /** Padrão 100: quantos e-mails entram por leitura (o resto vem na volta seguinte). */
   readonly maxPorLeitura?: number;
+  /**
+   * Só para os testes: limita a lista de contas lidas (o Postgres de teste é compartilhado entre arquivos, e a lista atravessa
+   * os Espaços). A produção não usa: o leitor é da plataforma e lê todos.
+   */
+  readonly filtrarContas?: (conta: ContaDeEmail) => boolean;
   /** Só para os testes contarem as conexões do leitor em `pg_stat_activity`; a produção não manda `application_name` (o pooler pode recusá-lo). */
   readonly nomeDaAplicacao?: string;
   /** Só id do Canal, contagens e o nome do tipo da falha: nunca endereço, assunto, corpo nem segredo. */
@@ -495,7 +500,7 @@ export function criarLeitorDeEmail(opcoes: OpcoesDoLeitorDeEmail = {}): LeitorDe
 
   /** Uma volta do supervisor: recolhe as sessões que acabaram ou cujo Canal saiu da lista, e abre as dos Canais novos. */
   async function varrer(travas: Client): Promise<void> {
-    const contas = await contasParaLer(pool());
+    const contas = (await contasParaLer(pool())).filter(opcoes.filtrarContas ?? (() => true));
     const ativas = new Set(contas.map(chaveDaSessao));
 
     for (const [chave, sessao] of [...sessoes]) {

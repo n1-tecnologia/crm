@@ -10,82 +10,20 @@
  * cria Contato, Conversa e Mensagem. Sem ajuda do provedor de teste: o registro só tem o de e-mail.
  */
 
-import { randomBytes } from "node:crypto";
-import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import type { MembroDaSessao } from "../plugins/autenticacao";
-import { criarProcessadorDeEntrada } from "../mensageria/processador-de-entrada";
-import { criarAcessoDoEmail } from "../mensageria/provedores/email/credencial";
-import { criarServicoDeConexaoDoEmail } from "../mensageria/provedores/email/conexao";
-import { criarFabricaDeConexao } from "../mensageria/provedores/email/fabrica-de-conexao";
-import { criarLeitorDeEmail, type LeitorDeEmail } from "../mensageria/provedores/email/leitor";
-import { criarProvedorDeEmail } from "../mensageria/provedores/email/provedor";
-import { criarPoliticaDeRede, type Resolvedor } from "../mensageria/provedores/email/rede";
+import { criarWorkerDeSaida } from "../mensageria/entregar-mensagem";
 import { lerCursor } from "../mensageria/provedores/email/repositorio";
-import { provedorDeTeste } from "../mensageria/provedores/teste";
 import { encerrar, pool } from "../persistencia/conexao";
-import type { ChavesDoCofre } from "../servicos/cofre";
-import { criarAcessoAoCrmPg } from "../servicos/crm/acesso";
-import { criarServicoDeCanais } from "../servicos/crm/canais";
-import type { ResultadoCrm } from "../servicos/crm/resultado";
-import { criarArmazenamentoFalso } from "../testes/armazenamento-falso";
+import { criarServicoDeMensagens } from "../servicos/crm/mensagens";
+import { ate, CHAVES_DA_BANCADA, criarBancadaDeEmail, DOMINIO_DA_BANCADA, mime, valor } from "../testes/bancada-de-email";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearMembro } from "../testes/banco-crm";
-import { iniciarServidorDeEmailFalso, type ServidorDeEmailFalso } from "../testes/servidor-de-email-falso";
-
-const chaves: ChavesDoCofre = { atual: { versao: 1, chave: randomBytes(32) } };
-const SENHA = "senha-do-e2e-17-10";
-const DOMINIO_DO_CANAL = "caixa.teste";
-
-function valor<T>(resultado: ResultadoCrm<T>): T {
-  if (!resultado.ok) throw new Error(`esperava sucesso, veio ${resultado.status} ${resultado.codigo ?? ""}: ${resultado.error}`);
-  return resultado.valor;
-}
-
-/** Espera até `condicao` devolver verdadeiro (ou lança com o rótulo), olhando de 50 em 50 ms. */
-async function ate(rotulo: string, condicao: () => Promise<boolean> | boolean, limiteMs = 10_000): Promise<void> {
-  const limite = Date.now() + limiteMs;
-  while (Date.now() < limite) {
-    if (await condicao()) return;
-    await new Promise((resolver) => setTimeout(resolver, 50));
-  }
-  throw new Error(`não aconteceu a tempo: ${rotulo}`);
-}
-
-interface CabecalhosDoEmail {
-  readonly de: string;
-  readonly para: string;
-  readonly assunto: string;
-  readonly messageId: string;
-  readonly inReplyTo?: string;
-  readonly references?: string;
-  readonly texto: string;
-}
-
-function mime(e: CabecalhosDoEmail): string {
-  return [
-    `From: ${e.de}`,
-    `To: ${e.para}`,
-    `Subject: ${e.assunto}`,
-    `Message-ID: <${e.messageId}>`,
-    ...(e.inReplyTo ? [`In-Reply-To: <${e.inReplyTo}>`] : []),
-    ...(e.references ? [`References: ${e.references}`] : []),
-    "Date: Thu, 19 Nov 2026 10:00:00 +0000",
-    "MIME-Version: 1.0",
-    "Content-Type: text/plain; charset=utf-8",
-    "",
-    e.texto,
-    "",
-  ].join("\r\n");
-}
 
 describeComBanco("Fase 17 ponta a ponta: o e-mail que chega na caixa vira Conversa pelo leitor, pela fila e pelo processador", () => {
   const ws = novoEspacoDeTeste("emailentrada");
   const admin: MembroDaSessao = { id: "mem_admin", workspaceId: ws, state: "ativo" };
-  const acessoAoCrm = criarAcessoAoCrmPg(pool);
-  const canais = criarServicoDeCanais({ pool, acesso: acessoAoCrm });
-  const armazenamento = criarArmazenamentoFalso();
-
-  const abertos: Array<{ caixa: ServidorDeEmailFalso; leitor?: LeitorDeEmail }> = [];
-  let sequencia = 0;
+  const bancada = criarBancadaDeEmail({ ws, admin });
+  const { cenario } = bancada;
 
   beforeAll(async () => {
     await prepararBancoCrm();
@@ -94,11 +32,7 @@ describeComBanco("Fase 17 ponta a ponta: o e-mail que chega na caixa vira Conver
   });
 
   afterEach(async () => {
-    while (abertos.length > 0) {
-      const aberto = abertos.pop()!;
-      await aberto.leitor?.parar();
-      await aberto.caixa.fechar();
-    }
+    await bancada.fechar();
   });
 
   afterAll(async () => {
@@ -107,58 +41,6 @@ describeComBanco("Fase 17 ponta a ponta: o e-mail que chega na caixa vira Conver
     await limparEspaco(ws);
     await encerrar();
   });
-
-  /** Uma caixa nova no dublê e o Canal conectado a ela por senha (cursor no `UIDNEXT`). */
-  async function cenario() {
-    sequencia += 1;
-    const endereco = `vendas${sequencia}@${DOMINIO_DO_CANAL}`;
-    const cliente = `cliente${sequencia}@empresa.com`;
-    const caixa = await iniciarServidorDeEmailFalso({ usuarios: [{ usuario: endereco, senha: SENHA }] });
-    const aberto: { caixa: ServidorDeEmailFalso; leitor?: LeitorDeEmail } = { caixa };
-    abertos.push(aberto);
-    const resolver = vi.fn<Resolvedor>(async () => [{ address: "127.0.0.1", family: 4 }]);
-    const fabrica = criarFabricaDeConexao({
-      resolver,
-      politica: criarPoliticaDeRede({ permitir: ["127.0.0.1"] }),
-      portas: { imap: { [caixa.imap.porta]: "tls" }, smtp: { [caixa.smtp.porta]: "tls" } },
-      ca: caixa.ca,
-    });
-    const acesso = criarAcessoDoEmail({ pool, chaves: () => chaves });
-    const provedor = criarProvedorDeEmail({ fabrica, acesso, armazenamento, pool });
-    const registro = { teste: provedorDeTeste, porProvedor: { "email-imap-smtp": provedor } } as const;
-    const processador = criarProcessadorDeEntrada({ workerId: `teste-email-entrada-${sequencia}`, chaves, registro, armazenamento });
-
-    const canal = valor(await canais.criar(admin, { provedor: "email-imap-smtp", nome: `Vendas ${sequencia}`, identificador: endereco }));
-    const conexao = criarServicoDeConexaoDoEmail({ pool, acesso: acessoAoCrm, fabrica, chaves: () => chaves });
-    valor(
-      await conexao.conectarPorSenha(admin, canal.id, {
-        usuario: endereco,
-        senha: SENHA,
-        imap: { host: "imap.caixa.teste", porta: caixa.imap.porta },
-        smtp: { host: "smtp.caixa.teste", porta: caixa.smtp.porta },
-      }),
-    );
-
-    const criarLeitor = (extras: Parameters<typeof criarLeitorDeEmail>[0] = {}): LeitorDeEmail => {
-      const leitor = criarLeitorDeEmail({
-        url: process.env.DATABASE_URL!,
-        pool,
-        fabrica,
-        acesso,
-        armazenamento,
-        chaves,
-        aoEnfileirar: () => processador.acordar(),
-        intervaloDoSupervisorMs: 200,
-        intervaloDeConferenciaMs: 1_000,
-        esperaInicialMs: 50,
-        ...extras,
-      });
-      aberto.leitor = leitor;
-      return leitor;
-    };
-
-    return { ws, canalId: canal.id, endereco, cliente, caixa, fabrica, resolver, acesso, processador, registro, criarLeitor };
-  }
 
   const mensagensDoCanal = async (canalId: string) =>
     (
@@ -183,15 +65,16 @@ describeComBanco("Fase 17 ponta a ponta: o e-mail que chega na caixa vira Conver
     leitor.iniciar();
     await ate("o leitor abriu a sessão do Canal", () => leitor.canaisLidos().includes(c.canalId));
 
+    const idA = `a-${c.canalId}@empresa.example`;
     const uid = await c.caixa.adicionarMensagem(
       c.endereco,
-      mime({ de: `Cliente <${c.cliente}>`, para: c.endereco, assunto: "Pedido 42", messageId: `a-${sequencia}@empresa.example`, texto: "Preciso de um orçamento." }),
+      mime({ de: `Cliente <${c.cliente}>`, para: c.endereco, assunto: "Pedido 42", messageId: idA, texto: "Preciso de um orçamento." }),
     );
 
     await ate("a Mensagem entrou", async () => (await mensagensDoCanal(c.canalId)).length === 1);
 
     const mensagens = await mensagensDoCanal(c.canalId);
-    expect(mensagens[0]).toMatchObject({ direcao: "recebida", id_externo: `a-${sequencia}@empresa.example`, assunto: "Pedido 42" });
+    expect(mensagens[0]).toMatchObject({ direcao: "recebida", id_externo: idA, assunto: "Pedido 42" });
 
     // A Conversa é do Contato `cliente@empresa.com`.
     const dono = (
@@ -214,4 +97,53 @@ describeComBanco("Fase 17 ponta a ponta: o e-mail que chega na caixa vira Conver
     // O dublê não tem mais nenhuma conexão IMAP aberta depois do `parar`.
     await ate("as conexões IMAP fecharam", () => c.caixa.conexoesAbertas().imap === 0, 3_000);
   });
+
+  it("EML-04: a troca de três e-mails fica numa Conversa só, e a resposta pela Caixa sai com In-Reply-To e References certos", async () => {
+    const c = await cenario();
+    const leitor = c.criarLeitor();
+    leitor.iniciar();
+    await ate("o leitor abriu a sessão do Canal", () => leitor.canaisLidos().includes(c.canalId));
+
+    // 1. O cliente escreve (A).
+    const idA = `a-${c.canalId}@empresa.example`;
+    await c.caixa.adicionarMensagem(c.endereco, mime({ de: `Cliente <${c.cliente}>`, para: c.endereco, assunto: "Pedido 42", messageId: idA, texto: "Preciso de um orçamento." }));
+    await ate("A entrou", async () => (await mensagensDoCanal(c.canalId)).length === 1);
+    const conversaId = (await mensagensDoCanal(c.canalId))[0]!.conversa_id;
+
+    // 2. A resposta escrita na Caixa (B) sai pelo outbox, no mesmo fio.
+    const servico = criarServicoDeMensagens({ pool, acesso: bancada.acessoAoCrm });
+    const resposta = valor(await servico.enviar(admin, { conversaId, direcao: "enviada", conteudo: "Segue o orçamento." }));
+    const worker = criarWorkerDeSaida({
+      workerId: `teste-email-entrada-saida-${c.canalId}`,
+      workspaceId: ws,
+      chaves: CHAVES_DA_BANCADA,
+      registro: c.registro,
+      armazenamento: c.armazenamento,
+    });
+    expect(await worker.processarUm()).toBe(true);
+    expect(c.caixa.entregues).toHaveLength(1);
+    const enviado = c.caixa.entregues[0]!.dados.toString("utf8");
+    const idB = `n1.${resposta.id}@${DOMINIO_DA_BANCADA}`;
+    expect(enviado).toMatch(new RegExp(`^Message-ID: <${idB.replace(/\./g, "\\.")}>\\r?$`, "m"));
+    expect(enviado).toMatch(new RegExp(`^In-Reply-To: <${idA.replace(/\./g, "\\.")}>\\r?$`, "m"));
+    expect(enviado).toMatch(new RegExp(`^References: <${idA.replace(/\./g, "\\.")}>\\r?$`, "m"));
+
+    // 3. O cliente responde à resposta (C), com o fio que o e-mail dele carrega.
+    const idC = `c-${c.canalId}@empresa.example`;
+    await c.caixa.adicionarMensagem(
+      c.endereco,
+      mime({ de: `Cliente <${c.cliente}>`, para: c.endereco, assunto: "Re: Re: Pedido 42", messageId: idC, inReplyTo: idB, references: `<${idA}> <${idB}>`, texto: "Fechado, pode mandar." }),
+    );
+    await ate("C entrou", async () => (await mensagensDoCanal(c.canalId)).some((m) => m.id_externo === idC));
+
+    const todas = await mensagensDoCanal(c.canalId);
+    expect(todas).toHaveLength(3);
+    // Uma Conversa só, com as três Mensagens.
+    expect(new Set(todas.map((m) => m.conversa_id)).size).toBe(1);
+    expect(todas.map((m) => m.id_externo).sort()).toEqual([idA, idB, idC].sort());
+    // C responde a B (a Mensagem que a Caixa mandou).
+    expect(todas.find((m) => m.id_externo === idC)).toMatchObject({ direcao: "recebida", em_resposta_a_id: resposta.id });
+    const conversas = (await pool().query("select id from plataforma.conversas where workspace_id = $1 and canal_id = $2", [ws, c.canalId])).rows;
+    expect(conversas).toHaveLength(1);
+  }, 30_000);
 });

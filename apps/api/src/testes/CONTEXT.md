@@ -86,3 +86,12 @@ caixas é **uma só por servidor** ("single user, multiple connection"). Vários
 próprias, mas veem as mesmas pastas e mensagens; o argumento `usuario` de `adicionarMensagem`, `recriarCaixa` e
 `mensagensDaPasta` não separa nada. Um teste que precisa de duas caixas distintas sobe dois servidores. O `smtp-server`
 e o `imapkit` trazem os próprios tipos; por isso os três `@types` (nodemailer, mailparser, smtp-server) ficam de fora.
+
+**Acrescentado no 17-10 (o leitor):** o dublê aceita `semIdle: true` (o IMAP não anuncia `IDLE`, então só a conferência
+periódica do leitor vê mensagem nova), `trocarSenha(usuario, nova)` (vale no IMAP e no SMTP; as sessões abertas seguem de pé, e
+quem quer derrubá-las chama `derrubarConexoes()`) e `conexoesAbertas()` (os sockets de pé agora, ao contrário de
+`conexoesImap()`, que é o histórico). `bancada-de-email.ts` monta o que `leitor.test.ts` e `e2e/email-entrada.test.ts`
+repetiriam: uma caixa do dublê, o Canal de e-mail conectado a ela por senha (cursor no `UIDNEXT`), a fábrica que só abre
+`127.0.0.1`, o provedor, o processador de entrada e `criarLeitor` já ligado a tudo. O leitor lista as contas de TODOS os Espaços e o
+Postgres de teste é um só: por isso a bancada limita cada leitor ao Canal do cenário (`filtrarContas`), senão ele tentaria abrir
+os Canais dos cenários anteriores, que ficam no banco até o `afterAll` do arquivo.
