@@ -1,0 +1,21 @@
+Message-ID: <logo-1@empresa.example>
+Date: Wed, 19 Nov 2026 15:00:00 -0300
+From: Cliente <cliente@empresa.example>
+To: vendas@caixa.test
+Subject: Nosso logotipo
+MIME-Version: 1.0
+Content-Type: multipart/related; boundary="rel"
+
+--rel
+Content-Type: text/html; charset=utf-8
+
+<html><body><p>Veja o logotipo:</p><img src="cid:logo"></body></html>
+--rel
+Content-Type: image/png; name="logo.png"
+Content-Disposition: inline; filename="logo.png"
+Content-ID: <logo>
+Content-Transfer-Encoding: base64
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA
+60e6kgAAAABJRU5ErkJggg==
+--rel--

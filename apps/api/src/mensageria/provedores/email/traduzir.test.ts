@@ -21,6 +21,7 @@ import {
   MAX_TEXTO_NO_CORPO,
   prepararEmailRecebido,
   TETO_DO_EMAIL_RECEBIDO_BYTES,
+  TETO_DO_HTML_GUARDADO_BYTES,
   type CorpoDoEmail,
 } from "./traduzir";
 
@@ -348,5 +349,101 @@ describe("corpoIgnorado e a forma do corpo", () => {
     // Sem remetente: não há quem seja o Contato.
     const r = await preparar(texto(["Message-ID: <sem-from@x.example>", "Subject: Sem remetente", "", "oi", ""].join("\n")));
     expect(r.corpo).toMatchObject({ v: 1, ignorado: "ilegivel" });
+  });
+});
+
+describe("anexos e imagem embutida pela guarda da Fase 16 (D-17-13, D-17-18)", () => {
+  it("a imagem embutida por cid: vira anexo e o HTML guardado a traz como data:", async () => {
+    const r = await preparar(eml("imagem-embutida.eml"));
+    const corpo = lido(r.corpo);
+    expect(corpo.anexos).toHaveLength(1);
+    expect(corpo.anexos[0]).toMatchObject({ tipoDeMidia: "image/png", nome: "logo.png", baixado: true });
+    const html = Buffer.from(await r.armazenamento.baixar(corpo.corpoHtml!.objectKey, { tetoBytes: MIB })).toString("utf8");
+    expect(html).toContain("data:image/png;base64,");
+    expect(html).not.toContain("cid:logo");
+  });
+
+  it("o HTML sobe como `text/html` em entrada/ e nunca aparece em `anexos`", async () => {
+    const armazenamento = criarArmazenamentoFalso();
+    const subir = vi.spyOn(armazenamento, "subir");
+    const r = await preparar(eml("com-anexo.eml"), { armazenamento });
+    const corpo = lido(r.corpo);
+    expect(corpo.corpoHtml?.objectKey).toMatch(new RegExp(`^workspace/${WS}/entrada/canal-1/`));
+    expect(subir).toHaveBeenCalledWith(corpo.corpoHtml?.objectKey, expect.anything(), "text/html");
+    expect(corpo.anexos.every((a) => a.tipoDeMidia !== "text/html")).toBe(true);
+  });
+
+  it("um .exe fica `baixado: false` com nome e tipo e nada sobe ao bucket", async () => {
+    const r = await preparar(comArquivo("application/x-msdownload", "instalador.exe", Buffer.from("MZ\u0090\u0000conteudo")));
+    const corpo = lido(r.corpo);
+    expect(corpo.anexos).toEqual([{ tipoDeMidia: "application/x-msdownload", nome: "instalador.exe", referenciaExterna: `${UID_VALIDITY}:3:0`, baixado: false }]);
+    expect(r.armazenamento.chavesGuardadas()).toEqual([]);
+    expect(r.algumTransitorio).toBe(false);
+  });
+
+  it("um convite de calendário (text/calendar) fica `baixado: false`", async () => {
+    const r = await preparar(comArquivo("text/calendar", "convite.ics", Buffer.from("BEGIN:VCALENDAR\nEND:VCALENDAR\n")));
+    expect(lido(r.corpo).anexos).toEqual([{ tipoDeMidia: "text/calendar", nome: "convite.ics", referenciaExterna: `${UID_VALIDITY}:3:0`, baixado: false }]);
+    expect(r.armazenamento.chavesGuardadas()).toEqual([]);
+  });
+
+  it("um PDF cujo conteúdo é texto (assinatura não bate) fica `baixado: false`", async () => {
+    const r = await preparar(comArquivo("application/pdf", "falso.pdf", Buffer.from("isto nao e um pdf")));
+    expect(lido(r.corpo).anexos).toEqual([{ tipoDeMidia: "application/pdf", nome: "falso.pdf", referenciaExterna: `${UID_VALIDITY}:3:0`, baixado: false }]);
+    expect(r.armazenamento.chavesGuardadas()).toEqual([]);
+  });
+
+  it("a referência de cada arquivo é <uidValidity>:<uid>:<índice>", async () => {
+    const armazenamento = criarArmazenamentoFalso();
+    const guarda = criarGuardaDeMidia({ armazenamento });
+    const espiada = vi.spyOn(guarda, "guardarAnexosRecebidos");
+    await prepararEmailRecebido({ bytes: eml("com-anexo.eml"), uid: 12, uidValidity: UID_VALIDITY, workspaceId: WS, canal, guarda, armazenamento });
+    const anexos = espiada.mock.calls[0]?.[0].anexos;
+    expect(anexos?.map((a) => a.referenciaNoProvedor)).toEqual([`${UID_VALIDITY}:12:0`]);
+  });
+
+  it("o bucket falhando ao subir devolve `algumTransitorio` e deixa os arquivos `baixado: false` e a Mensagem sem HTML", async () => {
+    const armazenamento = criarArmazenamentoFalso();
+    vi.spyOn(armazenamento, "subir").mockRejectedValue(new Error("bucket fora do ar"));
+    const r = await preparar(eml("com-anexo.eml"), { armazenamento });
+    const corpo = lido(r.corpo);
+    expect(r.algumTransitorio).toBe(true);
+    expect(corpo.anexos).toHaveLength(1);
+    expect(corpo.anexos[0]?.baixado).toBe(false);
+    expect(corpo.corpoHtml).toBeUndefined();
+    expect(corpo.texto).toContain("pedido 42");
+  });
+
+  it("HTML maior que 5 MiB: o corpo fica sem `corpoHtml` e o texto intacto", async () => {
+    const linha = "<p>enchimento do corpo html</p>";
+    const html = Array.from({ length: Math.ceil((TETO_DO_HTML_GUARDADO_BYTES + 1024) / (linha.length + 1)) }, () => linha).join("\n");
+    const bytes = texto(
+      [
+        "Message-ID: <html-grande@empresa.example>",
+        "Date: Wed, 19 Nov 2026 10:00:00 -0300",
+        "From: cliente@empresa.example",
+        `To: ${ENDERECO_DO_CANAL}`,
+        "Subject: HTML grande",
+        "MIME-Version: 1.0",
+        'Content-Type: multipart/alternative; boundary="alt"',
+        "",
+        "--alt",
+        "Content-Type: text/plain; charset=utf-8",
+        "",
+        "texto intacto",
+        "--alt",
+        "Content-Type: text/html; charset=utf-8",
+        "",
+        html,
+        "--alt--",
+        "",
+      ].join("\n"),
+    );
+    const r = await preparar(bytes);
+    const corpo = lido(r.corpo);
+    expect(corpo.corpoHtml).toBeUndefined();
+    expect(corpo.texto).toContain("texto intacto");
+    expect(r.armazenamento.chavesGuardadas()).toEqual([]);
+    expect(r.algumTransitorio).toBe(false);
   });
 });
