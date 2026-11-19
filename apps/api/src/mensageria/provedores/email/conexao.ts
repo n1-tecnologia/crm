@@ -26,7 +26,7 @@ import { contaDoProvedorConfere, proximaConexao, type Canal } from "@n1/dominio/
 import type { MembroDaSessao } from "../../../plugins/autenticacao";
 import { criarRepositorioDeCanaisPg } from "../../../repositorios/crm/canais";
 import { avancarRevisaoDoEspaco } from "../../../repositorios/crm/referencias";
-import { lerChavesDoCofre, type ChavesDoCofre } from "../../../servicos/cofre";
+import { lerChavesDoCofre, lerCredencial, type ChavesDoCofre } from "../../../servicos/cofre";
 import { exigir, type AcessoAoCrm } from "../../../servicos/crm/acesso";
 import { recusa, sucesso, type ResultadoCrm } from "../../../servicos/crm/resultado";
 import { comTransacao, type FrasesDeRestricao } from "../../../servicos/crm/transacao";
@@ -44,7 +44,7 @@ import {
   type ServicosDisponiveis,
   type ServidoresDaConta,
 } from "./configuracao";
-import { guardarCredencialDoEmail, type CredencialDoEmail } from "./credencial";
+import { TIPO_DA_CREDENCIAL, guardarCredencialDoEmail, lerCredencialDoEmail, type CredencialDoEmail } from "./credencial";
 import { classificarErroDeConexao, type FalhaDeConexao } from "./erros";
 import { criarFabricaDeConexao, type FabricaDeConexao, type ResultadoDaVerificacaoImap } from "./fabrica-de-conexao";
 import { ErroDoLogin } from "./oauth/comum";
@@ -136,6 +136,70 @@ const FRASES_DO_ERRO_DO_LOGIN = {
   SERVICO_FORA: (servico: ServicoDeLogin) =>
     recusa<never>(502, `Não foi possível falar com ${NOMES_DOS_SERVICOS[servico]} agora. Tente de novo em instantes.`, { codigo: "SERVICO_DE_LOGIN_FORA" }),
 } as const;
+
+/**
+ * O que o serviço de Canais pede ao e-mail ao desconectar e arquivar (D-17-06): tirar o acesso no serviço de login, ANTES da
+ * transação (é rede). Fica separado do serviço de conexão porque o serviço de Canais só precisa disto, e os testes o trocam
+ * por um falso (molde do `whatsappNaoOficial`).
+ */
+export interface ConectorDoEmail {
+  /** Melhor esforço: NUNCA rejeita e nunca registra o token. Só o Canal conectado pelo Google pede algo à rede. */
+  revogar(workspaceId: string, canal: Canal): Promise<void>;
+}
+
+export interface DependenciasDoConectorDoEmail {
+  readonly pool: () => Pool;
+  /** Padrão: o cofre do ambiente. */
+  readonly chaves?: () => ChavesDoCofre;
+  /** Padrão: o cliente de cada serviço contra os endereços reais. Testes injetam clientes que falam com um servidor de login falso. */
+  readonly clientes?: FabricasDeClienteOauth;
+  /** Padrão: o ambiente. Sem o par do Google configurado não há cliente para revogar. */
+  readonly configuracaoDoOauth?: () => ConfiguracaoDoOauth | undefined;
+}
+
+/**
+ * Só o Canal `oauth` do Google revoga: o de senha não tem token, e a Microsoft não tem endpoint de revogação por token (A9: ela só
+ * se apaga localmente, o que o esquecimento do 17-05 faz). Toda falha (cofre, rede, Google recusando, configuração ausente) vira
+ * só uma contagem: a conta e a credencial locais saem do mesmo jeito, na transação do serviço de Canais.
+ */
+export function criarConectorDoEmail(deps: DependenciasDoConectorDoEmail): ConectorDoEmail & { falhasDeRevogacao(): number } {
+  const chaves = deps.chaves ?? (() => lerChavesDoCofre());
+  const clientes = deps.clientes ?? CLIENTES_DE_PRODUCAO;
+  const configuracao =
+    deps.configuracaoDoOauth ??
+    (() => {
+      try {
+        return lerConfiguracaoDoOauth();
+      } catch {
+        return undefined;
+      }
+    });
+  let falhas = 0;
+
+  return {
+    falhasDeRevogacao: () => falhas,
+    async revogar(workspaceId, canal) {
+      try {
+        if (canal.provedor !== PROVEDOR) return;
+        const guardada = await lerCredencial(deps.pool(), chaves(), { workspaceId, donoTipo: "canal", donoId: canal.id, tipo: TIPO_DA_CREDENCIAL });
+        const credencial = lerCredencialDoEmail(guardada);
+        if (credencial?.tipo !== "oauth" || credencial.servico !== "google") return;
+        const config = configuracao();
+        const app = config?.google;
+        const fabrica = clientes.google;
+        // A revogação não usa o segredo do app, mas o cliente é montado como os outros; sem o par configurado, não há o que montar.
+        if (!config || !app || !fabrica) {
+          falhas += 1;
+          return;
+        }
+        await fabrica({ ...app, redirectUri: config.redirectUri }).revogar?.(credencial.refreshToken);
+      } catch {
+        // A causa pode carregar o token e a URL: nada dela é registrado. Só a contagem.
+        falhas += 1;
+      }
+    },
+  };
+}
 
 const FORMA_DE_ENDERECO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 

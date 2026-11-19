@@ -56,6 +56,7 @@ import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { reenfileirarPendentesDoCanal } from "../../mensageria/fila-de-saida";
 import { FalhaDoProvedor, FRASE_DE_FALHA_DO_WHATSAPP, type ConectorDaEvolution } from "../../mensageria/provedores/evolution/conexao";
 import { esquecerCredenciaisDaEvolution } from "../../mensageria/provedores/evolution/repositorio";
+import type { ConectorDoEmail } from "../../mensageria/provedores/email/conexao";
 import { esquecerContaDoEmail } from "../../mensageria/provedores/email/repositorio";
 import { esquecerConta } from "../../mensageria/provedores/instagram/repositorio";
 import { esquecerNumero } from "../../mensageria/provedores/whatsapp-cloud/repositorio";
@@ -94,6 +95,8 @@ export function simulacaoDeConexaoPermitida(env: Readonly<Record<string, string 
 export interface ConectoresDeCanal {
   /** A Evolution (`whatsapp-nao-oficial`). Ausente nos testes que não a exercitam: então "Conectar" responde 503. */
   readonly whatsappNaoOficial?: ConectorDaEvolution;
+  /** O e-mail (Sessão 9, D-17-06): tira o acesso no Google ao desconectar e arquivar. Ausente: segue como sem revogação. */
+  readonly email?: ConectorDoEmail;
 }
 
 /** Rede contra corrida: o constraint que segurou vira esta frase, sem o nome dele (T-08-04). */
@@ -250,17 +253,31 @@ export function criarServicoDeCanais(deps: {
    * 4.3.3: tira o aparelho da sessão ANTES de abrir a transação (a Evolution é rede; a transação segura a linha do Espaço e a
    * do Canal). Só age onde há o que tirar: Canal `whatsapp-nao-oficial` real, ativo e cuja transição o domínio aceita (o
    * resto é recusado dentro da transação, sem chamar ninguém). Se a Evolution não responde, devolve 502 e nada é gravado.
+   * Sessão 9: o Canal de e-mail pede ao conector do e-mail a revogação do token (o do Google), em melhor esforço: a falha dela
+   * NUNCA recusa a desconexão.
    * `undefined` é "siga para a escrita". A permissão vem primeiro: um Membro sem ela nunca dispara chamada de rede.
    */
   async function desligarDoProvedor(membro: MembroDaSessao, id: string, acao: "desconectar" | "arquivar"): Promise<ResultadoCrm<never> | undefined> {
     const negado = await exigir(deps.acesso, membro, acao, "canal");
     if (negado) return { ok: false, ...negado };
     const conector = deps.conectores?.whatsappNaoOficial;
-    if (!conector) return undefined;
+    const email = deps.conectores?.email;
+    if (!conector && !email) return undefined;
     const canal = await criarRepositorioDeCanaisPg(deps.pool()).obter(membro.workspaceId, id);
-    if (!canal || canal.provedor !== "whatsapp-nao-oficial" || canal.conexaoSimulada || canal.estado === "arquivado") return undefined;
+    if (!canal || canal.conexaoSimulada || canal.estado === "arquivado") return undefined;
     if (acao === "desconectar" && !proximaConexao(canal, "desconectar").ok) return undefined;
     if (acao === "arquivar" && !validarArquivamento(canal).ok) return undefined;
+    if (canal.provedor === "email-imap-smtp") {
+      // D-17-06 (Sessão 9): o token do Google é revogado ANTES da transação, e a revogação NUNCA recusa a desconexão: o conector
+      // engole a falha, e a conta e a credencial locais saem do mesmo jeito.
+      try {
+        await email?.revogar(membro.workspaceId, canal);
+      } catch {
+        // Defesa em profundidade para um conector que não cumpra o contrato; nada é registrado (o token pode estar na causa).
+      }
+      return undefined;
+    }
+    if (!conector || canal.provedor !== "whatsapp-nao-oficial") return undefined;
     try {
       await conector.desligar(membro.workspaceId, canal, acao);
     } catch (erro) {

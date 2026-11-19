@@ -52,7 +52,7 @@ import { criarServicoDeSucessao, type ServicoDeSucessao } from "../../servicos/c
 import { criarServicoDeTarefasConversacionais, type ServicoDeTarefasConversacionais } from "../../servicos/crm/tarefas-conversacionais";
 import { criarServicoDeConexaoDoInstagram, type ServicoDeConexaoDoInstagram } from "../../mensageria/provedores/instagram/conexao";
 import { criarServicoDeConexaoDaCloudApi, type ServicoDeConexaoDaCloudApi } from "../../mensageria/provedores/whatsapp-cloud/conexao";
-import { criarServicoDeConexaoDoEmail, type ServicoDeConexaoDoEmail } from "../../mensageria/provedores/email/conexao";
+import { criarConectorDoEmail, criarServicoDeConexaoDoEmail, type ServicoDeConexaoDoEmail } from "../../mensageria/provedores/email/conexao";
 import { rotasDeAtividades } from "./atividades";
 import { rotasDeCanais } from "./canais";
 import { rotasDeConsentimentos } from "./consentimentos";
@@ -141,7 +141,10 @@ export async function rotasDeCrm(app: FastifyInstance, opcoes: OpcoesDeCrm = {})
     criarServicoDeCanais({
       pool: obterPool,
       acesso,
-      conectores: opcoes.conectoresDeCanal ?? { whatsappNaoOficial: criarConectorDaEvolution({ pool: obterPool }) },
+      conectores: opcoes.conectoresDeCanal ?? {
+        whatsappNaoOficial: criarConectorDaEvolution({ pool: obterPool }),
+        email: criarConectorDoEmail({ pool: obterPool }),
+      },
     });
   await app.register(rotasDeCanais, { servico: canais });
   const conversas = opcoes.conversas ?? criarServicoDeConversas({ pool: obterPool, acesso });
