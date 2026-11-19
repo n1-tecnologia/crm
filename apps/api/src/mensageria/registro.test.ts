@@ -82,6 +82,55 @@ describe("provedorDoCanal (D-16-03) — sem banco", () => {
   });
 });
 
+describe("o provedor de e-mail no registro (Sessão 9, D-17-03, F8) — sem banco", () => {
+  const comCofre = { COFRE_CHAVE: randomBytes(32).toString("base64") } as NodeJS.ProcessEnv;
+  const canalDeEmail = (extras: Partial<Canal> = {}) =>
+    canalDeMentira({ tipo: "email", provedor: "email-imap-smtp", identificadorExterno: "vendas@caixa.teste", conexaoSimulada: false, ...extras });
+
+  it("com COFRE_CHAVE, o Canal de e-mail real resolve o provedor de e-mail, que busca em vez de ser chamado", () => {
+    const registro = registroPadrao(comCofre);
+    expect(registro.porProvedor["email-imap-smtp"]).toBeDefined();
+    const provedor = provedorDoCanal(canalDeEmail(), registro);
+    expect(provedor.provedor).toBe("email-imap-smtp");
+    expect(provedor.semWebhook).toBe(true);
+    expect(provedor.idExternoDoEnvio).toBeTypeOf("function");
+  });
+
+  it("sem COFRE_CHAVE (ausente ou em branco), o Canal de e-mail real continua sem provedor (MSG-05)", () => {
+    for (const env of [{}, { COFRE_CHAVE: "" }, { COFRE_CHAVE: "   " }] as NodeJS.ProcessEnv[]) {
+      const registro = registroPadrao(env);
+      expect(registro.porProvedor["email-imap-smtp"]).toBeUndefined();
+      expect(() => provedorDoCanal(canalDeEmail(), registro)).toThrow(ErroDeProvedor);
+      try {
+        provedorDoCanal(canalDeEmail(), registro);
+      } catch (erro) {
+        expect((erro as ErroDeProvedor).codigo).toBe("PROVEDOR_INDISPONIVEL");
+      }
+    }
+  });
+
+  it("o Canal de e-mail simulado continua no provedor de teste, com ou sem a chave", () => {
+    for (const env of [{}, comCofre]) {
+      const registro = registroPadrao(env);
+      expect(provedorDoCanal(canalDeEmail({ conexaoSimulada: true }), registro)).toBe(registro.teste);
+    }
+  });
+
+  it("ligar o e-mail não tira nem troca os outros provedores", () => {
+    const sem = registroPadrao({ EVOLUTION_URL: "http://evolution.teste" } as NodeJS.ProcessEnv);
+    const com = registroPadrao({ EVOLUTION_URL: "http://evolution.teste", ...comCofre } as NodeJS.ProcessEnv);
+    expect(Object.keys(sem.porProvedor)).toEqual(["whatsapp-nao-oficial"]);
+    expect(Object.keys(com.porProvedor).sort()).toEqual(["email-imap-smtp", "whatsapp-nao-oficial"]);
+  });
+
+  it("o provedor de e-mail recusa toda chamada de webhook, mesmo com o cabeçalho do segredo certo", () => {
+    const provedor = registroPadrao(comCofre).porProvedor["email-imap-smtp"]!;
+    const canal: CanalParaProvedor = { workspaceId: "ws_x", canal: canalDeEmail(), segredoDoWebhook: "s1" };
+    expect(provedor.verificarChamada(chamada({ [CABECALHO_DO_SEGREDO]: "s1" }), canal)).toBe(false);
+    expect(provedor.verificarChamada(chamada({}), canal)).toBe(false);
+  });
+});
+
 describe("provedor de teste: verificarChamada — sem banco", () => {
   it("aceita o cabeçalho com o segredo do Canal", () => {
     expect(provedorDeTeste.verificarChamada(chamada({ [CABECALHO_DO_SEGREDO]: "s1" }), paraProvedor("s1"))).toBe(true);

@@ -16,6 +16,7 @@ import type { ProvedorDeCanal } from "@n1/dominio/crm/capacidades";
 import { lerChavesDoCofre, lerCredencial, type ChavesDoCofre } from "../servicos/cofre";
 import { ErroDeProvedor, TIPO_DO_SEGREDO_DO_WEBHOOK, type CanalParaProvedor, type ProvedorDeMensageria } from "./provedor";
 import { criarProvedorEvolution } from "./provedores/evolution/provedor";
+import { provedorDeEmailDoAmbiente } from "./provedores/email/do-ambiente";
 import { provedorInstagramDoAmbiente } from "./provedores/instagram/do-ambiente";
 import { provedorWhatsAppCloudDoAmbiente } from "./provedores/whatsapp-cloud/do-ambiente";
 import { provedorDeTeste } from "./provedores/teste";
@@ -35,13 +36,19 @@ export interface RegistroDeProvedores {
  *
  * Sessão 7: o WhatsApp oficial (`whatsapp-cloud`) entra pela mesma regra, SÓ com `META_APP_SECRET` (ver
  * `provedores/whatsapp-cloud/do-ambiente.ts`).
+ *
+ * Sessão 9: o e-mail (`email-imap-smtp`) entra pela mesma regra, SÓ com `COFRE_CHAVE` (a credencial da caixa mora no cofre; ver
+ * `provedores/email/do-ambiente.ts`). Sem ela, um Canal de e-mail real continua sem provedor (MSG-05).
+ *
+ * `env` é o ambiente lido (o do processo, por padrão): os testes injetam o deles.
  */
-export function registroPadrao(): RegistroDeProvedores {
-  const urlDaEvolution = process.env.EVOLUTION_URL?.trim();
+export function registroPadrao(env: NodeJS.ProcessEnv = process.env): RegistroDeProvedores {
+  const urlDaEvolution = env.EVOLUTION_URL?.trim();
   // Sessão 4: a chave global (`EVOLUTION_API_KEY`) só serve para o provedor ler o dono do número ao conferir a conexão.
-  const apikeyGlobal = process.env.EVOLUTION_API_KEY?.trim();
-  const instagram = provedorInstagramDoAmbiente();
-  const whatsappCloud = provedorWhatsAppCloudDoAmbiente();
+  const apikeyGlobal = env.EVOLUTION_API_KEY?.trim();
+  const instagram = provedorInstagramDoAmbiente(env);
+  const whatsappCloud = provedorWhatsAppCloudDoAmbiente(env);
+  const email = provedorDeEmailDoAmbiente(env);
   return {
     teste: provedorDeTeste,
     porProvedor: {
@@ -50,6 +57,7 @@ export function registroPadrao(): RegistroDeProvedores {
         : {}),
       ...(instagram ? { "instagram-graph": instagram } : {}),
       ...(whatsappCloud ? { "whatsapp-cloud": whatsappCloud } : {}),
+      ...(email ? { "email-imap-smtp": email } : {}),
     },
   };
 }
