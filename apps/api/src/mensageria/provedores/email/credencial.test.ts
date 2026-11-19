@@ -22,6 +22,7 @@ import {
   acessoDoEmailDoAmbiente,
   criarAcessoDoEmail,
   ErroDeRenovacao,
+  FRASE_AUTORIZACAO_RECUSADA,
   guardarCredencialDoEmail,
   lerCredencialDoEmail,
   TIPO_DA_CREDENCIAL,
@@ -206,6 +207,41 @@ describe("criarAcessoDoEmail — a porta de acesso", () => {
     expect(await com(undefined).acessoParaUsar(canal)).toMatchObject({ ok: false, permanente: false, codigo: "OAUTH_NAO_CONFIGURADO" });
     // Nenhuma dessas recusas grava nada.
     expect(falso.consultas).toEqual([]);
+  });
+
+  it("a recusa permanente leva a frase de produto do serviço a motivo; sem frase, a frase padrão", async () => {
+    const falso = poolFalso();
+    const com = (erro: ErroDeRenovacao) =>
+      criarAcessoDoEmail({ pool: () => falso.pool, chaves: () => CHAVES, agora: () => AGORA, renovadores: { microsoft: async () => { throw erro; } } });
+    const canal = canalCom(json(oauth()));
+    expect(await com(new ErroDeRenovacao(true, "A autorização da Microsoft venceu ou foi retirada: entre de novo com a Microsoft.")).acessoParaUsar(canal)).toMatchObject({
+      ok: false,
+      permanente: true,
+      motivo: "A autorização da Microsoft venceu ou foi retirada: entre de novo com a Microsoft.",
+    });
+    expect(await com(new ErroDeRenovacao(true)).acessoParaUsar(canal)).toMatchObject({ ok: false, permanente: true, motivo: FRASE_AUTORIZACAO_RECUSADA });
+  });
+
+  it("renovações ao mesmo tempo do mesmo Canal são uma só (serializadas); de Canais diferentes, cada uma a sua", async () => {
+    const falso = poolFalso();
+    let idas = 0;
+    const acesso = criarAcessoDoEmail({
+      pool: () => falso.pool,
+      chaves: () => CHAVES,
+      agora: () => AGORA,
+      renovadores: {
+        microsoft: async () => {
+          idas += 1;
+          await new Promise((resolver) => setTimeout(resolver, 20));
+          return { accessToken: "access-novo", expiraEm: emMin(60), refreshToken: "refresh-novo" };
+        },
+      },
+    });
+    const um = canalCom(json(oauth()), { ws: "ws_x", canal: "cnl_1" });
+    await Promise.all([acesso.acessoParaUsar(um), acesso.acessoParaUsar(um), acesso.acessoParaUsar(um)]);
+    expect(idas).toBe(1);
+    await Promise.all([acesso.acessoParaUsar(um), acesso.acessoParaUsar(canalCom(json(oauth()), { ws: "ws_x", canal: "cnl_2" }))]);
+    expect(idas).toBe(3);
   });
 
   it("acessoDoEmailDoAmbiente monta a porta sem renovadores (o login chega nos planos 17-12 e 17-13)", async () => {
