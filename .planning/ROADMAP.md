@@ -981,7 +981,7 @@ Plans:
 **Goal:** Quem usa a plataforma conecta a própria caixa de e-mail pela ficha do Canal (senha ou senha de app, ou login do Google e da Microsoft); o e-mail recebido vira Conversa no Contato do remetente e a resposta sai pela mesma caixa, no mesmo fio, com assunto, cópias e anexo. Escopo e tarefas: Sessão 9 de `docs/09-planejamento/TAREFAS-POR-SESSAO.md` (9.1 a 9.4). Decidido pelo dono em 2026-11-19: IMAP/SMTP com senha ou senha de app **e** com login OAuth; Gmail API e Microsoft Graph ficam fora.
 **Requirements**: EML-01 a EML-07 (IDs locais da fase, definidos em `17-CONTEXT.md` `<domain>`)
 **Depends on:** Phase 16
-**Plans:** 4/16 plans executed em 7 ondas (17-02, 17-04 e 17-16 têm checkpoints do dono: legitimidade dos pacotes, o formato da `017` e da credencial, e a prova com caixas reais; nenhum plano autônomo toca produção)
+**Plans:** 5/16 plans executed em 7 ondas (17-02, 17-04 e 17-16 têm checkpoints do dono: legitimidade dos pacotes, o formato da `017` e da credencial, e a prova com caixas reais; nenhum plano autônomo toca produção)
 
 Plans:
 **Wave 1**
@@ -991,7 +991,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [x] 17-03-PLAN.md — guarda de rede (D-17-07), fábrica de conexão no IP conferido e erro classificado
-- [ ] 17-06-PLAN.md — entrada: o fio em `receberMensagem` (D-17-14, D-17-15), contrato `semWebhook`, anexos já guardados
+- [x] 17-06-PLAN.md — entrada: o fio em `receberMensagem` (D-17-14, D-17-15), contrato `semWebhook`, anexos já guardados
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 17-05-PLAN.md — conectar por senha (`POST /canais/:id/email/conectar`), conta na ficha, esquecer ao desconectar e a queda (D-17-20)
