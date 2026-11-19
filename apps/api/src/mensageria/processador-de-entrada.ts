@@ -303,8 +303,11 @@ export function criarProcessadorDeEntrada(opcoes: OpcoesDoProcessadorDeEntrada):
         // Identificador do Contato aqui, fora da transação. Uma exceção sobe: a linha volta à fila (`marcarTransitoria`).
         const recebida = provedor.resolverRemetente ? await provedor.resolverRemetente(paraOProvedor, doProvedor) : doProvedor;
         // 16-10 / 3.9.4: a mídia é baixada e guardada ANTES da transação, para a conexão do banco não esperar o provedor.
+        // 17-06 (F4): o e-mail chega com os arquivos já no bucket (o leitor os guardou pela mesma guarda, com tipo, teto e assinatura
+        // conferidos): `anexosGuardados` vão direto à Mensagem e o processador não baixa nem sobe nada.
+        const jaGuardados = recebida.anexosGuardados;
         const guardados =
-          (recebida.anexos ?? []).length > 0
+          jaGuardados === undefined && (recebida.anexos ?? []).length > 0
             ? await guardaDeMidia.guardarAnexosRecebidos({ workspaceId: linha.workspace_id, canal: paraOProvedor, provedor, anexos: recebida.anexos ?? [] })
             : undefined;
         if (guardados) {
@@ -314,7 +317,8 @@ export function criarProcessadorDeEntrada(opcoes: OpcoesDoProcessadorDeEntrada):
           if (guardados.algumTransitorio) midiaPendente = true;
         }
         const inicioDaTransacao = performance.now();
-        const r = await recebimento.receberMensagem(linha.workspace_id, linha.canal_id, recebida, guardados ? { anexos: guardados.anexos } : undefined);
+        const anexosDaMensagem = jaGuardados ?? guardados?.anexos;
+        const r = await recebimento.receberMensagem(linha.workspace_id, linha.canal_id, recebida, anexosDaMensagem ? { anexos: anexosDaMensagem } : undefined);
         etapas.transacaoMs += performance.now() - inicioDaTransacao;
         if (r.ok) {
           mensagens += 1;

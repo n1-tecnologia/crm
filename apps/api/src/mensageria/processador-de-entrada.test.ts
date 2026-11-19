@@ -488,6 +488,63 @@ describeComBanco("processador da fila de entrada — Postgres local", () => {
   const anexosDoEspaco = async (ws: string) =>
     (await pool().query<{ id: string; anexos: Array<Record<string, unknown>> }>("select id, anexos from plataforma.mensagens where workspace_id = $1", [ws])).rows;
 
+  // --- 17-06 (F4, D-17-10): o e-mail chega com os arquivos já guardados pelo leitor; o processador não baixa nada ---
+
+  const guardado = (nome: string, objectKey: string, tamanhoBytes: number) => ({ tipoDeMidia: "application/pdf", nome, objectKey, tamanhoBytes, baixado: true as const });
+
+  /** O provedor de teste cujo `interpretarChamada` traz `anexosGuardados` e cujo `baixarMidia` conta as chamadas. */
+  function registroComAnexosGuardados(anexosGuardados: ReturnType<typeof guardado>[] | undefined, baixou: { n: number }): RegistroDeProvedores {
+    return {
+      ...registroPadrao(),
+      teste: {
+        ...provedorDeTeste,
+        interpretarChamada: (corpo, canal) =>
+          provedorDeTeste.interpretarChamada(corpo, canal).map((evento) => (evento.tipo === "mensagem" && anexosGuardados ? { ...evento, anexosGuardados } : evento)),
+        baixarMidia: async (canal, referencia, opcoes) => {
+          baixou.n += 1;
+          return provedorDeTeste.baixarMidia(canal, referencia, opcoes);
+        },
+      },
+    };
+  }
+
+  it("o evento com anexosGuardados grava a Mensagem com esses anexos, sem baixar nada nem subir ao bucket", async () => {
+    provedorDeTeste.limpar();
+    const c = await cenario("guardados");
+    const armazenamento = criarArmazenamentoFalso();
+    const baixou = { n: 0 };
+    const dois = [guardado("a.pdf", `workspace/${c.ws}/entrada/${c.canalId}/a`, 100), guardado("b.pdf", `workspace/${c.ws}/entrada/${c.canalId}/b`, 200)];
+    const processador = criarProcessadorDeEntrada({ workerId: "w1", chaves, armazenamento, registro: registroComAnexosGuardados(dois, baixou) });
+    const id = await semearLinha(c, { eventos: [{ tipo: "mensagem", idExterno: "guardados-1", remetente: { tipo: "whatsapp", valor: WHATSAPP_DA_ANA }, conteudo: "com dois arquivos", anexos: [{ referenciaNoProvedor: "ref-ja-guardada", tipoDeMidia: "application/pdf", nome: "a.pdf" }] }] });
+    provedorDeTeste.guardarMidia("ref-ja-guardada", { bytes: new Uint8Array(Buffer.from("%PDF-1.4 conteudo")), tipoDeMidia: "application/pdf" });
+
+    expect(await processador.processarUm()).toBe(true);
+
+    expect(await lerLinha(id)).toMatchObject({ estado: "processado", resultado: null });
+    const mensagens = await anexosDoEspaco(c.ws);
+    expect(mensagens).toHaveLength(1);
+    expect(mensagens[0]!.anexos).toEqual(dois);
+    expect(baixou.n).toBe(0);
+    expect(armazenamento.chavesGuardadas()).toEqual([]);
+  });
+
+  it("o evento sem anexosGuardados segue baixando pelo provedor, como antes", async () => {
+    provedorDeTeste.limpar();
+    const c = await cenario("semguardados");
+    const armazenamento = criarArmazenamentoFalso();
+    const baixou = { n: 0 };
+    provedorDeTeste.guardarMidia("ref-sg", { bytes: ogg(2048), tipoDeMidia: "audio/ogg" });
+    const processador = criarProcessadorDeEntrada({ workerId: "w1", chaves, armazenamento, registro: registroComAnexosGuardados(undefined, baixou) });
+    const id = await semearLinha(c, corpoComAudio("sg-1", "ref-sg"));
+
+    expect(await processador.processarUm()).toBe(true);
+
+    expect(await lerLinha(id)).toMatchObject({ estado: "processado" });
+    expect(baixou.n).toBe(1);
+    expect(armazenamento.chavesGuardadas()).toHaveLength(1);
+    expect((await anexosDoEspaco(c.ws))[0]!.anexos).toEqual([expect.objectContaining({ nome: "audio.ogg", baixado: true })]);
+  });
+
   it("falha transitória da mídia: a Mensagem é gravada com o anexo baixado: false e a linha volta a pendente (midia_pendente); a passada seguinte completa a MESMA Mensagem e avisa mensagem.status", async () => {
     provedorDeTeste.limpar();
     const c = await cenario("midiatrans");

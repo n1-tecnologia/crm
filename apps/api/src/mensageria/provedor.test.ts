@@ -6,7 +6,7 @@
 import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { Canal } from "@n1/dominio/crm/canais";
-import { descreverContratoDoProvedor } from "./contrato-do-provedor";
+import { descreverContratoDoProvedor, recusasQueFaltam, type FabricaDoContrato } from "./contrato-do-provedor";
 import { CABECALHO_DO_SEGREDO, ErroDeProvedor, type CanalParaProvedor } from "./provedor";
 import { criarProvedorDeTeste } from "./provedores/teste";
 
@@ -102,5 +102,41 @@ describe("provedor de teste: o que só ele tem", () => {
   it("estadoDaConexao devolve a conexão do Canal", async () => {
     const provedor = criarProvedorDeTeste();
     expect(await provedor.estadoDaConexao(canalParaProvedor())).toBe("conectada");
+  });
+});
+
+/**
+ * 17-06 (D-17-10, F3): o provedor que BUSCA (o e-mail) declara `semWebhook` e `verificarChamada` recusa sempre. O contrato passa um
+ * provedor assim e falha o que finge aceitar chamada externa (T-17-17).
+ */
+describe("contrato do provedor sem webhook (17-06)", () => {
+  /** O provedor de teste com a flag: `aceita` decide o que `verificarChamada` devolve. */
+  function fabricaSemWebhook(aceita: boolean): FabricaDoContrato {
+    const base = criarProvedorDeTeste();
+    const provedor = { ...base, semWebhook: true as const, verificarChamada: () => aceita };
+    const canal = canalParaProvedor();
+    const corpo = {
+      eventos: [{ tipo: "mensagem", idExterno: "ext-sem-webhook-1", remetente: { tipo: "whatsapp", valor: "+5511987654321" }, conteudo: "oi" }],
+    };
+    return {
+      provedor,
+      canal,
+      semWebhook: true,
+      chamadaDeTexto: () => ({ cabecalhos: { [CABECALHO_DO_SEGREDO]: canal.segredoDoWebhook }, corpoCru: Buffer.from(JSON.stringify(corpo)), corpo }),
+      prepararEnvioAceito: async () => base.limpar(),
+      prepararMidiaGrande: async (tetoBytes) => {
+        base.guardarMidia("midia-grande", { bytes: new Uint8Array(tetoBytes + 1), tipoDeMidia: "audio/ogg" });
+        return "midia-grande";
+      },
+      encerrar: async () => base.limpar(),
+    };
+  }
+
+  descreverContratoDoProvedor("sem webhook (recusa sempre)", async () => fabricaSemWebhook(false));
+
+  it("o provedor que aceita chamada externa FALHA o caso de semWebhook, e o que recusa tudo não falha nada", () => {
+    expect(recusasQueFaltam(fabricaSemWebhook(false))).toEqual([]);
+    const faltando = recusasQueFaltam(fabricaSemWebhook(true));
+    expect(faltando.length).toBeGreaterThanOrEqual(2);
   });
 });

@@ -15,6 +15,11 @@
  * deve recusar (`chamadasRecusadas`), a forma do remetente (`remetenteValido`), o destino do envio (`destinoDoEnvio`) e os
  * segredos que nunca podem aparecer (`segredos`). Sem esses campos, valem os casos de sempre (segredo errado, cabeçalho
  * ausente, Canal sem segredo; E.164; WhatsApp).
+ *
+ * Sessão 9 (D-17-10): o e-mail BUSCA em vez de ser chamado (`semWebhook`). Para ele a `fabrica` diz `semWebhook: true`, e o
+ * primeiro caso deixa de exigir que `verificarChamada` aceite o segredo certo: exige que ela RECUSE sempre (a chamada de texto,
+ * a sem cabeçalho e as de `chamadasRecusadas`), de modo que a rota pública nunca injeta e-mail na fila (T-17-17). Os demais
+ * casos ficam iguais; o `chamadaDeTexto().corpo` é o corpo que o leitor enfileiraria.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -47,6 +52,8 @@ export interface FabricaDoContrato {
   readonly remetenteValido?: RegExp;
   /** O destino dos envios do contrato. Padrão: um número de WhatsApp. */
   readonly destinoDoEnvio?: EnvioAoProvedor["destino"];
+  /** O provedor que busca (o e-mail): `verificarChamada` recusa sempre, sem exceção, e o contrato falha o que aceitar. */
+  readonly semWebhook?: true;
   /** Segredos além do do webhook e da credencial que nenhum resultado ou erro pode carregar (a chave do app, o token). */
   readonly segredos?: readonly string[];
 }
@@ -56,6 +63,35 @@ const E164 = /^\+[1-9]\d{7,14}$/;
 function semSegredoDoWebhook(canal: CanalParaProvedor): CanalParaProvedor {
   const { segredoDoWebhook: _descartado, ...resto } = canal;
   return resto;
+}
+
+/** As chamadas que a `fabrica` manda recusar: as dela, ou as de sempre (segredo errado, Canal sem segredo). */
+function chamadasParaRecusar(f: FabricaDoContrato) {
+  const valida = f.chamadaDeTexto();
+  return (
+    f.chamadasRecusadas?.() ?? [
+      {
+        nome: "segredo errado",
+        chamada: { ...valida, cabecalhos: { ...valida.cabecalhos, [CABECALHO_DO_SEGREDO]: "outro-segredo-qualquer" } },
+        canal: f.canal,
+      },
+      { nome: "Canal sem segredo", chamada: valida, canal: semSegredoDoWebhook(f.canal) },
+    ]
+  );
+}
+
+/**
+ * D-17-10: o provedor `semWebhook` nunca aceita chamada externa. Devolve o nome de cada chamada que `verificarChamada` aceitou
+ * por engano (a de texto com o segredo certo, a sem cabeçalho e as de `chamadasRecusadas`); vazio é o provedor correto.
+ */
+export function recusasQueFaltam(f: FabricaDoContrato): string[] {
+  const valida = f.chamadaDeTexto();
+  const todas = [
+    { nome: "chamada de texto com o segredo certo", chamada: valida, canal: f.canal },
+    { nome: "chamada sem cabeçalho", chamada: { ...valida, cabecalhos: {} }, canal: f.canal },
+    ...chamadasParaRecusar(f),
+  ];
+  return todas.filter(({ chamada, canal }) => f.provedor.verificarChamada(chamada, canal)).map(({ nome }) => nome);
 }
 
 export function descreverContratoDoProvedor(nome: string, fabrica: () => Promise<FabricaDoContrato>): void {
@@ -72,20 +108,19 @@ export function descreverContratoDoProvedor(nome: string, fabrica: () => Promise
 
     it("verificarChamada aceita o segredo certo e falha com segredo errado ou cabeçalho ausente", () => {
       const valida = f.chamadaDeTexto();
+      if (f.semWebhook === true) {
+        // D-17-10: o provedor que busca declara `semWebhook` e recusa TUDO; aceitar uma chamada externa reprova o contrato.
+        expect(f.provedor.semWebhook, "o provedor da fábrica precisa declarar semWebhook").toBe(true);
+        expect(recusasQueFaltam(f)).toEqual([]);
+        return;
+      }
       expect(f.provedor.verificarChamada(valida, f.canal)).toBe(true);
 
       // Sem cabeçalho nenhum, nenhum provedor aceita.
       const ausente: ChamadaDoWebhook = { ...valida, cabecalhos: {} };
       expect(f.provedor.verificarChamada(ausente, f.canal)).toBe(false);
 
-      const recusadas = f.chamadasRecusadas?.() ?? [
-        {
-          nome: "segredo errado",
-          chamada: { ...valida, cabecalhos: { ...valida.cabecalhos, [CABECALHO_DO_SEGREDO]: "outro-segredo-qualquer" } },
-          canal: f.canal,
-        },
-        { nome: "Canal sem segredo", chamada: valida, canal: semSegredoDoWebhook(f.canal) },
-      ];
+      const recusadas = chamadasParaRecusar(f);
       expect(recusadas.length).toBeGreaterThan(0);
       for (const { nome, chamada, canal } of recusadas) expect(f.provedor.verificarChamada(chamada, canal), nome).toBe(false);
     });

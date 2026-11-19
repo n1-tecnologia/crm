@@ -275,6 +275,13 @@ ouvinte do tempo real o chama a cada `mensagem.nova`/`mensagem.status`, e o proc
   `referenciaExterna`): a linha volta a `pendente` com `midia_pendente` e a passada seguinte COMPLETA a mesma Mensagem
   (`completarAnexos`, só em `recebida`, e avisa `mensagem.status`); na terceira passada fecha `processado` com
   `midia_indisponivel`. Nunca derruba a Mensagem (D-16-08).
+- **E-mail (17-06, Sessão 9)**: o provedor que BUSCA declara `semWebhook: true` e `verificarChamada` recusa sempre (o contrato
+  `descreverContratoDoProvedor` com `semWebhook: true` falha o que aceitar; T-17-17). O evento da fila pode trazer
+  `anexosGuardados` (o leitor já subiu os arquivos pela guarda): o processador os grava como estão e não baixa nada. A guarda
+  aceita qualquer objeto com `baixarMidia`. Em `receberMensagem`, só o Canal de e-mail procura o fio (`In-Reply-To`, depois
+  `References`, só entre as Mensagens do mesmo Canal e Espaço) ANTES da regra do par; a Conversa do fio vale mesmo se a resposta
+  vem de outra pessoa (D-17-15: o Contato da Conversa não muda). `mensagens_conteudo_ck` exige texto ou anexo: o e-mail só com
+  assunto ou HTML grava o assunto (ou "(sem texto)") em `conteudo`.
 - **Log `mensageria.etapas`**: uma linha por chamada com `webhookId`, `esperaMs`, `baixarMs`, `subirMs`,
   `transacaoMs`, `totalMs` e `anexos`; é a medição da prova ao vivo. O `totalMs` é a espera na fila mais o trabalho
   da passada, sem o tempo do webhook até a fila nem a entrega do SSE à aba.

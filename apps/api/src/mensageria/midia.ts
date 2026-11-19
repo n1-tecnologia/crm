@@ -47,7 +47,8 @@ export interface GuardaDeMidia {
   guardarAnexosRecebidos(args: {
     readonly workspaceId: string;
     readonly canal: CanalParaProvedor;
-    readonly provedor: ProvedorDeMensageria;
+    /** Só o que a guarda usa. O leitor de e-mail passa um adaptador que devolve os bytes já lidos do MIME (17-06, F4). */
+    readonly provedor: Pick<ProvedorDeMensageria, "baixarMidia">;
     readonly anexos: readonly AnexoRecebidoDoProvedor[];
   }): Promise<ResultadoDosAnexosRecebidos>;
 }

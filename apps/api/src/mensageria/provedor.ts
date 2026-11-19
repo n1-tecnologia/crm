@@ -19,7 +19,7 @@
 import type { ConexaoDoCanal, Canal } from "@n1/dominio/crm/canais";
 import type { ProvedorDeCanal } from "@n1/dominio/crm/capacidades";
 import type { TipoIdentificadorContato } from "@n1/dominio/crm/contatos";
-import type { AutorDaReacao, OrigemDaExclusao, StatusDeEntrega } from "@n1/dominio/crm/mensagens";
+import type { AutorDaReacao, EnderecoAdicional, OrigemDaExclusao, StatusDeEntrega } from "@n1/dominio/crm/mensagens";
 import type { RecebidaDoProvedor } from "@n1/dominio/crm/recebimento";
 
 /** O único nome de cabeçalho que leva o segredo do webhook: o do provedor de teste e o da Evolution (D-16-06). */
@@ -68,6 +68,10 @@ export interface AnexoDoEnvio {
   readonly urlAssinada: string;
   readonly tipoDeMidia: string;
   readonly nome: string;
+  /** Sessão 9 (e-mail): a chave do arquivo no bucket, para o provedor que lê os bytes em vez de seguir a URL (o SMTP). */
+  readonly objectKey?: string;
+  /** Sessão 9 (e-mail): o tamanho já conferido no bucket, para o provedor recusar o e-mail grande demais antes de montar o MIME. */
+  readonly tamanhoBytes?: number;
 }
 
 export interface EnvioAoProvedor {
@@ -82,6 +86,10 @@ export interface EnvioAoProvedor {
    */
   readonly emRespostaADetalhes?: { readonly nossa: boolean; readonly texto: string };
   readonly assunto?: string;
+  /** Sessão 9 (e-mail): Para, Cópia e Cópia oculta além do `destino`, já validados por `validarNovaMensagem`. */
+  readonly enderecosAdicionais?: readonly EnderecoAdicional[];
+  /** Sessão 9 (e-mail, D-17-16): os ids externos do fio da Conversa, em ordem (o mais antigo primeiro), para o `References`. */
+  readonly referencias?: readonly string[];
   /**
    * Sessão 7: a Mensagem de modelo (WhatsApp oficial, fora da janela de 24 h). A Cloud API envia pelo `nome` e pelo idioma,
    * não pelo id; `idNoProvedor` é o id do modelo na Meta, guardado em `modelo_usado`. `variaveis` preenchem `{{1}}`, `{{2}}`…
@@ -109,6 +117,12 @@ export interface MidiaBaixada {
 
 export interface ProvedorDeMensageria {
   readonly provedor: ProvedorDeCanal | "teste";
+  /**
+   * Sessão 9 (D-17-10, F3): o provedor que BUSCA em vez de ser chamado (o e-mail). O leitor enfileira o corpo na fila de entrada e
+   * `verificarChamada` recusa SEMPRE, então a rota pública responde a mesma 401 e ninguém de fora injeta e-mail na fila (T-17-17).
+   * O conjunto de contrato (`semWebhook: true` na fábrica) falha o provedor que aceitar uma chamada externa.
+   */
+  readonly semWebhook?: true;
   /** Confere que a chamada vem do provedor desse Canal (segredo do cabeçalho, instância do corpo). Nunca lança. */
   verificarChamada(chamada: ChamadaDoWebhook, canal: CanalParaProvedor): boolean;
   /** Traduz o corpo em eventos. Corpo fora do formato vira `[{ tipo: "ignorado" }]`, nunca exceção. */
@@ -123,6 +137,12 @@ export interface ProvedorDeMensageria {
    */
   resolverRemetente?(canal: CanalParaProvedor, recebida: RecebidaDoProvedor): Promise<RecebidaDoProvedor>;
   enviar(canal: CanalParaProvedor, envio: EnvioAoProvedor): Promise<ResultadoDoEnvio>;
+  /**
+   * Sessão 9 (D-17-16): o provedor que sabe o id externo ANTES de enviar (o `Message-ID` do e-mail, `n1.<id>@<domínio>`) o devolve
+   * aqui, e a entrega o grava em `id_externo` antes da chamada. Assim uma resposta ambígua do SMTP não deixa a Mensagem sem id
+   * e a resposta do destinatário acha o fio. Sem este método, o id vem do `ResultadoDoEnvio`, como sempre.
+   */
+  idExternoDoEnvio?(canal: CanalParaProvedor, envio: EnvioAoProvedor): string;
   baixarMidia(canal: CanalParaProvedor, referenciaNoProvedor: string, opcoes: { tetoBytes: number }): Promise<MidiaBaixada>;
   estadoDaConexao(canal: CanalParaProvedor): Promise<ConexaoDoCanal>;
   /**
