@@ -194,6 +194,9 @@ describeComBanco("Fase 16 ponta a ponta: a mídia que chega é guardada e a que 
       urlAssinada: `https://armazenamento-falso.test/objeto/${encodeURIComponent(criada.anexos[0]!.objectKey!)}`,
       tipoDeMidia: "image/png",
       nome: "foto.png",
+      // 17-07: o e-mail lê os bytes pela chave e confere o tamanho; os outros Canais recebem os dois campos e os ignoram.
+      objectKey: criada.anexos[0]!.objectKey,
+      tamanhoBytes: PNG.byteLength,
     });
     // A imagem abre no <img>: sem `download`.
     expect(armazenamento.urlsEmitidas.slice(antes)).toEqual([{ objectKey: criada.anexos[0]!.objectKey }]);
@@ -212,6 +215,8 @@ describeComBanco("Fase 16 ponta a ponta: a mídia que chega é guardada e a que 
         urlAssinada: `https://armazenamento-falso.test/objeto/${encodeURIComponent(criada.anexos[0]!.objectKey!)}?download=proposta.pdf`,
         tipoDeMidia: "application/pdf",
         nome: "proposta.pdf",
+        objectKey: criada.anexos[0]!.objectKey,
+        tamanhoBytes: pdf.byteLength,
       },
     ]);
     expect(armazenamento.urlsEmitidas.slice(antes)).toEqual([{ objectKey: criada.anexos[0]!.objectKey, download: "proposta.pdf" }]);

@@ -109,6 +109,18 @@ export interface RepositorioDeMensagens {
   /** O `assunto` da `recebida` mais recente da Conversa que tem um, ou `null` (D-17-16: a resposta de e-mail sem assunto vira "Re: ..."). */
   assuntoDaUltimaRecebida(workspaceId: string, conversaId: string): Promise<string | null>;
   /**
+   * O fio de e-mail da Conversa (D-17-16): os `id_externo` não nulos, do mais antigo ao mais novo (por `seq`), sem a Mensagem
+   * `excetoId` (a que está saindo). É o `References` da resposta.
+   */
+  idsExternosDoFio(workspaceId: string, conversaId: string, excetoId: string): Promise<readonly string[]>;
+  /** O `id_externo` da `recebida` mais recente da Conversa que tem um (o `In-Reply-To` da resposta sem citação), ou `null`. */
+  idExternoDaUltimaRecebida(workspaceId: string, conversaId: string): Promise<string | null>;
+  /**
+   * D-17-16: grava o `id_externo` ANTES de o provedor ser chamado (o `Message-ID` do e-mail é nosso). SÓ de Mensagem `enviada` ainda
+   * `pendente`: o aceite (`gravarEnvio`) grava o mesmo valor depois, e uma resposta ambígua não deixa a Mensagem sem id.
+   */
+  definirIdExterno(workspaceId: string, mensagemId: string, idExterno: string): Promise<void>;
+  /**
    * O `identificador_id` da `recebida` mais recente da Conversa que tem Identificador (por `criado_em` e `seq`): por onde o
    * Contato escreveu por último (WR-04), ou `null` sem nenhuma. Só escolhe o destino da resposta; quem o usa o confere na lista
    * de Identificadores do Contato da Conversa.
@@ -337,6 +349,38 @@ export function criarRepositorioDeMensagensPg(cliente: Pool | PoolClient): Repos
         [workspaceId, conversaId],
       );
       return rows[0]?.assunto ?? null;
+    },
+
+    async idsExternosDoFio(workspaceId, conversaId, excetoId) {
+      const { rows } = await cliente.query<{ id_externo: string }>(
+        `select id_externo
+           from plataforma.mensagens
+          where workspace_id = $1 and conversa_id = $2 and id <> $3 and id_externo is not null
+          order by plataforma.mensagens.seq`,
+        [workspaceId, conversaId, excetoId],
+      );
+      return rows.map((linha) => linha.id_externo);
+    },
+
+    async idExternoDaUltimaRecebida(workspaceId, conversaId) {
+      const { rows } = await cliente.query<{ id_externo: string }>(
+        `select id_externo
+           from plataforma.mensagens
+          where workspace_id = $1 and conversa_id = $2 and direcao = 'recebida' and id_externo is not null
+          order by criado_em desc, plataforma.mensagens.seq desc
+          limit 1`,
+        [workspaceId, conversaId],
+      );
+      return rows[0]?.id_externo ?? null;
+    },
+
+    async definirIdExterno(workspaceId, mensagemId, idExterno) {
+      await cliente.query(
+        `update plataforma.mensagens
+            set id_externo = $3
+          where workspace_id = $1 and id = $2 and direcao = 'enviada' and status_entrega = 'pendente'`,
+        [workspaceId, mensagemId, idExterno],
+      );
     },
 
     async identificadorDaUltimaRecebida(workspaceId, conversaId) {

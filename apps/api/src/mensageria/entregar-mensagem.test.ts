@@ -20,12 +20,12 @@ import { criarRepositorioDeConversasPg } from "../repositorios/crm/conversas";
 import { criarRepositorioDeMensagensPg } from "../repositorios/crm/mensagens";
 import type { ChavesDoCofre } from "../servicos/cofre";
 import { criarAcessoAoCrmPg } from "../servicos/crm/acesso";
-import { criarServicoDeMensagens } from "../servicos/crm/mensagens";
+import { criarServicoDeMensagens, formIdDaConversa } from "../servicos/crm/mensagens";
 import { criarArmazenamentoFalso } from "../testes/armazenamento-falso";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearCanal, semearMembro } from "../testes/banco-crm";
 import { FRASES_DA_SAIDA, criarEntregadorDeMensagens, criarWorkerDeSaida } from "./entregar-mensagem";
-import { reenfileirarPendentesDoCanal } from "./fila-de-saida";
-import { provedorDeTeste } from "./provedores/teste";
+import { CODIGO_DO_CANAL_DESCONECTADO, reenfileirarPendentesDoCanal } from "./fila-de-saida";
+import { criarProvedorDeTeste, provedorDeTeste } from "./provedores/teste";
 
 const chaves: ChavesDoCofre = { atual: { versao: 1, chave: randomBytes(32) } };
 const servico = criarServicoDeMensagens({ pool, acesso: criarAcessoAoCrmPg(pool) });
@@ -477,6 +477,256 @@ describeComBanco("entregador de mensagens: a política de tentativas que não du
     const fila = await linha(c.mensagemId);
     expect(depois.motivo_falha).not.toContain("chave-secreta-123");
     expect(fila.last_error_summary ?? "").not.toContain("chave-secreta-123");
+  });
+
+  // ---------------------------------------------------------------------------------------------------------------------
+  // 17-07 (D-17-16, F1): a entrega de e-mail leva assunto, cópias, o fio e os anexos ao provedor e grava o id antes de enviar.
+  // ---------------------------------------------------------------------------------------------------------------------
+  describe("e-mail: o envio completo (17-07)", () => {
+    const PDF = Buffer.from("%PDF-1.4\n%teste\n");
+
+    /** Um provedor de e-mail de mentira: sabe o `Message-ID` antes de enviar e, ao enviar, lê o que o banco já guardou. */
+    function provedorDeEmailDeTeste() {
+      const base = criarProvedorDeTeste();
+      const vistoNoEnvio: { idExterno: string | null; statusEntrega: string }[] = [];
+      return {
+        ...base,
+        vistoNoEnvio,
+        idExternoDoEnvio: (_canal: unknown, envio: { mensagemId: string }) => `n1.${envio.mensagemId}@nossa.com`,
+        async enviar(canal: Parameters<typeof base.enviar>[0], envio: Parameters<typeof base.enviar>[1]) {
+          const visto = await mensagem(envio.mensagemId);
+          vistoNoEnvio.push({ idExterno: visto.id_externo, statusEntrega: visto.status_entrega });
+          return base.enviar(canal, envio);
+        },
+      };
+    }
+
+    async function cenarioDeEmail() {
+      sequencia += 1;
+      const canalId = await semearCanal(ws, {
+        nome: `E-mail ${sequencia}`,
+        tipo: "email",
+        provedor: "email-imap-smtp",
+        identificadorExterno: `atendimento${sequencia}@nossa.com`,
+        conexao: "conectada",
+        conexaoSimulada: true,
+        configuradoPor: "mem_ana",
+      });
+      const contatos = criarRepositorioDeContatosPg(pool());
+      const contato = await contatos.inserir(ws, { nome: `Cliente ${sequencia}`, proprietarioId: "mem_ana", criadoPor: "mem_ana" });
+      const enderecoDoCliente = `cliente${sequencia}@empresa.com`;
+      const idDoCliente = (await contatos.inserirIdentificador(ws, contato.id, { tipo: "email", valor: enderecoDoCliente, principal: true })).id;
+      const conversa = await criarRepositorioDeConversasPg(pool()).inserir(ws, {
+        canalId,
+        contatoId: contato.id,
+        titulo: `Cliente ${sequencia}`,
+        filaId: null,
+        atribuido: { tipo: "membro", id: "mem_ana" },
+        participantes: [],
+        criadoPor: { tipo: "member", id: "mem_ana" },
+      });
+      const repositorio = criarRepositorioDeMensagensPg(pool());
+      const recebida = (idExterno: string, assunto: string, remetente: string, identificadorId: string) =>
+        repositorio.inserirRecebida(ws, {
+          conversaId: conversa.id,
+          canalId,
+          idExterno,
+          criadoEm: new Date().toISOString(),
+          conteudo: "texto",
+          anexos: [],
+          assunto,
+          enderecosAdicionais: [],
+          remetenteExterno: remetente,
+          identificadorId,
+          cargaBruta: null,
+        });
+      const enviadaDoCrm = async (idExterno: string) =>
+        (
+          await pool().query<{ id: string }>(
+            `insert into plataforma.mensagens (workspace_id, conversa_id, canal_id, direcao, ator_tipo, ator_id, conteudo, status_entrega, status_entrega_em, id_externo)
+             values ($1, $2, $3, 'enviada', 'member', 'mem_ana', 'Segue', 'enviada', now(), $4) returning id`,
+            [ws, conversa.id, canalId, idExterno],
+          )
+        ).rows[0]!.id;
+      return { canalId, contatoId: contato.id, conversaId: conversa.id, enderecoDoCliente, idDoCliente, recebida, enviadaDoCrm };
+    }
+
+    /** A Conversa A (recebida), B (enviada pelo CRM), C (recebida): o fio que a próxima resposta precisa citar. */
+    async function comOFio() {
+      const c = await cenarioDeEmail();
+      await c.recebida("a@x", "Orçamento", c.enderecoDoCliente, c.idDoCliente);
+      const idDeB = await c.enviadaDoCrm("n1.b@nossa.com");
+      await c.recebida("c@x", "Re: Orçamento", c.enderecoDoCliente, c.idDoCliente);
+      return { ...c, idDeB };
+    }
+
+    const enviarEmail = async (c: { conversaId: string }, extras: Record<string, unknown> = {}, servicoDeEnvio = servico) => {
+      const r = await servicoDeEnvio.enviar(membro, { conversaId: c.conversaId, direcao: "enviada", conteudo: "Segue a proposta", ...extras });
+      if (!r.ok) throw new Error(`esperava sucesso, veio ${r.status}: ${r.error}`);
+      return r.valor.id;
+    };
+
+    const workerDeEmail = (provedor: ReturnType<typeof provedorDeEmailDeTeste>, armazenamento = criarArmazenamentoFalso()) =>
+      criarWorkerDeSaida({ workerId: "teste-email", workspaceId: ws, chaves, registro: { teste: provedor, porProvedor: {} }, armazenamento });
+
+    it("leva assunto, cópias (com a oculta), as referências do fio em ordem e a última recebida como resposta", async () => {
+      const c = await comOFio();
+      const id = await enviarEmail(c, {
+        assunto: "Re: Orçamento",
+        enderecosAdicionais: [
+          { tipo: "copia", endereco: "socio@empresa.com" },
+          { tipo: "copiaOculta", endereco: "diretor@nossa.com" },
+        ],
+      });
+      const provedor = provedorDeEmailDeTeste();
+
+      expect(await workerDeEmail(provedor).processarUm()).toBe(true);
+
+      expect(provedor.enviados).toHaveLength(1);
+      const envio = provedor.enviados[0]!;
+      expect(envio.mensagemId).toBe(id);
+      expect(envio.assunto).toBe("Re: Orçamento");
+      expect(envio.enderecosAdicionais).toEqual([
+        { tipo: "copia", endereco: "socio@empresa.com" },
+        { tipo: "copiaOculta", endereco: "diretor@nossa.com" },
+      ]);
+      expect(envio.referencias).toEqual(["a@x", "n1.b@nossa.com", "c@x"]);
+      expect(envio.emRespostaAIdExterno).toBe("c@x");
+      expect(envio.destino).toEqual({ tipo: "email", valor: c.enderecoDoCliente });
+    });
+
+    it("a citação explícita vence a última recebida", async () => {
+      const c = await comOFio();
+      await enviarEmail(c, { emRespostaAId: c.idDeB });
+      const provedor = provedorDeEmailDeTeste();
+
+      await workerDeEmail(provedor).processarUm();
+
+      expect(provedor.enviados[0]!.emRespostaAIdExterno).toBe("n1.b@nossa.com");
+    });
+
+    it("no WhatsApp, a entrega não manda referências nem assunto", async () => {
+      provedorDeTeste.limpar();
+      const c = await cenario();
+      await worker().processarUm();
+      const envio = provedorDeTeste.enviados.find((e) => e.mensagemId === c.mensagemId)!;
+      expect(envio.referencias).toBeUndefined();
+      expect(envio.assunto).toBeUndefined();
+      expect(envio.enderecosAdicionais).toBeUndefined();
+    });
+
+    it("cada anexo vai com a chave do bucket e o tamanho, além da URL assinada", async () => {
+      const armazenamento = criarArmazenamentoFalso();
+      const comArquivos = criarServicoDeMensagens({ pool, acesso: criarAcessoAoCrmPg(pool), armazenamento });
+      const c = await cenarioDeEmail();
+      const subir = async (nome: string) => {
+        const sessao = await armazenamento.abrirSessao({ workspaceId: ws, formId: formIdDaConversa(c.conversaId) });
+        const ticket = await armazenamento.emitirTicket({
+          submissionId: sessao.submissionId,
+          displayName: nome,
+          mediaType: "application/pdf",
+          tipos: ["application/pdf"],
+          prefixoDaChave: `workspace/${ws}/conversas/${c.conversaId}`,
+          tetoBytes: armazenamento.tetoDoTipo("application/pdf"),
+          tamanhoBytes: PDF.byteLength,
+        });
+        armazenamento.colocarBytes(ticket.objectId, PDF);
+        return { submissionId: sessao.submissionId, objectId: ticket.objectId, objectKey: ticket.objectKey };
+      };
+      const a = await subir("a.pdf");
+      const b = await subir("b.pdf");
+      await enviarEmail(c, { anexos: [a, b].map(({ submissionId, objectId }) => ({ submissionId, objectId })) }, comArquivos);
+      const provedor = provedorDeEmailDeTeste();
+
+      await workerDeEmail(provedor, armazenamento).processarUm();
+
+      const anexos = provedor.enviados[0]!.anexos!;
+      expect(anexos).toHaveLength(2);
+      expect(anexos.map((x) => x.objectKey)).toEqual([a.objectKey, b.objectKey]);
+      expect(anexos.every((x) => x.tamanhoBytes === PDF.byteLength && x.urlAssinada.startsWith("https://"))).toBe(true);
+      expect(anexos.map((x) => x.nome)).toEqual(["a.pdf", "b.pdf"]);
+    });
+
+    it("grava o id_externo ANTES de chamar o provedor e o mantém depois do aceite", async () => {
+      const c = await comOFio();
+      const id = await enviarEmail(c);
+      const provedor = provedorDeEmailDeTeste();
+      provedor.programarEnvio({ ok: true, idExterno: `n1.${id}@nossa.com` });
+
+      await workerDeEmail(provedor).processarUm();
+
+      // Quando `enviar` rodou, o banco já tinha o id e a Mensagem ainda estava `pendente`.
+      expect(provedor.vistoNoEnvio).toEqual([{ idExterno: `n1.${id}@nossa.com`, statusEntrega: "pendente" }]);
+      expect(await mensagem(id)).toMatchObject({ status_entrega: "enviada", id_externo: `n1.${id}@nossa.com` });
+      expect(await linha(id)).toMatchObject({ status: "delivered" });
+    });
+
+    it("resposta ambígua: a Mensagem fica com o id_externo, a frase fala de Enviados e nada é reenviado sozinho", async () => {
+      const c = await comOFio();
+      const id = await enviarEmail(c);
+      const provedor = provedorDeEmailDeTeste();
+      provedor.programarEnvio({ ok: false, transitorio: true, ambiguo: true, codigo: "SMTP_TEMPO_ESGOTADO", motivo: "sem resposta" });
+      const w = workerDeEmail(provedor);
+
+      expect(await w.processarUm()).toBe(true);
+
+      expect(await mensagem(id)).toMatchObject({
+        status_entrega: "falhou",
+        id_externo: `n1.${id}@nossa.com`,
+        motivo_falha: "Sem confirmação do servidor de e-mail: confira em Enviados antes de tentar de novo.",
+      });
+      await disponivelAgora(id);
+      expect(await w.processarUm()).toBe(false);
+      expect(provedor.enviados).toHaveLength(1);
+    });
+
+    it("o WhatsApp mantém a frase de sempre", async () => {
+      const c = await cenario();
+      provedorDeTeste.programarEnvio({ ok: false, transitorio: true, ambiguo: true, codigo: "TEMPO_ESGOTADO", motivo: "x" });
+      await worker().processarUm();
+      expect((await mensagem(c.mensagemId)).motivo_falha).toBe(FRASES_DA_SAIDA.semConfirmacao);
+      expect(FRASES_DA_SAIDA.semConfirmacao).toContain("WhatsApp");
+    });
+
+    it("A15 / D-17-15: o colega que escreveu por último no fio não vira o destino; a resposta vai ao Contato da Conversa", async () => {
+      const c = await comOFio();
+      const contatos = criarRepositorioDeContatosPg(pool());
+      const colega = await contatos.inserir(ws, { nome: "Colega", proprietarioId: "mem_ana", criadoPor: "mem_ana" });
+      const idDoColega = (await contatos.inserirIdentificador(ws, colega.id, { tipo: "email", valor: "colega@empresa.com", principal: true })).id;
+      await c.recebida("d@x", "Re: Orçamento", "colega@empresa.com", idDoColega);
+      await enviarEmail(c);
+      const provedor = provedorDeEmailDeTeste();
+
+      await workerDeEmail(provedor).processarUm();
+
+      expect(provedor.enviados[0]!.destino.valor).toBe(c.enderecoDoCliente);
+      expect(provedor.enviados[0]!.destino.valor).not.toBe("colega@empresa.com");
+      // O fio, porém, inclui a mensagem do colega: a resposta cita a última recebida, de quem for.
+      expect(provedor.enviados[0]!.referencias).toEqual(["a@x", "n1.b@nossa.com", "c@x", "d@x"]);
+      expect(provedor.enviados[0]!.emRespostaAIdExterno).toBe("d@x");
+    });
+
+    it("D-17-20: o provedor que devolve Canal desconectado deixa a Mensagem pendente e a linha com o código, até o Canal voltar", async () => {
+      const c = await cenario();
+      provedorDeTeste.programarEnvio({ ok: false, transitorio: false, codigo: CODIGO_DO_CANAL_DESCONECTADO, motivo: "A caixa recusou a senha." });
+
+      expect(await worker().processarUm()).toBe(true);
+
+      expect(await mensagem(c.mensagemId)).toMatchObject({ status_entrega: "pendente", motivo_falha: null });
+      expect(await linha(c.mensagemId)).toMatchObject({ status: "failed", last_error_code: CODIGO_DO_CANAL_DESCONECTADO });
+
+      // Quando o Canal volta, a linha reabre e a Mensagem sai.
+      const cliente = await pool().connect();
+      try {
+        await cliente.query("begin");
+        expect(await reenfileirarPendentesDoCanal(cliente, ws, c.canalId)).toBeGreaterThanOrEqual(1);
+        await cliente.query("commit");
+      } finally {
+        cliente.release();
+      }
+      expect(await worker().processarUm()).toBe(true);
+      expect((await mensagem(c.mensagemId)).status_entrega).toBe("enviada");
+    });
   });
 });
 

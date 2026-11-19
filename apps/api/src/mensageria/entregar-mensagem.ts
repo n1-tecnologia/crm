@@ -29,6 +29,12 @@
  * enviada não deveria existir (o envio exige anexo confirmado): se aparecer, a Mensagem `falhou` sem chamar o provedor. Assinar
  * acontece ANTES de a chamada sair, então a falha do bucket é transitória e nada foi enviado.
  *
+ * O e-mail (Sessão 9, 17-07): a entrega leva ao provedor o assunto, as cópias (a oculta incluída), as referências do fio (os `id_externo` da
+ * Conversa em ordem) e a Mensagem a que responde (a citada ou, sem citação, a última recebida), e cada anexo com a chave do bucket e o
+ * tamanho. O provedor que sabe o id antes de enviar (`idExternoDoEnvio`, o `Message-ID`) tem o id gravado ANTES da chamada. Um resultado com
+ * o código de Canal desconectado deixa a Mensagem `pendente` (como o Canal que já estava caído na hora). As frases que citam o aplicativo
+ * mudam por tipo de Canal (`frasesDaSaida`): no e-mail, "confira em Enviados".
+ *
  * `motivo_falha` é sempre uma frase de produto ou o motivo do provedor passado por `sanitizarErro` (sem `apikey`,
  * sem Bearer, sem documento). Nada aqui loga conteúdo, telefone nem segredo.
  */
@@ -36,6 +42,7 @@
 import type { Pool, PoolClient } from "pg";
 import type { Canal } from "@n1/dominio/crm/canais";
 import { identificadorDeResposta } from "@n1/dominio/crm/conversas";
+import { capacidadesDoCanal } from "@n1/dominio/crm/capacidades";
 import { numeroParaResponderNoWhatsapp } from "@n1/dominio/crm/normalizacao";
 import { ehDocumento } from "@n1/dominio/crm/midia";
 import { pool as poolPadrao } from "../persistencia/conexao";
@@ -74,6 +81,20 @@ export const FRASES_DA_SAIDA = {
   provedorNaoLigado: "O provedor deste Canal ainda não está ligado.",
   arquivoIndisponivel: "O arquivo desta Mensagem não está disponível.",
 } as const;
+
+type FrasesDaSaida = { readonly [K in keyof typeof FRASES_DA_SAIDA]: string };
+
+/** F2 (17-07): no e-mail a pessoa confere em "Enviados", não no WhatsApp. As frases que não citam o aplicativo são as mesmas. */
+const FRASES_DA_SAIDA_DE_EMAIL: FrasesDaSaida = {
+  ...FRASES_DA_SAIDA,
+  semConfirmacao: "Sem confirmação do servidor de e-mail: confira em Enviados antes de tentar de novo.",
+  aceitaSemRegistro: "O servidor de e-mail aceitou a Mensagem, mas não deu para registrar o envio: confira em Enviados antes de tentar de novo.",
+};
+
+/** As frases da saída para o tipo do Canal: só as que mencionam o aplicativo mudam (e-mail cita "Enviados"; o resto, o WhatsApp). */
+export function frasesDaSaida(tipoDoCanal: Canal["tipo"]): FrasesDaSaida {
+  return tipoDoCanal === "email" ? FRASES_DA_SAIDA_DE_EMAIL : FRASES_DA_SAIDA;
+}
 
 /** "O Contato não tem um WhatsApp para esta Conversa." — o rótulo segue o tipo do Canal. */
 const rotuloDoCanal: Readonly<Record<string, string>> = { whatsapp: "WhatsApp", instagram: "Instagram", email: "e-mail" };
@@ -135,7 +156,7 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
    * a trata como `ERRO_DO_ENTREGADOR` (ou a trava vence) e a guarda de linha sem desfecho fecha a linha como ambígua
    * na volta seguinte, sem reenviar (WR-01).
    */
-  async function gravarOAceite(workspaceId: string, mensagemId: string, idExterno: string): Promise<DesfechoDaEntrega> {
+  async function gravarOAceite(workspaceId: string, mensagemId: string, idExterno: string, frases: FrasesDaSaida): Promise<DesfechoDaEntrega> {
     for (let i = 0; i <= ESPERAS_PARA_GRAVAR_O_ACEITE_MS.length; i += 1) {
       try {
         await emTransacao(async (cliente) => {
@@ -149,7 +170,7 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
         if (espera !== undefined) await esperar(espera);
       }
     }
-    return recusarEnvio(workspaceId, mensagemId, FRASES_DA_SAIDA.aceitaSemRegistro, "ENVIADO_SEM_REGISTRO");
+    return recusarEnvio(workspaceId, mensagemId, frases.aceitaSemRegistro, "ENVIADO_SEM_REGISTRO");
   }
 
   async function recusarEnvio(workspaceId: string, mensagemId: string, motivo: string, code: string): Promise<DesfechoDaEntrega> {
@@ -169,6 +190,7 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
         readonly provedor: ProvedorDeMensageria;
         readonly paraOProvedor: CanalParaProvedor;
         readonly envio: EnvioAoProvedor;
+        readonly frases: FrasesDaSaida;
       };
   const encerra = (desfecho: DesfechoDaEntrega): Preparo => ({ pronto: false, desfecho });
 
@@ -218,6 +240,12 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
     }
 
     const respondida = mensagem.emRespostaAId ? await mensagens.obter(workspaceId, mensagem.emRespostaAId) : undefined;
+    // F1 (17-07): o e-mail responde no MESMO fio. `referencias` são os ids do fio em ordem; sem citação explícita, a resposta é à
+    // última recebida (de quem for: o destino continua sendo o Contato da Conversa, só o cabeçalho cita o colega).
+    const ehEmail = capacidadesDoCanal({ channelType: canal.tipo, provider: canal.provedor }).hasSubjectAndCopies;
+    const referencias = ehEmail ? await mensagens.idsExternosDoFio(workspaceId, conversa.id, mensagem.id) : [];
+    const idDaCitada = respondida?.idExterno ?? undefined;
+    const idDaResposta = idDaCitada ?? (ehEmail ? ((await mensagens.idExternoDaUltimaRecebida(workspaceId, conversa.id)) ?? undefined) : undefined);
     const envio: EnvioAoProvedor = {
       mensagemId: mensagem.id,
       destino: { tipo: destino.tipo, valor: valorDoDestino },
@@ -233,13 +261,14 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
             },
           }
         : {}),
-      ...(respondida?.idExterno
-        ? {
-            emRespostaAIdExterno: respondida.idExterno,
-            // 4.4.4: o que o WhatsApp mostra na citação. A Mensagem só com anexo não tem texto: vai um marcador.
-            emRespostaADetalhes: { nossa: respondida.direcao === "enviada", texto: (respondida.conteudo ?? "").trim().slice(0, 500) || "📎 Anexo" },
-          }
+      ...(idDaResposta !== undefined ? { emRespostaAIdExterno: idDaResposta } : {}),
+      // 4.4.4: o que o WhatsApp mostra na citação. A Mensagem só com anexo não tem texto: vai um marcador.
+      ...(respondida && idDaCitada !== undefined
+        ? { emRespostaADetalhes: { nossa: respondida.direcao === "enviada", texto: (respondida.conteudo ?? "").trim().slice(0, 500) || "📎 Anexo" } }
         : {}),
+      ...(mensagem.assunto !== null && mensagem.assunto !== "" ? { assunto: mensagem.assunto } : {}),
+      ...(mensagem.enderecosAdicionais.length > 0 ? { enderecosAdicionais: mensagem.enderecosAdicionais } : {}),
+      ...(referencias.length > 0 ? { referencias } : {}),
     };
 
     // Antes de a chamada sair (cofre, registro): uma exceção aqui é transitória, nada foi enviado.
@@ -266,7 +295,14 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
       anexosDoEnvio = await Promise.all(
         mensagem.anexos.map(async (anexo): Promise<AnexoDoEnvio> => {
           const url = await armazenamento.urlAssinada(anexo.objectKey!, ehDocumento(anexo.tipoDeMidia) ? { download: anexo.nome } : undefined);
-          return { urlAssinada: url.downloadUrl, tipoDeMidia: anexo.tipoDeMidia, nome: anexo.nome };
+          // O e-mail lê os bytes pela chave (SMTP não segue URL) e confere o tamanho antes de montar o MIME; os outros usam a URL.
+          return {
+            urlAssinada: url.downloadUrl,
+            tipoDeMidia: anexo.tipoDeMidia,
+            nome: anexo.nome,
+            objectKey: anexo.objectKey!,
+            ...(anexo.tamanhoBytes !== undefined ? { tamanhoBytes: anexo.tamanhoBytes } : {}),
+          };
         }),
       );
     } catch {
@@ -278,7 +314,14 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
     }
     const envioComAnexos: EnvioAoProvedor = anexosDoEnvio.length > 0 ? { ...envio, anexos: anexosDoEnvio } : envio;
 
-    return { pronto: true, mensagemId: mensagem.id, provedor, paraOProvedor, envio: envioComAnexos };
+    // D-17-16: o provedor que sabe o id antes de enviar (o `Message-ID` do e-mail) o tem gravado na Mensagem ANTES da chamada. Uma
+    // resposta ambígua do SMTP não deixa a Mensagem sem id, e a resposta do destinatário acha o fio. Ainda é antes do `enviar`:
+    // uma exceção aqui (o banco) é de quem certamente não enviou. A linha que volta depois de ambígua não chega aqui de novo.
+    if (provedor.idExternoDoEnvio) {
+      await mensagens.definirIdExterno(workspaceId, mensagem.id, provedor.idExternoDoEnvio(paraOProvedor, envioComAnexos));
+    }
+
+    return { pronto: true, mensagemId: mensagem.id, provedor, paraOProvedor, envio: envioComAnexos, frases: frasesDaSaida(canal.tipo) };
   }
 
   return async (linha: LinhaOutbox, { ultimaTentativa }): Promise<DesfechoDaEntrega> => {
@@ -297,13 +340,13 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
       return { desfecho: "tentar_de_novo", erro: sanitizarErro(erro, "ERRO_ANTES_DO_ENVIO") };
     }
     if (!preparo.pronto) return preparo.desfecho;
-    const { mensagemId, provedor, paraOProvedor, envio } = preparo;
+    const { mensagemId, provedor, paraOProvedor, envio, frases } = preparo;
 
     // WR-01 (16-20): a linha que voltou à fila SEM desfecho (o worker caiu com ela, ou uma exceção escapou do entregador
     // depois do `enviar`) pode já ter chegado ao cliente. Nunca reenvia sozinha: a pessoa confere e usa "Tentar de novo".
     // Fica depois das conferências, para uma linha que voltou por uma recusa que não gravou receber a frase certa agora.
     if (linha.last_error_code === CODIGO_DA_TRAVA_VENCIDA || linha.last_error_code === CODIGO_DO_ERRO_DO_ENTREGADOR) {
-      return recusarEnvio(workspaceId, mensagemId, FRASES_DA_SAIDA.semConfirmacao, "ENVIO_SEM_DESFECHO");
+      return recusarEnvio(workspaceId, mensagemId, frases.semConfirmacao, "ENVIO_SEM_DESFECHO");
     }
 
     // Dentro do `enviar`: os provedores devolvem `ambiguo` quando podem ter enviado. Uma exceção que escapou de lá
@@ -312,14 +355,19 @@ export function criarEntregadorDeMensagens(deps: DependenciasDoEntregador = {}):
     try {
       resultado = await provedor.enviar(paraOProvedor, envio);
     } catch {
-      return recusarEnvio(workspaceId, mensagemId, FRASES_DA_SAIDA.semConfirmacao, "ERRO_NO_ENVIO");
+      return recusarEnvio(workspaceId, mensagemId, frases.semConfirmacao, "ERRO_NO_ENVIO");
     }
 
-    if (resultado.ok) return gravarOAceite(workspaceId, mensagemId, resultado.idExterno);
+    if (resultado.ok) return gravarOAceite(workspaceId, mensagemId, resultado.idExterno, frases);
 
     const erro = sanitizarErro(resultado.motivo, resultado.codigo);
     // Primeiro o ambíguo: o provedor pode ter enviado, então nunca volta à fila (T-16-16).
-    if (resultado.ambiguo) return recusarEnvio(workspaceId, mensagemId, FRASES_DA_SAIDA.semConfirmacao, resultado.codigo);
+    if (resultado.ambiguo) return recusarEnvio(workspaceId, mensagemId, frases.semConfirmacao, resultado.codigo);
+    // D-17-20: o provedor que descobre o Canal caído na hora de enviar (a caixa recusou a senha) NÃO descarta a Mensagem: ela fica
+    // `pendente` e a linha encerra com o código de Canal desconectado, que o `reenfileirarPendentesDoCanal` reabre na volta.
+    if (resultado.codigo === CODIGO_DO_CANAL_DESCONECTADO) {
+      return permanente(CODIGO_DO_CANAL_DESCONECTADO, "O Canal não estava conectado na hora de entregar; a Mensagem aguarda a reconexão.");
+    }
     if (!resultado.transitorio) {
       return recusarEnvio(workspaceId, mensagemId, erro.summary.trim() === "" ? FRASES_DA_SAIDA.recusou : erro.summary, resultado.codigo);
     }
