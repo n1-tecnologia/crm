@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 17
 current_phase_name: "E-mail: conectar a caixa, receber e enviar (Sessão 9)"
 status: executing
-stopped_at: Completed 17-01-PLAN.md
-last_updated: "2026-11-19T17:40:07.401Z"
+stopped_at: Completed 17-02-PLAN.md
+last_updated: "2026-11-19T20:47:59.116Z"
 last_activity: 2026-11-19
 last_activity_desc: Phase 17 execution started
-state_head: 661b1fa669ccb7f57062d8014e1c537c2a07d5e3
+state_head: 73beeea78c714970fab70d38aa521281c55886a0
 progress:
   total_phases: 17
   completed_phases: 6
   total_plans: 310
-  completed_plans: 291
+  completed_plans: 292
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 17 (E-mail: conectar a caixa, receber e enviar (Sessão 9)) — EXECUTING
-Plan: 2 of 16 (17-01 executado)
+Plan: 3 of 16 (17-01 e 17-02 executados)
 Status: Ready to execute
 Last activity: 2026-11-19 — Phase 17 execution started
 
@@ -510,6 +510,7 @@ Progress: [██████░░░░] 63%
 | Phase 16 P20 | 25 min | 2 tasks | 7 files |
 | Phase 16 P21 | 3 min | 2 tasks | 9 files |
 | Phase 17 P01 | 4 min | 3 tasks | 6 files |
+| Phase 17 P02 | 25min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -861,6 +862,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 16]: 16-20: sem marca de envio iniciado; a linha que volta sem desfecho (TRAVA_VENCIDA/ERRO_DO_ENTREGADOR) fecha como falhou sem confirmação e só sai por Tentar de novo — Nenhuma ida a mais ao banco por envio e nenhuma migração; falso alarme só em queda de processo
 - [Phase 16]: 16-20: a volta do Canal só reabre failed/CANAL_DESCONECTADO (reenfileirarEnvio com motivo canal_voltou); Tentar de novo segue reabrindo qualquer failed/delivered — Nunca reenviar sozinha o que o cliente pode ter recebido (ENVIADO_SEM_REGISTRO, ENVIO_SEM_DESFECHO)
 - [Phase 16]: 16-21: a resposta sai para o Identificador da última recebida da Conversa (identificadorDeResposta no domínio), conferido na lista do Contato da Conversa; senão o principal (WR-04)
+- [Phase 17]: 17-02: o imapkit serviu como dublê do IMAP (A1 confirmado); a árvore de caixas é uma só por servidor, quem precisa de duas caixas sobe dois dublês
+- [Phase 17]: 17-02: os @types de nodemailer, mailparser e smtp-server ficam de fora (os pacotes trazem os próprios tipos); certificado de teste gerado na hora pelo openssl, nunca commitado
 
 ### Pending Todos
 
@@ -922,6 +925,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-19T17:40:07.113Z
-Stopped at: Completed 17-01-PLAN.md
+Last session: 2026-11-19T20:47:58.827Z
+Stopped at: Completed 17-02-PLAN.md
 Resume file: None
