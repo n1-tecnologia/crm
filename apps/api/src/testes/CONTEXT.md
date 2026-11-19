@@ -50,3 +50,33 @@ a única diferença de propósito é que a sessão consumida vive em memória e 
 depois de `listar` são só do teste (`colocarBytes` faz o papel do navegador subindo o arquivo pelo ticket). Por isso
 **nada da Fase 16 foi provado contra o Storage real**: `storage-uploads.test.ts` é o único teste que o toca, e só
 roda com as chaves do Supabase.
+
+## Dublês de e-mail (Fase 17, 17-02)
+
+`servidor-de-email-falso.ts` sobe, num só `iniciarServidorDeEmailFalso`, um IMAP e um SMTP de verdade em `127.0.0.1`, em
+porta efêmera, com TLS. É o mesmo princípio do `criarServidorFalso`: o `imapflow` e o `nodemailer` conversam com ele pelo
+socket, nunca por mock, porque o que os planos de conexão, leitura e envio têm de provar é o transporte (certificado,
+SNI, autenticação, queda, silêncio).
+
+- **IMAP** (`imapkit`, usado como módulo): LOGIN, PLAIN e XOAUTH2 (a lista de tokens de cada usuário, não só um), IDLE
+  com aviso de mensagem nova (`adicionarMensagem`), `recriarCaixa` (UIDVALIDITY novo; as mensagens ficam renumeradas e
+  as sessões abertas recebem `BYE`), pasta de enviados marcada `\Sent` por SPECIAL-USE (de nome `Enviados`, de propósito:
+  o código tem de achá-la pelo atributo, não pelo nome), `mensagensDaPasta`, `conexoesImap()` (endereço remoto e SNI),
+  `derrubarConexoes()` e `fechar()`.
+- **SMTP** (`smtp-server`): guarda o envelope e o `DATA` cru de cada envio em `entregues`, aceita PLAIN, LOGIN e
+  XOAUTH2 e se programa por `programarSmtp` para recusar `RCPT` (`recusarRcpt`), recusar o `DATA` (`recusarData`),
+  ficar mudo depois do `DATA` (`mudoNoData`, o caso ambíguo: a entrega fica registrada e o cliente não recebe resposta)
+  ou recusar o login (`recusarAuth`). Uma regra vale para o próximo envio (o próximo login, no `recusarAuth`) e some.
+- **O certificado** (`certificado-de-teste.ts`) é gerado na hora pelo binário `openssl` (SAN `localhost`,
+  `imap.caixa.teste`, `smtp.caixa.teste` e `127.0.0.1`), num diretório temporário apagado em seguida, e fica só na
+  memória do processo. Nunca é commitado (T-17-04) e só chega ao cliente como `ca` injetada pelo teste (T-17-05): o
+  código de produção não ganha nenhum desvio de TLS. **Exige `openssl` no PATH**; sem ele o teste falha alto.
+- **Nenhum teste fala com caixa real**, Google ou Microsoft.
+
+**Resultado do spike (pressuposto A1): o `imapkit` 5.3.2 serviu.** Não foi preciso o dublê escrito à mão. Entrega TLS
+programático (`secureConnection` + `credentials`), XOAUTH2 que o `imapflow` aceita, inserção por API de controle,
+troca de UIDVALIDITY (`resetUidValidity`) e SPECIAL-USE. Um limite dele, que vale para quem usar o dublê: a árvore de
+caixas é **uma só por servidor** ("single user, multiple connection"). Vários `usuarios` autenticam com credenciais
+próprias, mas veem as mesmas pastas e mensagens; o argumento `usuario` de `adicionarMensagem`, `recriarCaixa` e
+`mensagensDaPasta` não separa nada. Um teste que precisa de duas caixas distintas sobe dois servidores. O `smtp-server`
+e o `imapkit` trazem os próprios tipos; por isso os três `@types` (nodemailer, mailparser, smtp-server) ficam de fora.

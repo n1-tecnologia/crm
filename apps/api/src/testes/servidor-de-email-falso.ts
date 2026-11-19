@@ -17,6 +17,7 @@
 import type { Socket } from "node:net";
 import type { TLSSocket } from "node:tls";
 import imapkit from "imapkit";
+import { SMTPServer } from "smtp-server";
 import { gerarCertificadoDeTeste } from "./certificado-de-teste";
 
 export interface UsuarioDeEmailFalso {
@@ -38,8 +39,28 @@ export interface ConexaoRegistrada {
   readonly sni?: string;
 }
 
+/** Uma entrega que o SMTP falso recebeu: o envelope e o `DATA` cru, como o servidor de destino os veria. */
+export interface EntregaSmtp {
+  readonly envelope: { readonly de: string; readonly para: readonly string[] };
+  readonly dados: Buffer;
+  /** Quem autenticou na sessão. */
+  readonly usuario: string;
+}
+
+/**
+ * Uma falha programada. Vale para o próximo envio (a próxima transação `MAIL FROM`) e some; `recusarAuth` vale para o
+ * próximo login.
+ */
+export type RegraSmtp =
+  | { readonly tipo: "recusarRcpt"; readonly codigo: number }
+  | { readonly tipo: "recusarData"; readonly codigo: number }
+  /** Recebe o `DATA` inteiro, registra a entrega e não responde: o caso ambíguo (o cliente não sabe se saiu). */
+  | { readonly tipo: "mudoNoData" }
+  | { readonly tipo: "recusarAuth" };
+
 export interface ServidorDeEmailFalso {
   readonly imap: { readonly host: "127.0.0.1"; readonly porta: number };
+  readonly smtp: { readonly host: "127.0.0.1"; readonly porta: number };
   /** A CA de teste, para o cliente (`tls.ca`). Só existe no teste. */
   readonly ca: string;
   /**
@@ -54,7 +75,11 @@ export interface ServidorDeEmailFalso {
   recriarCaixa(usuario: string, pasta?: string): Promise<void>;
   /** O MIME cru de cada mensagem da pasta, na ordem dos UIDs. */
   mensagensDaPasta(usuario: string, pasta: string): Promise<readonly Buffer[]>;
+  /** Cada envio que chegou ao `DATA`, inclusive o que o dublê deixou sem resposta (`mudoNoData`). */
+  readonly entregues: readonly EntregaSmtp[];
+  programarSmtp(regra: RegraSmtp): void;
   conexoesImap(): readonly ConexaoRegistrada[];
+  conexoesSmtp(): readonly ConexaoRegistrada[];
   /** Destrói os sockets abertos (queda de rede); o servidor continua aceitando conexões novas. */
   derrubarConexoes(): void;
   fechar(): Promise<void>;
@@ -81,6 +106,19 @@ const PLUGINS_DO_IMAP = [
   "UNSELECT",
   "LITERAL+",
 ];
+
+function erroSmtp(mensagem: string, codigo: number): Error {
+  return Object.assign(new Error(mensagem), { responseCode: codigo });
+}
+
+function lerTudo(fluxo: NodeJS.ReadableStream): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const pedacos: Buffer[] = [];
+    fluxo.on("data", (pedaco: Buffer) => pedacos.push(pedaco));
+    fluxo.on("end", () => resolve(Buffer.concat(pedacos)));
+    fluxo.on("error", reject);
+  });
+}
 
 function paraTexto(mime: string | Buffer): string | Uint8Array {
   return typeof mime === "string" ? mime : new Uint8Array(mime);
@@ -141,9 +179,104 @@ export async function iniciarServidorDeEmailFalso(
 
   const portaDoImap = await imap.start(0, "127.0.0.1");
 
+  // O SMTP: `smtp-server` com TLS implícito, a mesma lista de usuários do IMAP e as falhas programadas.
+  const entregues: EntregaSmtp[] = [];
+  const conexoesSmtp: ConexaoRegistrada[] = [];
+  const socketsSmtp = new Set<Socket>();
+  const regras: RegraSmtp[] = [];
+  /** A regra que pegou a transação em curso de cada sessão (`session.id`). */
+  const regraDaTransacao = new Map<string, RegraSmtp>();
+
+  const smtp = new SMTPServer({
+    secure: true,
+    key: certificado.chave,
+    cert: certificado.cert,
+    authMethods: ["PLAIN", "LOGIN", "XOAUTH2"],
+    logger: false,
+    disabledCommands: [],
+    onSecure(socket, session, retorno) {
+      conexoesSmtp.push({
+        remoto: `${session.remoteAddress}:${socket.remotePort ?? 0}`,
+        ...("servername" in socket && typeof socket.servername === "string" && socket.servername
+          ? { sni: socket.servername }
+          : {}),
+      });
+      retorno();
+    },
+    onAuth(auth, _session, retorno) {
+      const indice = regras.findIndex((r) => r.tipo === "recusarAuth");
+      if (indice >= 0) {
+        regras.splice(indice, 1);
+        retorno(erroSmtp("535 Autenticação recusada (programada)", 535));
+        return;
+      }
+      const usuario = auth.username ?? "";
+      const valida =
+        auth.method === "XOAUTH2"
+          ? auth.accessToken !== undefined && (tokensPorUsuario.get(usuario) ?? []).includes(auth.accessToken)
+          : usuarios.some((u) => u.usuario === usuario && u.senha !== undefined && u.senha === auth.password);
+      if (!valida) {
+        retorno(erroSmtp("Credenciais inválidas", 535));
+        return;
+      }
+      retorno(null, { user: usuario });
+    },
+    onMailFrom(_endereco, session, retorno) {
+      const indice = regras.findIndex((r) => r.tipo !== "recusarAuth");
+      if (indice >= 0) regraDaTransacao.set(session.id, regras.splice(indice, 1)[0]!);
+      else regraDaTransacao.delete(session.id);
+      retorno();
+    },
+    onRcptTo(_endereco, session, retorno) {
+      const regra = regraDaTransacao.get(session.id);
+      if (regra?.tipo === "recusarRcpt") {
+        retorno(erroSmtp("Destinatário recusado (programado)", regra.codigo));
+        return;
+      }
+      retorno();
+    },
+    onData(fluxo, session, retorno) {
+      void lerTudo(fluxo).then((dados) => {
+        const regra = regraDaTransacao.get(session.id);
+        regraDaTransacao.delete(session.id);
+        entregues.push({
+          envelope: {
+            de: session.envelope.mailFrom ? session.envelope.mailFrom.address : "",
+            para: session.envelope.rcptTo.map((r) => r.address),
+          },
+          dados,
+          usuario: typeof session.user === "string" ? session.user : "",
+        });
+        if (regra?.tipo === "mudoNoData") return; // nunca chama `retorno`: o cliente fica esperando
+        if (regra?.tipo === "recusarData") {
+          entregues.pop(); // recusado: o servidor de verdade não guarda a mensagem
+          retorno(erroSmtp("Mensagem recusada (programado)", regra.codigo));
+          return;
+        }
+        retorno(null, "Mensagem aceita");
+      });
+    },
+  });
+  smtp.server.on("connection", (socket: Socket) => {
+    socketsSmtp.add(socket);
+    socket.on("close", () => socketsSmtp.delete(socket));
+  });
+  const portaDoSmtp = await new Promise<number>((resolve, reject) => {
+    smtp.once("error", reject);
+    smtp.listen(0, "127.0.0.1", () => {
+      const endereco = smtp.server.address();
+      resolve(typeof endereco === "object" && endereco ? endereco.port : 0);
+    });
+  });
+
   return {
     imap: { host: "127.0.0.1", porta: portaDoImap },
+    smtp: { host: "127.0.0.1", porta: portaDoSmtp },
     ca: certificado.cert,
+    entregues,
+    programarSmtp(regra) {
+      regras.push(regra);
+    },
     async adicionarMensagem(_usuario, mime, pasta = "INBOX") {
       return imap.control.addMessage(pasta, { raw: paraTexto(mime) }).uid;
     },
@@ -157,12 +290,15 @@ export async function iniciarServidorDeEmailFalso(
         .filter((raw): raw is Buffer => raw !== undefined);
     },
     conexoesImap: () => conexoes.slice(),
+    conexoesSmtp: () => conexoesSmtp.slice(),
     derrubarConexoes() {
       for (const socket of sockets) socket.destroy();
+      for (const socket of socketsSmtp) socket.destroy();
     },
     async fechar() {
       for (const socket of sockets) socket.destroy();
-      await imap.stop();
+      for (const socket of socketsSmtp) socket.destroy();
+      await Promise.all([imap.stop(), new Promise<void>((resolve) => smtp.close(() => resolve()))]);
     },
   };
 }
