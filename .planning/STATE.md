@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 17
 current_phase_name: "E-mail: conectar a caixa, receber e enviar (Sessão 9)"
 status: executing
-stopped_at: Completed 17-09-PLAN.md
-last_updated: "2026-11-19T22:47:16.060Z"
+stopped_at: Completed 17-11-PLAN.md
+last_updated: "2026-11-19T22:51:56.556Z"
 last_activity: 2026-11-19
 last_activity_desc: Phase 17 execution started
-state_head: 6ada2081dfd1ea5ea9a0109aa7bf6c467df811f1
+state_head: 627e43b93ecf643ce575730e9cd2b6f6b8f4add2
 progress:
   total_phases: 17
   completed_phases: 6
   total_plans: 310
-  completed_plans: 299
+  completed_plans: 300
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 17 (E-mail: conectar a caixa, receber e enviar (Sessão 9)) — EXECUTING
-Plan: 10 of 16 (17-01 a 17-04 executados)
+Plan: 11 of 16 (17-01 a 17-04 executados)
 Status: Ready to execute
 Last activity: 2026-11-19 — Phase 17 execution started
 
@@ -518,6 +518,7 @@ Progress: [██████░░░░] 63%
 | Phase 17 P07 | 24min | 3 tasks | 12 files |
 | Phase 17 P08 | 40min | 3 tasks | 11 files |
 | Phase 17 P09 | 45min | 3 tasks | 10 files |
+| Phase 17 P11 | 14min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -882,6 +883,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 17]: 17-08: todo texto do e-mail que vai ao jsonb passa por NUL removido e toWellFormed; a chave sem-id: usa o texto cru do cabecalho Date
 - [Phase 17]: 17-09: registroPadrao(env) injeta o ambiente em todos os provedores; o e-mail só entra com COFRE_CHAVE
 - [Phase 17]: 17-09: desfecho do SMTP sem código só é transitório se certamente não saiu (conexão, DNS, certificado); o resto é ambíguo e nunca reenvia
+- [Phase 17]: 17-11: HTML de e-mail limpo só ao servir (sanitize-html, sem style, imagem só data: raster); rota JSON com no-store; só 'acima do teto' vira 404, falha do bucket sobe como armazenamento_indisponivel
 
 ### Pending Todos
 
@@ -943,6 +945,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-19T22:47:15.767Z
-Stopped at: Completed 17-09-PLAN.md
+Last session: 2026-11-19T22:51:56.259Z
+Stopped at: Completed 17-11-PLAN.md
 Resume file: None
