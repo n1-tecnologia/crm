@@ -976,5 +976,15 @@ Plans:
 **Lacunas — Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 16-22-PLAN.md — Provas juntas, `npm run check` no Postgres local, `CONTEXT.md` da raiz e a publicação pelo dono (checkpoint)
 
+### Phase 17: E-mail: conectar a caixa, receber e enviar (Sessão 9)
+
+**Goal:** Quem usa a plataforma conecta a própria caixa de e-mail pela ficha do Canal (senha ou senha de app, ou login do Google e da Microsoft); o e-mail recebido vira Conversa no Contato do remetente e a resposta sai pela mesma caixa, no mesmo fio, com assunto, cópias e anexo. Escopo e tarefas: Sessão 9 de `docs/09-planejamento/TAREFAS-POR-SESSAO.md` (9.1 a 9.4). Decidido pelo dono em 2026-11-19: IMAP/SMTP com senha ou senha de app **e** com login OAuth; Gmail API e Microsoft Graph ficam fora.
+**Requirements**: TBD
+**Depends on:** Phase 16
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 17 to break down)
+
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*
