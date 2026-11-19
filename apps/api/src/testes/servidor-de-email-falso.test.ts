@@ -6,6 +6,7 @@
 
 import { X509Certificate } from "node:crypto";
 import { ImapFlow } from "imapflow";
+import nodemailer from "nodemailer";
 import { afterEach, describe, expect, it } from "vitest";
 import { gerarCertificadoDeTeste } from "./certificado-de-teste";
 import { iniciarServidorDeEmailFalso, type ServidorDeEmailFalso } from "./servidor-de-email-falso";
@@ -173,5 +174,112 @@ describe("IMAP falso", () => {
     await expect(cliente.connect()).rejects.toMatchObject({
       code: expect.stringMatching(/SELF_SIGNED|UNABLE_TO_VERIFY|DEPTH_ZERO|CERT/),
     });
+  });
+});
+
+function transporte(
+  f: ServidorDeEmailFalso,
+  auth: { user: string; pass: string } | { type: "OAuth2"; user: string; accessToken: string },
+  extras: { socketTimeout?: number } = {},
+) {
+  return nodemailer.createTransport({
+    host: f.smtp.host,
+    port: f.smtp.porta,
+    secure: true,
+    servername: "smtp.caixa.teste",
+    tls: { ca: f.ca },
+    auth,
+    logger: false,
+    ...extras,
+  });
+}
+
+const MENSAGEM = {
+  from: "ana@caixa.teste",
+  to: "bia@destino.teste",
+  cc: "caio@destino.teste",
+  subject: "Assunto do envio",
+  text: "Corpo do envio.",
+};
+
+describe("SMTP falso", () => {
+  it("verify resolve e o envio guarda envelope (to e cc) e o DATA cru", async () => {
+    const f = await subir();
+    const t = transporte(f, { user: USUARIO, pass: SENHA });
+    await expect(t.verify()).resolves.toBe(true);
+    await t.sendMail(MENSAGEM);
+    expect(f.entregues).toHaveLength(1);
+    const entrega = f.entregues[0]!;
+    expect(entrega.envelope.de).toBe("ana@caixa.teste");
+    expect([...entrega.envelope.para].sort()).toEqual(["bia@destino.teste", "caio@destino.teste"]);
+    expect(entrega.usuario).toBe(USUARIO);
+    expect(entrega.dados.toString("utf8")).toMatch(/^Subject: Assunto do envio\r?$/m);
+    t.close();
+  });
+
+  it("XOAUTH2 entra com o token certo e é recusado com o errado (EAUTH)", async () => {
+    const f = await subir();
+    const bom = transporte(f, { type: "OAuth2", user: USUARIO, accessToken: TOKEN });
+    await expect(bom.verify()).resolves.toBe(true);
+    bom.close();
+
+    const ruim = transporte(f, { type: "OAuth2", user: USUARIO, accessToken: "outro" });
+    await expect(ruim.verify()).rejects.toMatchObject({ code: "EAUTH" });
+    ruim.close();
+  });
+
+  it("recusarRcpt 550 faz o sendMail rejeitar em RCPT TO, e a regra vale só para o próximo envio", async () => {
+    const f = await subir();
+    const t = transporte(f, { user: USUARIO, pass: SENHA });
+    f.programarSmtp({ tipo: "recusarRcpt", codigo: 550 });
+    await expect(t.sendMail(MENSAGEM)).rejects.toMatchObject({ responseCode: 550, command: "RCPT TO" });
+    expect(f.entregues).toHaveLength(0);
+
+    await t.sendMail(MENSAGEM);
+    expect(f.entregues).toHaveLength(1);
+    t.close();
+  });
+
+  it("recusarData 451 faz o sendMail rejeitar com 451", async () => {
+    const f = await subir();
+    const t = transporte(f, { user: USUARIO, pass: SENHA });
+    f.programarSmtp({ tipo: "recusarData", codigo: 451 });
+    await expect(t.sendMail(MENSAGEM)).rejects.toMatchObject({ responseCode: 451 });
+    expect(f.entregues).toHaveLength(0);
+    t.close();
+  });
+
+  it("mudoNoData deixa o cliente sem resposta (sem responseCode) e o DATA fica registrado", async () => {
+    const f = await subir();
+    const t = transporte(f, { user: USUARIO, pass: SENHA }, { socketTimeout: 500 });
+    f.programarSmtp({ tipo: "mudoNoData" });
+    const erro = await t.sendMail(MENSAGEM).then(
+      () => undefined,
+      (e: unknown) => e as { responseCode?: number; code?: string },
+    );
+    expect(erro).toBeDefined();
+    expect(erro?.responseCode).toBeUndefined();
+    expect(f.entregues).toHaveLength(1);
+    expect(f.entregues[0]!.dados.toString("utf8")).toContain("Assunto do envio");
+    t.close();
+  });
+
+  it("recusarAuth recusa o próximo login mesmo com a senha certa", async () => {
+    const f = await subir();
+    f.programarSmtp({ tipo: "recusarAuth" });
+    const t = transporte(f, { user: USUARIO, pass: SENHA });
+    await expect(t.verify()).rejects.toMatchObject({ code: "EAUTH" });
+    t.close();
+  });
+
+  it("conexoesSmtp registra o endereço remoto e o SNI", async () => {
+    const f = await subir();
+    const t = transporte(f, { user: USUARIO, pass: SENHA });
+    await t.verify();
+    t.close();
+    const registro = f.conexoesSmtp();
+    expect(registro.length).toBeGreaterThanOrEqual(1);
+    expect(registro[0]?.sni).toBe("smtp.caixa.teste");
+    expect(registro[0]?.remoto).toMatch(/127\.0\.0\.1/);
   });
 });
