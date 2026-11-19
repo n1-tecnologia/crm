@@ -3,9 +3,13 @@
  *
  *   1. Sessões de upload EXPIRADAS e nunca consumidas (o anexo da Caixa que a pessoa abandonou): os objetos `reservado` e
  *      `enviado` delas saem do bucket e viram `expirado`. Uma sessão cuja remoção falhou NÃO é marcada: a próxima rodada tenta.
- *   2. Objetos de `workspace/<ws>/entrada/<canalId>/` com mais de `idadeMinimaMs` (1 h) que nenhuma Mensagem do Canal cita no
- *      anexo: o que a entrada de mídia (`midia.ts`) subiu e a transação não gravou, ou que uma passada repetida duplicou.
- *      O que uma Mensagem cita nunca sai, e o que tem menos de 1 h fica (pode ser de uma transação em voo).
+ *   2. Objetos de `workspace/<ws>/entrada/<canalId>/` com mais de `idadeMinimaMs` (1 h) que nada do Canal cita: o que a entrada de
+ *      mídia (`midia.ts`) subiu e a transação não gravou, ou que uma passada repetida duplicou. Em uso, e por isso poupado:
+ *      o `objectKey` de um anexo (`mensagens.anexos`), o do HTML do e-mail (`mensagens.corpo_html`) e qualquer `objectKey` no
+ *      `corpo` de uma linha de `webhooks_recebidos` que ainda vai virar Mensagem (`pendente` ou `processando`): o leitor de
+ *      e-mail sobe o HTML e os anexos ANTES de enfileirar, e a fila pode demorar mais de 1 h num backoff (T-17-12, F6). Só a
+ *      linha já final (`processado`, `falhou`) deixa de proteger o objeto, e a Mensagem que ela gerou o cita por conta própria.
+ *      O que tem menos de 1 h fica (pode ser de uma transação em voo).
  *
  * Só uma instância roda por vez: `pg_try_advisory_lock` num cliente próprio do pool (sem a trava, `rodou: false`), devolvida no
  * `finally`. Mesma separação do outbox: não conhece `buildApp()`, e só sobe em `index.ts` com `COLETA_DE_ORFAOS_ATIVA=true`.
@@ -92,7 +96,7 @@ export function criarColetaDeOrfaos(opcoes: OpcoesDaColetaDeOrfaos = {}): Coleta
     return { sessoes, objetos };
   }
 
-  /** Os objetos de `entrada/` de cada Canal que nenhuma Mensagem cita e que passaram da idade mínima. */
+  /** Os objetos de `entrada/` de cada Canal que nada cita (anexo, HTML do e-mail, fila pendente) e que passaram da idade mínima. */
   async function limparEntradaSemMensagem(): Promise<number> {
     const { rows: canais } = await pool().query<{ workspace_id: string; id: string }>("select workspace_id, id from plataforma.canais");
     const corte = Date.now() - idadeMinimaMs;
@@ -110,7 +114,26 @@ export function criarColetaDeOrfaos(opcoes: OpcoesDaColetaDeOrfaos = {}): Coleta
             and a->>'objectKey' = any($3::text[])`,
         [canal.workspace_id, canal.id, velhos],
       );
-      const emUso = new Set(citados.map((linha) => linha.chave));
+      // O HTML do e-mail recebido (017) mora em `corpo_html`, não em `anexos`.
+      const { rows: citadosNoHtml } = await pool().query<{ chave: string }>(
+        `select distinct m.corpo_html->>'objectKey' as chave
+           from plataforma.mensagens m
+          where m.workspace_id = $1 and m.canal_id = $2
+            and m.corpo_html->>'objectKey' = any($3::text[])`,
+        [canal.workspace_id, canal.id, velhos],
+      );
+      // O que o leitor subiu e a fila ainda não consumiu: qualquer `objectKey`, em qualquer profundidade do corpo, de uma
+      // linha que ainda não chegou ao estado final. `lax` porque `.**` em `strict` falha ao achar objeto sem a chave.
+      const { rows: citadosNaFila } = await pool().query<{ chave: string }>(
+        `select distinct (c.valor #>> '{}') as chave
+           from plataforma.webhooks_recebidos w
+          cross join lateral jsonb_path_query(w.corpo, 'lax $.**.objectKey') as c(valor)
+          where w.workspace_id = $1 and w.canal_id = $2
+            and w.estado in ('pendente', 'processando')
+            and (c.valor #>> '{}') = any($3::text[])`,
+        [canal.workspace_id, canal.id, velhos],
+      );
+      const emUso = new Set([...citados, ...citadosNoHtml, ...citadosNaFila].map((linha) => linha.chave));
       const orfaos = velhos.filter((chave) => !emUso.has(chave));
       if (orfaos.length === 0) continue;
       await armazenamento.remover(orfaos);

@@ -279,8 +279,10 @@ ouvinte do tempo real o chama a cada `mensagem.nova`/`mensagem.status`, e o proc
   `transacaoMs`, `totalMs` e `anexos`; é a medição da prova ao vivo. O `totalMs` é a espera na fila mais o trabalho
   da passada, sem o tempo do webhook até a fila nem a entrega do SSE à aba.
 - **`criarColetaDeOrfaos`**: uma vez por dia, sob `pg_try_advisory_lock`, apaga as sessões de upload expiradas que
-  ainda têm objeto e os objetos de `entrada/` com mais de 1 h que nenhuma Mensagem do Canal cita. Log só com três
-  contagens. Desligada por padrão: `COLETA_DE_ORFAOS_ATIVA=true`. Limites abertos (`../../../../.planning/phases/16-*/deferred-items.md`):
+  ainda têm objeto e os objetos de `entrada/` com mais de 1 h que nada do Canal cita: poupa o `objectKey` de um anexo
+  (`mensagens.anexos`), o do HTML do e-mail (`mensagens.corpo_html`, 017) e qualquer `objectKey` no `corpo` de uma linha de
+  `webhooks_recebidos` ainda `pendente` ou `processando` (o leitor de e-mail sobe o objeto antes de enfileirar; F6). Log só
+  com três contagens. Desligada por padrão: `COLETA_DE_ORFAOS_ATIVA=true`. Limites abertos (`../../../../.planning/phases/16-*/deferred-items.md`):
   só enxerga os 500 primeiros objetos de cada pasta de Canal e a primeira coleta só roda 24 h depois do boot.
 
 ## A Evolution (`provedores/evolution/`)

@@ -108,6 +108,60 @@ describeComBanco("coleta de órfãos — Postgres local, armazenamento falso", (
     expect((await objetosDaSessao(sessaoId)).map((o) => o.state)).toEqual(["expirado"]);
   });
 
+  it("F6: poupa o objeto citado em mensagens.corpo_html e em qualquer profundidade do corpo de uma linha da fila ainda não processada; só a processada ou falha não protege", async () => {
+    const c = await cenario("coletaf6");
+    const armazenamento = criarArmazenamentoFalso();
+    const dohtml = c.chaveDeEntrada("html-da-mensagem");
+    const dafila = c.chaveDeEntrada("anexo-na-fila-pendente");
+    const processando = c.chaveDeEntrada("anexo-em-processamento");
+    const profundo = c.chaveDeEntrada("anexo-fundo-no-corpo");
+    const processada = c.chaveDeEntrada("anexo-de-linha-processada");
+    const falhada = c.chaveDeEntrada("anexo-de-linha-falhada");
+    const solto = c.chaveDeEntrada("anexo-sem-dono");
+    for (const chave of [dohtml, dafila, processando, profundo, processada, falhada, solto]) velhoEm(armazenamento, chave, 2);
+
+    // O HTML do e-mail: a Mensagem o cita em `corpo_html`, não em `anexos`.
+    await mensagemQueCita(c, c.chaveDeEntrada("outro-anexo-da-mensagem"));
+    await pool().query("update plataforma.mensagens set corpo_html = $3::jsonb where workspace_id = $1 and canal_id = $2", [
+      c.ws,
+      c.canalId,
+      JSON.stringify({ objectKey: dohtml, tamanhoBytes: 10 }),
+    ]);
+    // O leitor de e-mail sobe o objeto e grava a linha da fila; o corpo cita o objeto em profundidades diferentes.
+    const naFila = (estado: string, corpo: unknown, chave: string) =>
+      pool().query(
+        "insert into plataforma.webhooks_recebidos (workspace_id, canal_id, provedor, chave, corpo, estado) values ($1, $2, 'email-imap-smtp', $3, $4::jsonb, $5)",
+        [c.ws, c.canalId, chave, JSON.stringify(corpo), estado],
+      );
+    await naFila("pendente", { anexos: [{ nome: "a.pdf", objectKey: dafila, tamanhoBytes: 3 }] }, "u1");
+    await naFila("processando", { html: { objectKey: processando } }, "u2");
+    await naFila("pendente", { a: [{ b: { c: [{ objectKey: profundo }, { semChave: true }] } }], texto: "sem objectKey aqui" }, "u3");
+    await naFila("processado", { anexos: [{ objectKey: processada }] }, "u4");
+    await naFila("falhou", { anexos: [{ objectKey: falhada }] }, "u5");
+
+    const resultado = await criarColetaDeOrfaos({ armazenamento }).rodarUmaVez();
+
+    expect(resultado.objetosDeEntradaRemovidos).toBe(3);
+    expect([...armazenamento.removidos].filter((k) => k.includes(c.canalId)).sort()).toEqual([processada, falhada, solto].sort());
+    expect([...armazenamento.chavesGuardadas()].sort()).toEqual([dohtml, dafila, processando, profundo].sort());
+  });
+
+  it("a fila de outro Canal ou de outro Espaço não protege o objeto", async () => {
+    const c = await cenario("coletaf6iso");
+    const outro = await cenario("coletaf6outro");
+    const armazenamento = criarArmazenamentoFalso();
+    const chave = c.chaveDeEntrada("anexo-citado-por-outro-canal");
+    velhoEm(armazenamento, chave, 2);
+    await pool().query(
+      "insert into plataforma.webhooks_recebidos (workspace_id, canal_id, provedor, chave, corpo, estado) values ($1, $2, 'email-imap-smtp', 'x1', $3::jsonb, 'pendente')",
+      [outro.ws, outro.canalId, JSON.stringify({ anexos: [{ objectKey: chave }] })],
+    );
+
+    await criarColetaDeOrfaos({ armazenamento }).rodarUmaVez();
+
+    expect(armazenamento.removidos).toContain(chave);
+  });
+
   it("uma sessão cujo objeto não pôde ser removido não é marcada como expirada: a próxima rodada tenta de novo", async () => {
     const c = await cenario("coletafalha");
     const armazenamento = criarArmazenamentoFalso();
