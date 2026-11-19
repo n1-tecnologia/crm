@@ -4,13 +4,13 @@ milestone: v1.0
 current_phase: 16
 current_phase_name: "Base da mensageria: entrada, saída, tempo real e mídia"
 status: executing
-stopped_at: Completed 16-21-PLAN.md
-last_updated: "2026-11-10T18:29:30.294Z"
+stopped_at: Phase 17 context gathered
+last_updated: "2026-11-19T14:29:25.327Z"
 last_activity: 2026-11-10
 last_activity_desc: Phase 16 execution started
-state_head: 41f000cada2d3b87f916189092e7539448ef1600
+state_head: 354a1c30632ee1721059b7c7f55bce4f2572d7fb
 progress:
-  total_phases: 16
+  total_phases: 17
   completed_phases: 6
   total_plans: 294
   completed_plans: 290
@@ -520,6 +520,7 @@ Progress: [██████░░░░] 63%
 - Phases 10, 11 e 12 added (2026-10-28): Sessão 2 do cronograma (Clone ClickUp: ajustes e lacunas, 42 subtarefas) dividida em três fases por decisão do dono, cortadas pelos arquivos que cada parte toca e não pela numeração do doc: Phase 10 Contêineres (2.1, 2.3, 2.5, 2.6.1–2.6.5; 23 subtarefas), Phase 11 Tarefa (2.4, 2.6.6–2.6.9; 9), Phase 12 gravação mais rápida (2.2; 10, começa por medir). A 2.7 (itens relatados nos testes) não vira fase: cada item entra na fase que mexe na tela dele. A lista de testes da Estrutura estava vazia em 2026-10-28
 - Phase 13 registrada (2026-11-04): Gravação em menos idas e voltas ao banco — o passo 1 já saiu (commit `1d0c554`, 7 idas viram 2); passos 2 (cache em processo) e 3 (API perto do banco) abertos. Fora do cronograma das sessões; registrada porque os commits já a chamavam de Fase 13.
 - Phases 14, 15 e 16 added (2026-11-04): Sessão 3 do cronograma (Base da mensageria e unificação do CRM, 52 subtarefas) dividida em três fases por decisão do dono: Phase 14 modelo novo ganha o que falta e Tarefa conversacional (3.1 a 3.3, 20 subtarefas, 5 decisões), Phase 15 telas no modelo novo e remoção do antigo (3.4 e 3.5, 14), Phase 16 base da mensageria (3.6 a 3.9, 18, 1 decisão).
+- Phase 17 added (2026-11-19): E-mail — Sessão 9 do cronograma (`docs/09-planejamento/TAREFAS-POR-SESSAO.md`, 9.1 a 9.4): conectar a caixa por senha ou senha de app e por login do Google e da Microsoft (decidido pelo dono em 19/11), receber por IMAP e enviar por SMTP no mesmo fio. As Sessões 4, 5 e 7 não passaram pelo roadmap do GSD; a Fase 17 é a primeira fase nova desde a 16.
 
 ### Decisions
 
@@ -920,6 +921,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-10T18:29:29.976Z
-Stopped at: Completed 16-21-PLAN.md
-Resume file: None
+Last session: 2026-11-19T14:29:24.607Z
+Stopped at: Phase 17 context gathered
+Resume file: .planning/phases/17-e-mail-conectar-a-caixa-receber-e-enviar-sess-o-9/17-CONTEXT.md
