@@ -30,6 +30,8 @@ export interface UsuarioDeEmailFalso {
 
 export interface OpcoesDoServidorDeEmailFalso {
   readonly usuarios?: readonly UsuarioDeEmailFalso[];
+  /** O IMAP não anuncia `IDLE` (17-10): o cliente só vê mensagem nova quando pergunta (a conferência periódica do leitor). */
+  readonly semIdle?: boolean;
 }
 
 export interface ConexaoRegistrada {
@@ -81,6 +83,10 @@ export interface ServidorDeEmailFalso {
   programarSmtp(regra: RegraSmtp): void;
   conexoesImap(): readonly ConexaoRegistrada[];
   conexoesSmtp(): readonly ConexaoRegistrada[];
+  /** Quantos sockets de cada lado estão abertos agora (as `conexoesImap` são o histórico, não o que está de pé). */
+  conexoesAbertas(): { readonly imap: number; readonly smtp: number };
+  /** Troca a senha do usuário nos dois servidores (17-10: "a senha mudou"). Não derruba as sessões abertas: use `derrubarConexoes`. */
+  trocarSenha(usuario: string, nova: string): void;
   /** Destrói os sockets abertos (queda de rede); o servidor continua aceitando conexões novas. */
   derrubarConexoes(): void;
   fechar(): Promise<void>;
@@ -128,7 +134,8 @@ function paraTexto(mime: string | Buffer): string | Uint8Array {
 export async function iniciarServidorDeEmailFalso(
   opcoes: OpcoesDoServidorDeEmailFalso = {},
 ): Promise<ServidorDeEmailFalso> {
-  const usuarios = opcoes.usuarios ?? USUARIOS_PADRAO;
+  // Cópia: a troca de senha mexe nela, e a lista de quem chamou (ou o padrão do módulo) não pode mudar.
+  const usuarios: { -readonly [K in keyof UsuarioDeEmailFalso]: UsuarioDeEmailFalso[K] }[] = (opcoes.usuarios ?? USUARIOS_PADRAO).map((u) => ({ ...u }));
   const certificado = gerarCertificadoDeTeste();
 
   const tokensPorUsuario = new Map<string, readonly string[]>();
@@ -142,7 +149,7 @@ export async function iniciarServidorDeEmailFalso(
   }
 
   const imap = imapkit({
-    plugins: PLUGINS_DO_IMAP,
+    plugins: opcoes.semIdle ? PLUGINS_DO_IMAP.filter((plugin) => plugin !== "IDLE") : PLUGINS_DO_IMAP,
     users: usuariosDoImap,
     secureConnection: true,
     credentials: { key: certificado.chave, cert: certificado.cert },
@@ -292,6 +299,12 @@ export async function iniciarServidorDeEmailFalso(
     },
     conexoesImap: () => conexoes.slice(),
     conexoesSmtp: () => conexoesSmtp.slice(),
+    conexoesAbertas: () => ({ imap: [...sockets].filter((s) => !s.destroyed).length, smtp: [...socketsSmtp].filter((s) => !s.destroyed).length }),
+    trocarSenha(usuario, nova) {
+      const dono = usuarios.find((u) => u.usuario === usuario);
+      if (dono) dono.senha = nova;
+      imap.control.updateUser(usuario, { password: nova });
+    },
     derrubarConexoes() {
       for (const socket of sockets) socket.destroy();
       for (const socket of socketsSmtp) socket.destroy();

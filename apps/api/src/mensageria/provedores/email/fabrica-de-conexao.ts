@@ -56,6 +56,8 @@ export interface EntradaDeImap {
   readonly uso: UsoDaConexao;
   /** Quando o servidor encerra a sessão por conta do token (Exchange Online); padrão: a validade do token OAuth. */
   readonly sessaoExpiraEm?: string;
+  /** O leitor (17-10): a cada tanto o IDLE é quebrado e refeito, para a sessão nunca ficar muda. Tem de ser MENOR que o `socketMs` do uso. */
+  readonly maxIdleTimeMs?: number;
 }
 
 export interface EntradaDeSmtp {
@@ -66,7 +68,7 @@ export interface EntradaDeSmtp {
 }
 
 /** A verificação sempre usa os tempos curtos do teste. */
-export type EntradaDeVerificacaoImap = Omit<EntradaDeImap, "uso" | "sessaoExpiraEm">;
+export type EntradaDeVerificacaoImap = Omit<EntradaDeImap, "uso" | "sessaoExpiraEm" | "maxIdleTimeMs">;
 export type EntradaDeVerificacaoSmtp = Omit<EntradaDeSmtp, "uso">;
 
 export interface ResultadoDaVerificacaoImap {
@@ -142,6 +144,7 @@ export function criarFabricaDeConexao(opcoes: OpcoesDaFabrica = {}): FabricaDeCo
           ? { user: entrada.auth.usuario, pass: entrada.auth.senha }
           : { user: entrada.auth.usuario, accessToken: entrada.auth.accessToken },
       ...(expira && !Number.isNaN(expira.getTime()) ? { sessionExpires: expira } : {}),
+      ...(entrada.maxIdleTimeMs !== undefined ? { maxIdleTime: entrada.maxIdleTimeMs } : {}),
       logger: false,
     });
     // Um erro de socket sem ouvinte derruba o processo; quem quer o erro o lê do `connect()` ou do próprio evento.

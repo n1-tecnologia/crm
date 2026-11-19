@@ -293,4 +293,36 @@ describe("SMTP falso", () => {
     expect(registro[0]?.sni).toBe("smtp.caixa.teste");
     expect(registro[0]?.remoto).toMatch(/127\.0\.0\.1/);
   });
+  it("trocarSenha vale no IMAP e no SMTP: a senha velha passa a ser recusada e a nova, aceita", async () => {
+    const f = await subir();
+    f.trocarSenha(USUARIO, "senha-nova");
+    const velha = clienteImap(f, { user: USUARIO, pass: SENHA });
+    await expect(velha.connect()).rejects.toMatchObject({ authenticationFailed: true });
+    const nova = clienteImap(f, { user: USUARIO, pass: "senha-nova" });
+    await nova.connect();
+    await nova.logout();
+    await expect(transporte(f, { user: USUARIO, pass: SENHA }).verify()).rejects.toMatchObject({ code: "EAUTH" });
+    const t = transporte(f, { user: USUARIO, pass: "senha-nova" });
+    await t.verify();
+    t.close();
+  });
+
+  it("conexoesAbertas conta só o que está de pé", async () => {
+    const f = await subir();
+    expect(f.conexoesAbertas()).toEqual({ imap: 0, smtp: 0 });
+    const cliente = clienteImap(f, { user: USUARIO, pass: SENHA });
+    await cliente.connect();
+    expect(f.conexoesAbertas().imap).toBe(1);
+    await cliente.logout();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(f.conexoesAbertas().imap).toBe(0);
+  });
+
+  it("semIdle tira o IDLE das capacidades", async () => {
+    servidor = await iniciarServidorDeEmailFalso({ usuarios: [{ usuario: USUARIO, senha: SENHA }], semIdle: true });
+    const cliente = clienteImap(servidor, { user: USUARIO, pass: SENHA });
+    await cliente.connect();
+    expect(cliente.capabilities.has("IDLE")).toBe(false);
+    await cliente.logout();
+  });
 });

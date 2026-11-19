@@ -139,7 +139,7 @@ function sha256(texto: string): string {
 }
 
 /** A chave de um e-mail que não pôde (ou nem precisou) ser lido: a mesma para os mesmos bytes e a mesma posição na caixa. */
-function chaveDePosicao(uidValidity: string, uid: number, tamanho: number): string {
+export function chaveDePosicao(uidValidity: string, uid: number, tamanho: number): string {
   return `sem-id:${sha256(`${uidValidity}\n${uid}\n${tamanho}`)}`;
 }
 
