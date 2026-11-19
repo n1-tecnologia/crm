@@ -7,6 +7,13 @@
 import { describe, expect, it } from "vitest";
 import {
   DIRECOES_DA_MENSAGEM,
+  FRASE_DO_TETO_DO_EMAIL,
+  LIMITE_DO_ASSUNTO,
+  MAX_ANEXOS_POR_EMAIL,
+  MAX_ANEXOS_POR_MENSAGEM,
+  MAX_ENDERECOS_ADICIONAIS,
+  maxAnexosDoCanal,
+  validarTamanhoDoEmail,
   DIRECOES_DE_ENVIO,
   FRASE_SO_MODELO_PRIMEIRO,
   FRASE_SO_RESPONDE,
@@ -436,5 +443,123 @@ describe("validarNovaMensagem com modelo (7.3)", () => {
   it("sem modelo nada muda: o conteúdo vazio sem anexo continua recusado", () => {
     expect(validarNovaMensagem({ conversaId: "c1", direcao: "enviada", conteudo: "" })).toMatchObject({ ok: false, field: "conteudo" });
     expect(validarNovaMensagem({ conversaId: "c1", direcao: "enviada", conteudo: "", modeloId: "" })).toMatchObject({ ok: false, field: "conteudo" });
+  });
+});
+
+describe("validarNovaMensagem com assunto e cópias (D-17-19)", () => {
+  const EMAIL = { capacidades: { hasSubjectAndCopies: true, multimodalInOneMessage: true } } as const;
+  const WHATSAPP = { capacidades: { hasSubjectAndCopies: false, multimodalInOneMessage: false } } as const;
+  const base = { conversaId: "x", direcao: "enviada", conteudo: "Segue a proposta." } as const;
+  const anexo = (n: number) => ({ submissionId: `s${n}`, objectId: `o${n}` });
+
+  it("um Canal sem assunto nem cópias recusa o assunto, no campo assunto", () => {
+    expect(validarNovaMensagem({ ...base, assunto: "Proposta" }, WHATSAPP)).toEqual({
+      ok: false,
+      error: "Este Canal não tem assunto nem cópias.",
+      field: "assunto",
+    });
+  });
+
+  it("um Canal sem assunto nem cópias recusa os endereços adicionais, no campo enderecosAdicionais", () => {
+    const r = validarNovaMensagem({ ...base, enderecosAdicionais: [{ tipo: "copia", endereco: "a@b.com" }] }, WHATSAPP);
+    expect(r).toEqual({ ok: false, error: "Este Canal não tem assunto nem cópias.", field: "enderecosAdicionais" });
+  });
+
+  it("sem informar o Canal, assunto e cópias também são recusados", () => {
+    expect(validarNovaMensagem({ ...base, assunto: "Proposta" }).ok).toBe(false);
+  });
+
+  it("assunto em branco conta como ausente, mesmo num Canal sem assunto", () => {
+    expect(validarNovaMensagem({ ...base, assunto: "   " }, WHATSAPP).ok).toBe(true);
+  });
+
+  it("T-17-01: recusa quebra de linha no assunto (injeção de cabeçalho)", () => {
+    const r = validarNovaMensagem({ ...base, assunto: "Linha 1\r\nBcc: x@y.com" }, EMAIL);
+    expect(r).toEqual({ ok: false, error: "O assunto não pode ter quebra de linha.", field: "assunto" });
+  });
+
+  it("recusa outro caractere de controle no assunto", () => {
+    const r = validarNovaMensagem({ ...base, assunto: "com\u0000nulo" }, EMAIL);
+    expect(!r.ok && r.field).toBe("assunto");
+  });
+
+  it("aceita o assunto de 500 caracteres e recusa o de 501", () => {
+    expect(validarNovaMensagem({ ...base, assunto: "a".repeat(LIMITE_DO_ASSUNTO) }, EMAIL).ok).toBe(true);
+    const r = validarNovaMensagem({ ...base, assunto: "a".repeat(LIMITE_DO_ASSUNTO + 1) }, EMAIL);
+    expect(r).toEqual({ ok: false, error: "O assunto vai até 500 caracteres.", field: "assunto" });
+  });
+
+  it("recusa endereço que não é e-mail, no campo enderecosAdicionais", () => {
+    const r = validarNovaMensagem({ ...base, enderecosAdicionais: [{ tipo: "para", endereco: "nao-e-email" }] }, EMAIL);
+    expect(!r.ok && r.field).toBe("enderecosAdicionais");
+  });
+
+  it("recusa endereço com quebra de linha dentro", () => {
+    const r = validarNovaMensagem({ ...base, enderecosAdicionais: [{ tipo: "copia", endereco: "a@b.com\r\nBcc: x@y.com" }] }, EMAIL);
+    expect(!r.ok && r.field).toBe("enderecosAdicionais");
+  });
+
+  it("T-17-01: recusa quebra de linha no nome de exibição do endereço", () => {
+    const r = validarNovaMensagem(
+      { ...base, enderecosAdicionais: [{ tipo: "copia", endereco: "a@b.com", nomeExibido: "Ana\r\nBcc: x@y.com" }] },
+      EMAIL,
+    );
+    expect(!r.ok && r.field).toBe("enderecosAdicionais");
+  });
+
+  it("aceita 100 endereços adicionais e recusa 101", () => {
+    const enderecos = (n: number) => Array.from({ length: n }, (_, i) => ({ tipo: "copia" as const, endereco: `p${i}@b.com` }));
+    expect(MAX_ENDERECOS_ADICIONAIS).toBe(100);
+    expect(validarNovaMensagem({ ...base, enderecosAdicionais: enderecos(100) }, EMAIL).ok).toBe(true);
+    const r = validarNovaMensagem({ ...base, enderecosAdicionais: enderecos(101) }, EMAIL);
+    expect(r).toEqual({ ok: false, error: "Uma Mensagem leva até 100 endereços além do Contato.", field: "enderecosAdicionais" });
+  });
+
+  it("devolve os endereços na forma de normalizarEmail", () => {
+    const r = validarNovaMensagem({ ...base, assunto: "Proposta", enderecosAdicionais: [{ tipo: "copia", endereco: " Ana@B.com " }] }, EMAIL);
+    expect(r.ok && r.value.enderecosAdicionais).toEqual([{ tipo: "copia", endereco: "ana@b.com" }]);
+  });
+
+  it("o e-mail aceita 10 arquivos e recusa 11", () => {
+    const anexos = (n: number) => Array.from({ length: n }, (_, i) => anexo(i));
+    expect(MAX_ANEXOS_POR_EMAIL).toBe(10);
+    expect(validarNovaMensagem({ ...base, anexos: anexos(10) }, EMAIL).ok).toBe(true);
+    const r = validarNovaMensagem({ ...base, anexos: anexos(11) }, EMAIL);
+    expect(r).toEqual({ ok: false, error: "Um e-mail leva até 10 arquivos.", field: "anexos" });
+  });
+
+  it("o WhatsApp continua com um arquivo por vez", () => {
+    const r = validarNovaMensagem({ ...base, anexos: [anexo(1), anexo(2)] }, WHATSAPP);
+    expect(r).toEqual({ ok: false, error: "Uma Mensagem leva um arquivo por vez.", field: "anexos" });
+    expect(MAX_ANEXOS_POR_MENSAGEM).toBe(1);
+  });
+
+  it("sem informar o Canal, a regra de hoje vale: um arquivo", () => {
+    const r = validarNovaMensagem({ ...base, anexos: [anexo(1), anexo(2)] });
+    expect(!r.ok && r.error).toBe("Uma Mensagem leva um arquivo por vez.");
+  });
+
+  it("a Mensagem de modelo também não leva assunto nem cópia num Canal que não os tem", () => {
+    const r = validarNovaMensagem({ ...base, modeloId: "m1", assunto: "x" }, WHATSAPP);
+    expect(!r.ok && r.field).toBe("assunto");
+  });
+});
+
+describe("maxAnexosDoCanal e validarTamanhoDoEmail (D-17-18)", () => {
+  const MIB = 1024 * 1024;
+
+  it("o Canal multimodal leva 10 arquivos; os outros, um", () => {
+    expect(maxAnexosDoCanal({ multimodalInOneMessage: true })).toBe(10);
+    expect(maxAnexosDoCanal({ multimodalInOneMessage: false })).toBe(1);
+  });
+
+  it("recusa o total acima de 20 MB com a frase do teto, no campo anexos", () => {
+    expect(validarTamanhoDoEmail([15 * MIB, 6 * MIB])).toEqual({ ok: false, error: FRASE_DO_TETO_DO_EMAIL, field: "anexos" });
+    expect(FRASE_DO_TETO_DO_EMAIL).toBe("O e-mail passa de 20 MB: muitos servidores recusam.");
+  });
+
+  it("aceita 20 MB exatos e nenhum anexo", () => {
+    expect(validarTamanhoDoEmail([10 * MIB, 10 * MIB]).ok).toBe(true);
+    expect(validarTamanhoDoEmail([]).ok).toBe(true);
   });
 });

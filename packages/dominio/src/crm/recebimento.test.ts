@@ -4,7 +4,13 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { JANELA_DE_REABERTURA_PADRAO_HORAS, contatoDaRecebida, destinoDaDigitadaNoAparelho, destinoDaRecebida } from "./recebimento";
+import {
+  JANELA_DE_REABERTURA_PADRAO_HORAS,
+  contatoDaRecebida,
+  destinoDaDigitadaNoAparelho,
+  destinoDaRecebida,
+  destinoDoFio,
+} from "./recebimento";
 
 const AGORA = Date.parse("2026-11-09T12:00:00.000Z");
 const horasAtras = (horas: number) => new Date(AGORA - horas * 3_600_000).toISOString();
@@ -148,5 +154,24 @@ describe("contatoDaRecebida (RN-CON-13)", () => {
 describe("JANELA_DE_REABERTURA_PADRAO_HORAS", () => {
   it("é o padrão do seed, 72 h", () => {
     expect(JANELA_DE_REABERTURA_PADRAO_HORAS).toBe(72);
+  });
+});
+
+describe("destinoDoFio (D-17-15)", () => {
+  it("a Conversa aberta recebe o e-mail como está", () => {
+    expect(destinoDoFio({ id: "c1", situacao: "aberta", estado: "ativa" })).toEqual({ acao: "usar", conversaId: "c1", voltaParaAberta: false });
+  });
+
+  it("a pendente é usada e volta a aberta", () => {
+    expect(destinoDoFio({ id: "c1", situacao: "pendente", estado: "ativa" })).toEqual({ acao: "usar", conversaId: "c1", voltaParaAberta: true });
+  });
+
+  it("a resolvida reabre, sem olhar a janela de reabertura nem o Contato", () => {
+    expect(destinoDoFio({ id: "c1", situacao: "resolvida", estado: "ativa" })).toEqual({ acao: "reabrir", conversaId: "c1" });
+  });
+
+  it("a Conversa na lixeira nunca reabre: cai na regra do par", () => {
+    expect(destinoDoFio({ id: "c1", situacao: "resolvida", estado: "na_lixeira" })).toEqual({ acao: "seguir_regra_do_par" });
+    expect(destinoDoFio({ id: "c1", situacao: "aberta", estado: "na_lixeira" })).toEqual({ acao: "seguir_regra_do_par" });
   });
 });

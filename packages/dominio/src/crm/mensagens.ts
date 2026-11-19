@@ -146,6 +146,31 @@ export interface NovaMensagem {
    */
   readonly modeloId?: string | undefined;
   readonly variaveis?: readonly string[] | undefined;
+  readonly assunto?: string | undefined;
+  readonly enderecosAdicionais?: readonly EnderecoAdicional[] | undefined;
+}
+
+export interface CanalDaNovaMensagem {
+  readonly capacidades: { readonly hasSubjectAndCopies: boolean; readonly multimodalInOneMessage: boolean };
+}
+
+export const LIMITE_DO_ASSUNTO = 500;
+export const MAX_ENDERECOS_ADICIONAIS = 100;
+export const MAX_ANEXOS_POR_EMAIL = 10;
+export const TETO_DO_EMAIL_ENVIADO_BYTES = 20 * 1024 * 1024;
+export const FRASE_DO_TETO_DO_EMAIL = "O e-mail passa de 20 MB: muitos servidores recusam.";
+
+export interface CorpoHtmlDaMensagem {
+  readonly objectKey: string;
+  readonly tamanhoBytes: number;
+}
+
+export function maxAnexosDoCanal(_capacidades: { readonly multimodalInOneMessage: boolean }): number {
+  return 0;
+}
+
+export function validarTamanhoDoEmail(_tamanhosEmBytes: readonly number[]): OperationResult<void> {
+  return ok(undefined);
 }
 
 /**

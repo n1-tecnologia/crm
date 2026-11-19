@@ -117,3 +117,12 @@ export function contatoDaRecebida(estado: EstadoDoContato): AcaoSobreOContato {
       return { acao: "recusar" };
   }
 }
+
+export type DestinoDoFio =
+  | { readonly acao: "usar"; readonly conversaId: string; readonly voltaParaAberta: boolean }
+  | { readonly acao: "reabrir"; readonly conversaId: string }
+  | { readonly acao: "seguir_regra_do_par" };
+
+export function destinoDoFio(_conversa: { readonly id: string; readonly situacao: string; readonly estado: string }): DestinoDoFio {
+  return { acao: "seguir_regra_do_par" };
+}
