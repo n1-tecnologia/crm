@@ -12,6 +12,8 @@
  * Sem barril: quem precisa importa por `@n1/dominio/crm/fio-de-email`.
  */
 
+import { normalizarEmail } from "./normalizacao";
+
 /** O que o e-mail recebido diz sobre o fio, já em listas de ids. */
 export interface CabecalhosDoFio {
   readonly inReplyTo: readonly string[];
@@ -118,13 +120,58 @@ export function messageIdDaMensagem(mensagemId: string, enderecoDoCanal: string)
   return `n1.${local}@${usavel}`;
 }
 
+/** Por que um e-mail lido da caixa não vira Conversa (D-17-11). */
 export type MotivoParaIgnorarEmail = "resposta_automatica" | "nao_entrega" | "lista" | "proprio_canal";
 
-export function motivoParaIgnorarEmail(_entrada: {
+/**
+ * O endereço na forma de comparação: sem o nome de exibição (`Nome <a@b>`), em minúsculas pela `normalizarEmail` e com
+ * `googlemail.com` valendo `gmail.com` (a mesma caixa do Google). Endereço que não normaliza é comparado em minúsculas, sem
+ * lançar: o From vem de fora e pode ser qualquer coisa.
+ */
+function formaDoEndereco(endereco: string): string {
+  const entreColchetes = /<([^<>]*)>/.exec(endereco);
+  const puro = (entreColchetes?.[1] ?? endereco).trim();
+  const normalizado = normalizarEmail(puro);
+  const forma = normalizado.ok ? normalizado.value : puro.toLowerCase();
+  return forma.replace(/@googlemail\.com$/, "@gmail.com");
+}
+
+/**
+ * D-17-11: o e-mail que a caixa lê mas que não é uma pessoa escrevendo, em ordem de checagem: o próprio Canal (o laço de
+ * quem responde a si mesmo), o aviso de não entrega (`multipart/report` ou remetente `MAILER-DAEMON`/`postmaster`), a
+ * resposta automática (`Auto-Submitted` diferente de `no`, RFC 3834) e a lista (`Precedence` bulk, list ou junk).
+ *
+ * `List-Unsubscribe` NÃO descarta: aparece em e-mail legítimo de cliente que usa ferramenta de envio em massa. O
+ * `X-Auto-Response-Suppress` também não é sinal de descarte (A15): pede só que NÓS não respondamos automaticamente.
+ * Os nomes de cabeçalho são comparados em minúsculas.
+ */
+export function motivoParaIgnorarEmail(entrada: {
   cabecalhos: Readonly<Record<string, string>>;
   de: string;
   enderecoDoCanal: string;
   tipoDeConteudo: string;
 }): MotivoParaIgnorarEmail | undefined {
+  const cabecalhos = new Map<string, string>();
+  for (const [nome, valor] of Object.entries(entrada.cabecalhos)) cabecalhos.set(nome.toLowerCase(), valor);
+
+  const de = formaDoEndereco(entrada.de);
+  if (de === formaDoEndereco(entrada.enderecoDoCanal)) return "proprio_canal";
+
+  const usuarioDoRemetente = de.slice(0, de.lastIndexOf("@"));
+  if (
+    entrada.tipoDeConteudo.trim().toLowerCase().startsWith("multipart/report") ||
+    usuarioDoRemetente === "mailer-daemon" ||
+    usuarioDoRemetente === "postmaster"
+  ) {
+    return "nao_entrega";
+  }
+
+  // `Auto-Submitted: auto-replied; foo=bar`: só o que vem antes do primeiro `;` conta. Vazio não é sinal.
+  const automatico = (cabecalhos.get("auto-submitted") ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
+  if (automatico !== "" && automatico !== "no") return "resposta_automatica";
+
+  const precedencia = (cabecalhos.get("precedence") ?? "").trim().toLowerCase();
+  if (precedencia === "bulk" || precedencia === "list" || precedencia === "junk") return "lista";
+
   return undefined;
 }
