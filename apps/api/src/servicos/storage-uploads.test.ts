@@ -18,6 +18,7 @@
 import { createHash } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 import { clienteAdmin } from "../autenticacao/verificar-token";
+import { criarArmazenamentoFalso } from "../testes/armazenamento-falso";
 import { carregarEnv, encerrar, pool } from "../persistencia/conexao";
 import { consumirSessao, objetosDaSessao } from "../persistencia/sessoes-de-upload";
 import {
@@ -25,6 +26,7 @@ import {
   MAX_BYTES_POR_ARQUIVO,
   abrirSessaoDeUpload,
   assinaturaConfereComTipo,
+  baixarObjeto,
   coletarOrfaos,
   confirmarObjeto,
   emitirTicket,
@@ -142,6 +144,71 @@ function montarZip(nomes: readonly string[], opcoes: { readonly comentario?: str
   const eocd = juntar(u32(0x06054b50), u16(0), u16(0), u16(nomes.length), u16(nomes.length), u32(diretorio.length), u32(deslocamento), u16(comentario.length), comentario);
   return juntar(...locais, diretorio, eocd);
 }
+
+describe("storage-uploads — baixar os bytes de um objeto, com teto (17-07)", () => {
+  const CHAVE = "workspace/ws_x/conversas/cnv_1/segredo-do-caminho";
+  const bytes = Uint8Array.from([1, 2, 3, 4, 5]);
+  const bucketCom = (resposta: { data: Blob | null; error: unknown }) => ({ download: async () => resposta });
+
+  it("baixarObjeto devolve os bytes do download do cliente da service role", async () => {
+    const lidos: string[] = [];
+    const bucket = {
+      download: async (caminho: string) => {
+        lidos.push(caminho);
+        return { data: new Blob([bytes]), error: null };
+      },
+    };
+    expect(await baixarObjeto(CHAVE, 1_000, bucket)).toEqual(bytes);
+    expect(lidos).toEqual([CHAVE]);
+  });
+
+  it("no teto exato passa; um byte acima rejeita com objeto_grande_demais, sem a chave", async () => {
+    expect(await baixarObjeto(CHAVE, 5, bucketCom({ data: new Blob([bytes]), error: null }))).toEqual(bytes);
+    const erro = await baixarObjeto(CHAVE, 4, bucketCom({ data: new Blob([bytes]), error: null })).catch((e: Error) => e);
+    expect(erro).toBeInstanceOf(Error);
+    expect((erro as Error).message).toBe("objeto_grande_demais");
+    expect((erro as Error).message).not.toContain("segredo-do-caminho");
+  });
+
+  it("o erro do bucket vira falha_ao_baixar_objeto sem a mensagem do provedor (que pode citar a chave)", async () => {
+    const erro = await baixarObjeto(CHAVE, 1_000, bucketCom({ data: null, error: { message: `Object not found: ${CHAVE}` } })).catch((e: Error) => e);
+    expect((erro as Error).message).toBe("falha_ao_baixar_objeto");
+    expect(await baixarObjeto(CHAVE, 1_000, bucketCom({ data: null, error: null })).catch((e: Error) => e.message)).toBe("falha_ao_baixar_objeto");
+  });
+
+  it("o armazenamento falso: subir e baixar devolvem os mesmos bytes", async () => {
+    const falso = criarArmazenamentoFalso();
+    await falso.subir("k", bytes, "application/pdf");
+    expect(await falso.baixar("k", { tetoBytes: 1_000_000 })).toEqual(bytes);
+  });
+
+  it("o armazenamento falso: chave inexistente rejeita e o teto menor que o objeto rejeita, sem a chave na mensagem", async () => {
+    const falso = criarArmazenamentoFalso();
+    await falso.subir("segredo-do-caminho", bytes, "application/pdf");
+    const ausente = await falso.baixar("outra-chave-secreta", { tetoBytes: 1_000 }).catch((e: Error) => e);
+    expect((ausente as Error).message).toBe("falha_ao_baixar_objeto");
+    expect((ausente as Error).message).not.toContain("outra-chave-secreta");
+    const grande = await falso.baixar("segredo-do-caminho", { tetoBytes: 4 }).catch((e: Error) => e);
+    expect((grande as Error).message).toBe("objeto_grande_demais");
+    expect((grande as Error).message).not.toContain("segredo-do-caminho");
+  });
+
+  it("o armazenamento falso: baixar devolve uma cópia (quem muda os bytes lidos não muda o objeto)", async () => {
+    const falso = criarArmazenamentoFalso();
+    await falso.subir("k", Uint8Array.from([9, 9]), "application/pdf");
+    const lido = await falso.baixar("k", { tetoBytes: 10 });
+    lido[0] = 0;
+    expect(await falso.baixar("k", { tetoBytes: 10 })).toEqual(Uint8Array.from([9, 9]));
+  });
+
+  it("o armazenamento falso: falharNaProxima também vale para baixar", async () => {
+    const falso = criarArmazenamentoFalso();
+    await falso.subir("k", bytes, "application/pdf");
+    falso.falharNaProxima(new Error("storage fora do ar"));
+    await expect(falso.baixar("k", { tetoBytes: 10 })).rejects.toThrow("storage fora do ar");
+    expect(await falso.baixar("k", { tetoBytes: 10 })).toEqual(bytes);
+  });
+});
 
 describe("storage-uploads — assinatura de áudio, vídeo e documento (D-16-09)", () => {
   it("OGG de verdade (OggS) passa como audio/ogg, inclusive com o parâmetro de codec", () => {

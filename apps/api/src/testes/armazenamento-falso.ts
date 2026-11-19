@@ -137,6 +137,15 @@ export function criarArmazenamentoFalso(opcoes: { readonly tetos?: { readonly mi
       guardados.set(objectKey, { bytes, tipo, criadoEm: new Date() });
     },
 
+    async baixar(objectKey, { tetoBytes }) {
+      verificarFalha();
+      // Os mesmos erros do bucket real: sem a chave na mensagem.
+      const guardado = guardados.get(objectKey);
+      if (!guardado) throw new Error("falha_ao_baixar_objeto");
+      if (guardado.bytes.byteLength > tetoBytes) throw new Error("objeto_grande_demais");
+      return new Uint8Array(guardado.bytes);
+    },
+
     async remover(objectKeys) {
       verificarFalha();
       for (const chave of objectKeys) {

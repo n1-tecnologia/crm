@@ -494,6 +494,29 @@ export async function urlDeDownload(objectKey: string, opcoes?: { readonly downl
   return { downloadUrl: data.signedUrl, expiresAt: new Date(Date.now() + TTL_DOWNLOAD * 1000) };
 }
 
+/** O que `baixarObjeto` pede do bucket: só o `download`. Existe para o teste trocar o cliente sem mexer na service role. */
+export interface BucketParaBaixar {
+  download(path: string): PromiseLike<{ readonly data: Blob | null; readonly error: unknown }>;
+}
+
+/**
+ * Lê os bytes de um objeto pela service role (17-07): o envio de e-mail monta o MIME com eles e o HTML recebido é lido daqui para ser
+ * limpo. O tamanho é conferido contra o teto ANTES de devolver (`objeto_grande_demais`); o erro do bucket vira um código sem a chave do
+ * objeto, que mora no caminho e pode citar o Espaço (como `noArmazenamento` já trata na outra ponta).
+ */
+export async function baixarObjeto(
+  objectKey: string,
+  tetoBytes: number,
+  bucket: BucketParaBaixar = armazenamento(),
+): Promise<Uint8Array> {
+  const { data, error } = await bucket.download(objectKey);
+  if (error || !data) throw new Error("falha_ao_baixar_objeto");
+  if (data.size > tetoBytes) throw new Error("objeto_grande_demais");
+  const bytes = new Uint8Array(await data.arrayBuffer());
+  if (bytes.byteLength > tetoBytes) throw new Error("objeto_grande_demais");
+  return bytes;
+}
+
 /** Sobe os bytes direto pela service role (a entrada de mídia do provedor, 16-10). O objeto nunca se sobrescreve. */
 export async function subirObjeto(objectKey: string, bytes: Uint8Array, tipo: string): Promise<void> {
   const { error } = await armazenamento().upload(objectKey, bytes, { contentType: tipo, upsert: false });

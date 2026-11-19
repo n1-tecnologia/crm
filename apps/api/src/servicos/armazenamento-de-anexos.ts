@@ -14,6 +14,7 @@ import type { PoolClient } from "pg";
 import { consumirSessao, obterSessao } from "../persistencia/sessoes-de-upload";
 import {
   abrirSessaoDeUpload,
+  baixarObjeto,
   confirmarObjeto,
   emitirTicket,
   listarObjetos,
@@ -53,6 +54,11 @@ export interface ArmazenamentoDeAnexos {
   sessao(submissionId: string): Promise<{ readonly workspaceId: string; readonly formId: string } | undefined>;
   urlAssinada(objectKey: string, opcoes?: { readonly download?: string }): Promise<UrlDeDownload>;
   subir(objectKey: string, bytes: Uint8Array, tipo: string): Promise<void>;
+  /**
+   * Os bytes de um objeto do bucket (17-07): o envio de e-mail os anexa ao MIME e o HTML recebido é lido por aqui. Rejeita com
+   * `objeto_grande_demais` quando passa do `tetoBytes` e com `falha_ao_baixar_objeto` quando o bucket não o devolve (sem a chave).
+   */
+  baixar(objectKey: string, opcoes: { readonly tetoBytes: number }): Promise<Uint8Array>;
   remover(objectKeys: readonly string[]): Promise<void>;
   listar(prefixo: string, opcoes: { readonly limite: number }): Promise<readonly ObjetoListado[]>;
   /** O teto de tamanho de um tipo (D-16-08): 16 MiB para áudio e vídeo, 25 MiB para o resto, por variável de ambiente. */
@@ -76,6 +82,7 @@ export function armazenamentoDeAnexosPadrao(): ArmazenamentoDeAnexos {
     },
     urlAssinada: (objectKey, opcoes) => urlDeDownload(objectKey, opcoes),
     subir: (objectKey, bytes, tipo) => subirObjeto(objectKey, bytes, tipo),
+    baixar: (objectKey, { tetoBytes }) => baixarObjeto(objectKey, tetoBytes),
     remover: (objectKeys) => removerObjetos(objectKeys),
     listar: (prefixo, opcoes) => listarObjetos(prefixo, opcoes),
     tetoDoTipo,
