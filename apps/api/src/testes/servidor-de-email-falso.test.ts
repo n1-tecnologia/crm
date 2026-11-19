@@ -240,6 +240,17 @@ describe("SMTP falso", () => {
     t.close();
   });
 
+  it("recusarRcpt com `enderecos` recusa só esses destinatários: os outros da mesma transação entram (17-09)", async () => {
+    const f = await subir();
+    const t = transporte(f, { user: USUARIO, pass: SENHA });
+    f.programarSmtp({ tipo: "recusarRcpt", codigo: 550, enderecos: ["ruim@destino.teste"] });
+    const info = await t.sendMail({ ...MENSAGEM, to: "bom@destino.teste, ruim@destino.teste" });
+    expect(info.accepted).toEqual(["bom@destino.teste", "caio@destino.teste"]);
+    expect(info.rejected).toEqual(["ruim@destino.teste"]);
+    expect(f.entregues[0]!.envelope.para).toEqual(["bom@destino.teste", "caio@destino.teste"]);
+    t.close();
+  });
+
   it("recusarData 451 faz o sendMail rejeitar com 451", async () => {
     const f = await subir();
     const t = transporte(f, { user: USUARIO, pass: SENHA });

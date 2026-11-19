@@ -52,7 +52,8 @@ export interface EntregaSmtp {
  * próximo login.
  */
 export type RegraSmtp =
-  | { readonly tipo: "recusarRcpt"; readonly codigo: number }
+  /** `enderecos` limita a recusa a esses destinatários (os outros da mesma transação são aceitos); sem ele, recusa todos. */
+  | { readonly tipo: "recusarRcpt"; readonly codigo: number; readonly enderecos?: readonly string[] }
   | { readonly tipo: "recusarData"; readonly codigo: number }
   /** Recebe o `DATA` inteiro, registra a entrega e não responde: o caso ambíguo (o cliente não sabe se saiu). */
   | { readonly tipo: "mudoNoData" }
@@ -227,9 +228,9 @@ export async function iniciarServidorDeEmailFalso(
       else regraDaTransacao.delete(session.id);
       retorno();
     },
-    onRcptTo(_endereco, session, retorno) {
+    onRcptTo(endereco, session, retorno) {
       const regra = regraDaTransacao.get(session.id);
-      if (regra?.tipo === "recusarRcpt") {
+      if (regra?.tipo === "recusarRcpt" && (regra.enderecos === undefined || regra.enderecos.includes(endereco.address.toLowerCase()))) {
         retorno(erroSmtp("Destinatário recusado (programado)", regra.codigo));
         return;
       }

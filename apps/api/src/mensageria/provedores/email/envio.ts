@@ -214,7 +214,9 @@ export function criarEnvioDeEmail(deps: DependenciasDoEnvioDeEmail): EnvioDeEmai
       (originalCode !== undefined && CODIGOS_DE_ANTES_DA_CONEXAO.has(originalCode)) ||
       (code !== undefined && CODIGOS_DE_ANTES_DA_CONEXAO.has(code)) ||
       (timeoutType !== undefined && TEMPOS_DE_ANTES_DO_ENVIO.has(timeoutType)) ||
-      code === "ETLS";
+      code === "ETLS" ||
+      // O certificado que não confere recusa o aperto de mão do TLS: a Mensagem nem chegou a ser dita ao servidor.
+      classificarErroDeConexao(erro, "smtp", segredos).tipo === "certificado";
     if (antesDaConexao) return resultadoDeFalhaDeConexao(classificarErroDeConexao(erro, "smtp", segredos));
 
     // Tempo esgotado ou conexão caída com a sessão de pé: o servidor pode ter aceitado. Nunca reenvia sozinho.
