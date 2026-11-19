@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 17
 current_phase_name: "E-mail: conectar a caixa, receber e enviar (Sessão 9)"
 status: executing
-stopped_at: Completed 17-07-PLAN.md
-last_updated: "2026-11-19T22:17:01.951Z"
+stopped_at: Completed 17-08-PLAN.md
+last_updated: "2026-11-19T22:25:19.749Z"
 last_activity: 2026-11-19
 last_activity_desc: Phase 17 execution started
-state_head: a1f0ff1821b278e0250085e19572129410cda116
+state_head: 418f359ac79567e17f346d108869bc82ca554246
 progress:
   total_phases: 17
   completed_phases: 6
   total_plans: 310
-  completed_plans: 297
+  completed_plans: 298
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 17 (E-mail: conectar a caixa, receber e enviar (Sessão 9)) — EXECUTING
-Plan: 8 of 16 (17-01 a 17-04 executados)
+Plan: 9 of 16 (17-01 a 17-04 executados)
 Status: Ready to execute
 Last activity: 2026-11-19 — Phase 17 execution started
 
@@ -516,6 +516,7 @@ Progress: [██████░░░░] 63%
 | Phase 17 P06 | 9min | 3 tasks | 10 files |
 | Phase 17 P05 | 25min | 3 tasks | 10 files |
 | Phase 17 P07 | 24min | 3 tasks | 12 files |
+| Phase 17 P08 | 40min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -876,6 +877,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 17]: 17-05: a recusa de conexao e 422 CONEXAO_RECUSADA com campo imap ou smtp; o cofre e checado antes da rede; a queda do e-mail vai a desconectada (D-17-20)
 - [Phase 17]: 17-07: Conversa e Canal sao lidos antes da transacao so para validar a forma; o teto de 20 MB e o assunto usam o Canal lido dentro da transacao
 - [Phase 17]: 17-07: objectKey e tamanhoBytes saem em todo anexo de todo Canal; o codigo de Canal desconectado vale so depois do teste de resultado ambiguo
+- [Phase 17]: 17-08: o corpo da fila do e-mail ganha os motivos ilegivel e sem_conteudo (alem dos do dominio), para um e-mail veneno nao prender o cursor nem voltar da fila em laco
+- [Phase 17]: 17-08: todo texto do e-mail que vai ao jsonb passa por NUL removido e toWellFormed; a chave sem-id: usa o texto cru do cabecalho Date
 
 ### Pending Todos
 
@@ -937,6 +940,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-19T22:17:01.643Z
-Stopped at: Completed 17-07-PLAN.md
+Last session: 2026-11-19T22:25:06.197Z
+Stopped at: Completed 17-08-PLAN.md
 Resume file: None
