@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 17
 current_phase_name: "E-mail: conectar a caixa, receber e enviar (Sessão 9)"
 status: executing
-stopped_at: Completed 17-05-PLAN.md
-last_updated: "2026-11-19T22:03:01.043Z"
+stopped_at: Completed 17-07-PLAN.md
+last_updated: "2026-11-19T22:17:01.951Z"
 last_activity: 2026-11-19
 last_activity_desc: Phase 17 execution started
-state_head: fe7cb207141485bae5b5308746d05c7d66f1c002
+state_head: a1f0ff1821b278e0250085e19572129410cda116
 progress:
   total_phases: 17
   completed_phases: 6
   total_plans: 310
-  completed_plans: 296
+  completed_plans: 297
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 17 (E-mail: conectar a caixa, receber e enviar (Sessão 9)) — EXECUTING
-Plan: 7 of 16 (17-01 a 17-04 executados)
+Plan: 8 of 16 (17-01 a 17-04 executados)
 Status: Ready to execute
 Last activity: 2026-11-19 — Phase 17 execution started
 
@@ -515,6 +515,7 @@ Progress: [██████░░░░] 63%
 | Phase 17 P03 | 40min | 3 tasks | 8 files |
 | Phase 17 P06 | 9min | 3 tasks | 10 files |
 | Phase 17 P05 | 25min | 3 tasks | 10 files |
+| Phase 17 P07 | 24min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -873,6 +874,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 17]: 17-03: host com / ? # @ e nome com ultimo rotulo numerico ou 0x sao recusados antes de resolver (domainToASCII le o host como URL)
 - [Phase 17]: 17-03: erro do nodemailer vem como ESOCKET com originalCode; a classificacao olha os dois e o certificado vence; ETLS de STARTTLS recusado e protocolo
 - [Phase 17]: 17-05: a recusa de conexao e 422 CONEXAO_RECUSADA com campo imap ou smtp; o cofre e checado antes da rede; a queda do e-mail vai a desconectada (D-17-20)
+- [Phase 17]: 17-07: Conversa e Canal sao lidos antes da transacao so para validar a forma; o teto de 20 MB e o assunto usam o Canal lido dentro da transacao
+- [Phase 17]: 17-07: objectKey e tamanhoBytes saem em todo anexo de todo Canal; o codigo de Canal desconectado vale so depois do teste de resultado ambiguo
 
 ### Pending Todos
 
@@ -934,6 +937,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-19T22:03:00.723Z
-Stopped at: Completed 17-05-PLAN.md
+Last session: 2026-11-19T22:17:01.643Z
+Stopped at: Completed 17-07-PLAN.md
 Resume file: None
