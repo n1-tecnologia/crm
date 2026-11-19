@@ -22,6 +22,8 @@ import type { Pool, PoolClient } from "pg";
 import { pool as poolPadrao } from "../../../persistencia/conexao";
 import { guardarCredencial, lerChavesDoCofre, type ChavesDoCofre } from "../../../servicos/cofre";
 import type { CanalParaProvedor } from "../../provedor";
+import { lerConfiguracaoDoOauth } from "./configuracao";
+import { renovadoresDoAmbiente } from "./token";
 
 /**
  * O `tipo` da credencial do Canal no cofre: o nome do provedor, como o Instagram (`instagram-graph`). É o que
@@ -111,11 +113,14 @@ export const FRASE_RENOVACAO_FALHOU = "Não foi possível renovar o acesso ao e-
 /** O que um renovador lança: `permanente` é a autorização retirada ou o `refreshToken` recusado (conectar de novo); senão, falha passageira. */
 export class ErroDeRenovacao extends Error {
   readonly permanente: boolean;
-  constructor(permanente: boolean) {
+  /** A frase de produto da recusa permanente (vai a `motivo_da_queda` e à ficha). Fixa por serviço: nunca leva token nem resposta do servidor. */
+  readonly frase?: string;
+  constructor(permanente: boolean, frase?: string) {
     // Mensagem fixa: nunca leva token, resposta do servidor nem endereço.
     super(permanente ? "autorização do e-mail recusada" : "renovação do acesso ao e-mail falhou");
     this.name = "ErroDeRenovacao";
     this.permanente = permanente;
+    if (frase !== undefined) this.frase = frase;
   }
 }
 
@@ -166,6 +171,44 @@ export function criarAcessoDoEmail(
   const pool = deps.pool ?? poolPadrao;
   const chaves = deps.chaves ?? (() => lerChavesDoCofre());
   const renovadores = deps.renovadores ?? {};
+  /**
+   * Renovações em andamento, por Canal: o leitor e o envio pedem o acesso ao mesmo tempo, e duas renovações ao mesmo tempo
+   * girariam o `refreshToken` duas vezes (a Microsoft troca o token a cada uso). Quem chega com uma renovação do Canal em
+   * curso espera por ela e usa o resultado: as renovações de um Canal são SERIALIZADAS dentro do processo. Entre processos, a
+   * escrita do cofre esbarra em `credenciais_ativa_unica` e a Microsoft não revoga o token antigo (T-17-56).
+   */
+  const emCurso = new Map<string, Promise<AcessoParaUsar>>();
+
+  async function renovarEGravar(canal: CanalParaProvedor, credencial: Extract<CredencialDoEmail, { tipo: "oauth" }>, renovar: RenovadorDeToken): Promise<AcessoParaUsar> {
+    let nova: Awaited<ReturnType<RenovadorDeToken>>;
+    try {
+      nova = await renovar(credencial.refreshToken);
+    } catch (erro) {
+      // Só a classe do erro e a frase fixa importam: a mensagem e a causa nunca saem daqui.
+      if (erro instanceof ErroDeRenovacao && erro.permanente) {
+        return { ok: false, permanente: true, codigo: "AUTORIZACAO_RECUSADA", motivo: erro.frase ?? FRASE_AUTORIZACAO_RECUSADA };
+      }
+      return { ok: false, permanente: false, codigo: "RENOVACAO_FALHOU", motivo: FRASE_RENOVACAO_FALHOU };
+    }
+
+    const renovada: CredencialDoEmail = {
+      v: 1,
+      tipo: "oauth",
+      servico: credencial.servico,
+      usuario: credencial.usuario,
+      // O `refreshToken` novo (rotação) é gravado ANTES de o antigo deixar de existir: a escrita revoga a ativa e insere a nova
+      // na mesma transação.
+      refreshToken: nova.refreshToken ?? credencial.refreshToken,
+      accessToken: nova.accessToken,
+      expiraEm: nova.expiraEm,
+    };
+    try {
+      await gravarRenovada(pool(), chaves(), canal, renovada);
+    } catch {
+      // Corrida com outra renovação (ou o cofre indisponível): o token recebido vale para este uso; o próximo grava.
+    }
+    return { ok: true, servico: credencial.servico, auth: { tipo: "oauth", usuario: credencial.usuario, accessToken: nova.accessToken, expiraEm: nova.expiraEm } };
+  }
 
   return {
     async acessoParaUsar(canal) {
@@ -188,37 +231,27 @@ export function criarAcessoDoEmail(
       const renovar = renovadores[credencial.servico];
       if (!renovar) return { ok: false, permanente: false, codigo: "OAUTH_NAO_CONFIGURADO", motivo: FRASE_OAUTH_NAO_CONFIGURADO };
 
-      let nova: Awaited<ReturnType<RenovadorDeToken>>;
-      try {
-        nova = await renovar(credencial.refreshToken);
-      } catch (erro) {
-        // Só a classe do erro importa: a mensagem e a causa nunca saem daqui.
-        if (erro instanceof ErroDeRenovacao && erro.permanente) {
-          return { ok: false, permanente: true, codigo: "AUTORIZACAO_RECUSADA", motivo: FRASE_AUTORIZACAO_RECUSADA };
-        }
-        return { ok: false, permanente: false, codigo: "RENOVACAO_FALHOU", motivo: FRASE_RENOVACAO_FALHOU };
-      }
-
-      const renovada: CredencialDoEmail = {
-        v: 1,
-        tipo: "oauth",
-        servico: credencial.servico,
-        usuario: credencial.usuario,
-        refreshToken: nova.refreshToken ?? credencial.refreshToken,
-        accessToken: nova.accessToken,
-        expiraEm: nova.expiraEm,
-      };
-      try {
-        await gravarRenovada(pool(), chaves(), canal, renovada);
-      } catch {
-        // Corrida com outra renovação (ou o cofre indisponível): o token recebido vale para este uso; o próximo grava.
-      }
-      return { ok: true, servico: credencial.servico, auth: { tipo: "oauth", usuario: credencial.usuario, accessToken: nova.accessToken, expiraEm: nova.expiraEm } };
+      const chave = `${canal.workspaceId}:${canal.canal.id}`;
+      const andando = emCurso.get(chave);
+      if (andando) return andando;
+      const nova = renovarEGravar(canal, credencial, renovar).finally(() => emCurso.delete(chave));
+      emCurso.set(chave, nova);
+      return nova;
     },
   };
 }
 
-/** A porta montada com o banco e o cofre do processo, SEM renovadores: 17-12 (Microsoft) e 17-13 (Google) os acrescentam aqui. */
+/**
+ * A porta montada com o banco e o cofre do processo e os renovadores dos serviços de login que o ambiente configura (17-12,
+ * Microsoft; o 17-13 acrescenta o Google em `renovadoresDoAmbiente`). Sem o par de variáveis do serviço, a credencial dele
+ * devolve `OAUTH_NAO_CONFIGURADO` (transitório). Uma URI de retorno inválida desliga os renovadores, não derruba a senha.
+ */
 export function acessoDoEmailDoAmbiente(env: NodeJS.ProcessEnv = process.env): AcessoDoEmail {
-  return criarAcessoDoEmail({ pool: poolPadrao, chaves: () => lerChavesDoCofre(env) });
+  let configuracao;
+  try {
+    configuracao = lerConfiguracaoDoOauth(env);
+  } catch {
+    configuracao = undefined;
+  }
+  return criarAcessoDoEmail({ pool: poolPadrao, chaves: () => lerChavesDoCofre(env), renovadores: renovadoresDoAmbiente(configuracao) });
 }

@@ -43,6 +43,14 @@ const corpoBom = {
 function novoApp() {
   const chamadas: unknown[][] = [];
   const servico: ServicoDeConexaoDoEmail = {
+    autorizar: (...a) => {
+      chamadas.push(["autorizar", ...a]);
+      return Promise.resolve(sucesso({ url: "https://login.exemplo.test/autorizar?state=abc" }));
+    },
+    concluir: (...a) => {
+      chamadas.push(["concluir", ...a]);
+      return Promise.resolve(sucesso({ id: "canal_1", conexao: "conectada" } as Canal));
+    },
     conectarPorSenha: (...a) => {
       chamadas.push(["conectarPorSenha", ...a]);
       return Promise.resolve(sucesso({ id: "canal_1", conexao: "conectada" } as Canal));

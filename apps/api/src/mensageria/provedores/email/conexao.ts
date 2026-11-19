@@ -13,11 +13,16 @@
  *
  * A senha entra uma vez, no corpo, e daqui só vai à fábrica e ao cofre. Nada aqui chama registro, e a frase de toda recusa
  * vem de `classificarErroDeConexao` (frase fixa; o texto do servidor só depois de ele autenticar, filtrado) (T-17-19).
- * O login do Google e da Microsoft (17-12 e 17-13) reaproveita este núcleo: verificar, depois gravar numa transação.
+ * O login do Google e da Microsoft (17-12 e 17-13) reaproveita este núcleo: verificar, depois gravar numa transação:
+ *
+ *   autorizar → a URL do login do serviço, com `state` assinado (Membro, Espaço, Canal, serviço, 10 min) e PKCE S256 (D-17-04)
+ *   concluir  → a volta, pela sessão de quem pediu: confere o `state`, troca o código, PROVA que a conta é a da caixa abrindo
+ *               IMAP e SMTP por XOAUTH2 com `user` = o endereço do Canal (o `id_token` só pré-confere a frase: ele é mutável,
+ *               A9/A11) e só então grava, pelo mesmo núcleo da senha. Nada do código nem dos tokens vai a log, resposta ou erro
  */
 
 import type { Pool, PoolClient } from "pg";
-import { proximaConexao, type Canal } from "@n1/dominio/crm/canais";
+import { contaDoProvedorConfere, proximaConexao, type Canal } from "@n1/dominio/crm/canais";
 import type { MembroDaSessao } from "../../../plugins/autenticacao";
 import { criarRepositorioDeCanaisPg } from "../../../repositorios/crm/canais";
 import { avancarRevisaoDoEspaco } from "../../../repositorios/crm/referencias";
@@ -31,15 +36,21 @@ import {
   PREDEFINICOES_DE_SERVIDOR,
   lerConfiguracaoDoOauth,
   servicosDaConfiguracao,
+  variaveisQueFaltam,
   type ConfiguracaoDoOauth,
   type EnderecoDeServidor,
   type PredefinicaoDeServidor,
+  type ServicoDeLogin,
   type ServicosDisponiveis,
+  type ServidoresDaConta,
 } from "./configuracao";
-import { guardarCredencialDoEmail } from "./credencial";
+import { guardarCredencialDoEmail, type CredencialDoEmail } from "./credencial";
 import { classificarErroDeConexao, type FalhaDeConexao } from "./erros";
 import { criarFabricaDeConexao, type FabricaDeConexao, type ResultadoDaVerificacaoImap } from "./fabrica-de-conexao";
+import { ErroDoLogin } from "./oauth/comum";
 import type { ServicoDeEmail } from "./rede";
+import { emitirEstadoDoEmail, lerEstadoDoEmail, desafioPkce, verificadorPkce } from "./estado";
+import { CLIENTES_DE_PRODUCAO, type FabricasDeClienteOauth } from "./token";
 import { contaDoCanal, gravarConta, gravarCursor, limparQueda, type TipoDeLoginDoEmail } from "./repositorio";
 
 export interface DependenciasDoEmail {
@@ -50,6 +61,12 @@ export interface DependenciasDoEmail {
   readonly chaves?: () => ChavesDoCofre;
   /** Padrão: o ambiente. `undefined` deixa o login do Google e da Microsoft desligado. */
   readonly configuracaoDoOauth?: () => ConfiguracaoDoOauth | undefined;
+  /** Padrão: o cliente de cada serviço contra os endereços reais. Testes injetam clientes que falam com um servidor de login falso. */
+  readonly clientesOauth?: FabricasDeClienteOauth;
+  /** Padrão: as predefinições do servidor (Microsoft: Outlook; Google: Gmail). Testes trocam pelo dublê de IMAP e SMTP, nunca por variável. */
+  readonly servidoresDoLogin?: Partial<Record<ServicoDeLogin, ServidoresDaConta>>;
+  /** Só para dizer o que falta quando a configuração inteira está ausente. */
+  readonly ambiente?: () => NodeJS.ProcessEnv;
   readonly agora?: () => number;
 }
 
@@ -72,7 +89,15 @@ export interface ContaParaAFichaDoEmail {
   readonly caiuEm: string | null;
 }
 
+export interface EntradaDaConclusao {
+  /** O código de autorização que o serviço devolveu à página de retorno da web. Nunca vai a log. */
+  readonly codigo: string;
+  readonly state: string;
+}
+
 export interface ServicoDeConexaoDoEmail {
+  autorizar(membro: MembroDaSessao, canalId: string, servico: ServicoDeLogin): Promise<ResultadoCrm<{ readonly url: string }>>;
+  concluir(membro: MembroDaSessao, entrada: EntradaDaConclusao): Promise<ResultadoCrm<Canal>>;
   conectarPorSenha(membro: MembroDaSessao, canalId: string, entrada: EntradaDeSenha): Promise<ResultadoCrm<Canal>>;
   conta(
     membro: MembroDaSessao,
@@ -95,6 +120,24 @@ const semCofre = () =>
   recusa<never>(503, "O cofre de credenciais não está configurado neste ambiente (COFRE_CHAVE): a senha não teria onde ficar.", {
     codigo: "COFRE_NAO_CONFIGURADO",
   });
+
+const estadoInvalido = () =>
+  recusa<never>(400, "O pedido de conexão expirou ou não é válido. Comece de novo pelo botão da ficha do Canal.", { codigo: "ESTADO_INVALIDO" });
+
+const NOMES_DOS_SERVICOS: Readonly<Record<ServicoDeLogin, string>> = { google: "o Google", microsoft: "a Microsoft" };
+
+/** O login do serviço não está de pé neste servidor: diz o NOME das variáveis que faltam, nunca valores. */
+const oauthNaoConfigurado = (frase: string) => recusa<never>(503, frase, { codigo: "EMAIL_OAUTH_NAO_CONFIGURADO" });
+
+const FRASES_DO_ERRO_DO_LOGIN = {
+  CONSENTIMENTO_DO_ADMINISTRADOR: () => recusa<never>(409, "A sua organização exige que um administrador aprove o aplicativo antes de você entrar.", { codigo: "CONSENTIMENTO_DO_ADMINISTRADOR" }),
+  LOGIN_RECUSADO: (servico: ServicoDeLogin) =>
+    recusa<never>(422, `Não foi possível concluir o login com ${NOMES_DOS_SERVICOS[servico]}. Comece de novo pelo botão da ficha do Canal.`, { codigo: "LOGIN_RECUSADO" }),
+  SERVICO_FORA: (servico: ServicoDeLogin) =>
+    recusa<never>(502, `Não foi possível falar com ${NOMES_DOS_SERVICOS[servico]} agora. Tente de novo em instantes.`, { codigo: "SERVICO_DE_LOGIN_FORA" }),
+} as const;
+
+const FORMA_DE_ENDERECO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** A recusa que a tela mostra: a frase fixa da classificação, e o que o servidor disse só se ele chegou a autenticar. */
 function recusaDeConexao(falha: FalhaDeConexao) {
@@ -132,15 +175,227 @@ export function criarServicoDeConexaoDoEmail(deps: DependenciasDoEmail): Servico
   }
 
   /** Abre, autentica e fecha. Sem exceção: a falha vira a frase de produto, com o campo (`imap` ou `smtp`) que a causou. */
-  async function verificar<T>(servico: ServicoDeEmail, senha: string, abrir: () => Promise<T>): Promise<{ ok: true; valor: T } | { ok: false; falha: FalhaDeConexao }> {
+  async function verificarComSegredos<T>(servico: ServicoDeEmail, segredos: readonly string[], abrir: () => Promise<T>): Promise<{ ok: true; valor: T } | { ok: false; falha: FalhaDeConexao }> {
     try {
       return { ok: true, valor: await abrir() };
     } catch (erro) {
-      return { ok: false, falha: classificarErroDeConexao(erro, servico, [senha]) };
+      return { ok: false, falha: classificarErroDeConexao(erro, servico, segredos) };
     }
+  }
+  const verificar = <T>(servico: ServicoDeEmail, senha: string, abrir: () => Promise<T>) => verificarComSegredos<T>(servico, [senha], abrir);
+
+  /**
+   * O núcleo da conexão, o mesmo da senha e do login: DEPOIS de a rede ter provado a caixa, grava numa transação a credencial no
+   * cofre, a conta, o cursor da INBOX no `UIDNEXT` daquele momento (D-17-08), o Canal `conectada` e a revisão do Espaço, e
+   * devolve à fila de saída o que esperava (B69).
+   */
+  async function gravarEConectar(
+    membro: MembroDaSessao,
+    canal: Canal,
+    cofre: ChavesDoCofre,
+    a: {
+      readonly credencial: CredencialDoEmail;
+      readonly tipoDeLogin: TipoDeLoginDoEmail;
+      readonly servidores: ServidoresDaConta;
+      readonly lido: ResultadoDaVerificacaoImap;
+      readonly contaExternaId?: string;
+    },
+  ): Promise<ResultadoCrm<Canal>> {
+    return comTransacao(
+      deps.pool,
+      async (transacao) => {
+        // A linha do Espaço antes da do Canal: a mesma ordem das outras escritas de Canal (evita `40P01`).
+        await transacao.query("select 1 from plataforma.workspaces where workspace_id = $1 for update", [membro.workspaceId]);
+        const deNovo = await canalDeEmail(transacao, membro, canal.id, true);
+        if (!deNovo.ok) return deNovo;
+        const alvo = proximaConexao(deNovo.valor, "conexao_confirmada");
+        if (!alvo.ok) return recusa(409, alvo.error, { codigo: "TRANSICAO_INVALIDA" });
+
+        const dono = { workspaceId: membro.workspaceId, canalId: canal.id };
+        await guardarCredencialDoEmail(transacao, cofre, dono, a.credencial);
+        await gravarConta(transacao, {
+          ...dono,
+          // A conta é a do Canal: o endereço que a pessoa criou o Canal para receber.
+          endereco: deNovo.valor.identificadorExterno,
+          tipoDeLogin: a.tipoDeLogin,
+          imap: a.servidores.imap,
+          smtp: a.servidores.smtp,
+          ...(a.contaExternaId !== undefined ? { contaExternaId: a.contaExternaId } : {}),
+          pastaEnviados: a.lido.pastaEnviados ?? null,
+          conectadaPor: membro.id,
+        });
+        await limparQueda(transacao, membro.workspaceId, canal.id);
+        // D-17-08: o leitor começa no que chegar DEPOIS de agora; o que já estava na caixa não vira Conversa.
+        await gravarCursor(transacao, membro.workspaceId, canal.id, {
+          pasta: "INBOX",
+          uidValidity: a.lido.uidValidity,
+          proximoUid: a.lido.uidNext,
+        });
+        const conectado = await criarRepositorioDeCanaisPg(transacao).definirConexao(membro.workspaceId, canal.id, alvo.value);
+        if (!conectado) return naoEncontrado();
+        await avancarRevisaoDoEspaco(transacao, membro.workspaceId);
+        await avisarCrm(transacao, { workspaceId: membro.workspaceId, tipo: "canal.mudou", canalId: canal.id });
+        // B69: o que foi escrito com o Canal fora do ar sai agora, no MESMO commit da conexão.
+        await reenfileirarPendentesDoCanal(transacao, membro.workspaceId, canal.id);
+        return sucesso(conectado);
+      },
+      FRASES,
+    );
+  }
+
+  const clientes = deps.clientesOauth ?? CLIENTES_DE_PRODUCAO;
+  const agora = deps.agora ?? Date.now;
+  const ambiente = deps.ambiente ?? (() => process.env);
+
+  /**
+   * Os `state` já usados, por nonce, até vencerem: o `state` vale UMA vez neste processo (depois de conferido o Membro e o Espaço,
+   * antes de o código ser trocado). É defesa em profundidade: o código de autorização é de uso único no serviço, o PKCE amarra o
+   * código ao servidor e o Canal já conectado não muda de novo; o que não se sustenta sem tabela é o uso único ENTRE processos.
+   */
+  const estadosUsados = new Map<string, number>();
+  function consumirEstado(nonce: string, expiraEm: number): boolean {
+    const instante = agora();
+    for (const [chave, vence] of estadosUsados) if (vence < instante) estadosUsados.delete(chave);
+    if (estadosUsados.has(nonce)) return false;
+    estadosUsados.set(nonce, expiraEm);
+    return true;
+  }
+
+  /** A configuração do serviço, ou a recusa 503 que diz o que falta (os nomes das variáveis, nunca valores). */
+  function appDoServico(servico: ServicoDeLogin) {
+    const config = configuracaoDoOauth();
+    const app = config?.[servico];
+    const fabrica = clientes[servico];
+    if (config && app && fabrica) return { ok: true as const, config, app, fabrica };
+    if (config && app) return { ok: false as const, recusa: oauthNaoConfigurado(`O login com ${NOMES_DOS_SERVICOS[servico]} ainda não está disponível neste servidor.`) };
+    const nomes = config
+      ? servico === "google"
+        ? ["GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET"]
+        : ["MICROSOFT_OAUTH_CLIENT_ID", "MICROSOFT_OAUTH_CLIENT_SECRET"]
+      : variaveisQueFaltam(servico, ambiente());
+    const frase =
+      nomes.length > 0
+        ? `Falta no servidor: ${nomes.join(", ")}.`
+        : "A configuração do login deste serviço está inválida: confira EMAIL_OAUTH_REDIRECT_URI.";
+    return { ok: false as const, recusa: oauthNaoConfigurado(frase) };
   }
 
   return {
+    async autorizar(membro, canalId, servico) {
+      const negado = await exigir(deps.acesso, membro, "conectar", "canal");
+      if (negado) return { ok: false, ...negado };
+      const lida = appDoServico(servico);
+      if (!lida.ok) return lida.recusa;
+
+      const achado = await canalDeEmail(deps.pool(), membro, canalId);
+      if (!achado.ok) return achado;
+      const canal = achado.valor;
+      const pode = proximaConexao(canal, "conexao_confirmada");
+      if (!pode.ok) return recusa(409, pode.error, { codigo: "TRANSICAO_INVALIDA" });
+      // O cofre antes do login: a pessoa não deve entrar no serviço para descobrir depois que o token não teria onde ficar.
+      try {
+        chaves();
+      } catch {
+        return semCofre();
+      }
+
+      const { state, nonce } = emitirEstadoDoEmail(
+        lida.app.clientSecret,
+        { workspaceId: membro.workspaceId, canalId: canal.id, membroId: membro.id, servico },
+        agora(),
+      );
+      const desafio = desafioPkce(verificadorPkce(lida.app.clientSecret, nonce));
+      const cliente = lida.fabrica({ ...lida.app, redirectUri: lida.config.redirectUri });
+      return sucesso({ url: cliente.urlDeAutorizacao({ state, desafio, loginHint: canal.identificadorExterno }) });
+    },
+
+    async concluir(membro, entrada) {
+      const config = configuracaoDoOauth();
+      if (!config) return oauthNaoConfigurado("O login por Google ou Microsoft não está configurado neste servidor.");
+      const estado = lerEstadoDoEmail((s) => config[s]?.clientSecret, entrada.state, agora());
+      // Outro Membro ou outro Espaço: a mesma frase do `state` vencido, sem dizer de quem era.
+      if (!estado || estado.workspaceId !== membro.workspaceId || estado.membroId !== membro.id) return estadoInvalido();
+      // Depois de conferir de quem é: quem tem um `state` alheio não o queima. Vale uma vez.
+      if (!consumirEstado(estado.nonce, estado.expiraEm)) return estadoInvalido();
+      const servico = estado.servico;
+      const lida = appDoServico(servico);
+      if (!lida.ok) return lida.recusa;
+
+      const negado = await exigir(deps.acesso, membro, "conectar", "canal");
+      if (negado) return { ok: false, ...negado };
+      const achado = await canalDeEmail(deps.pool(), membro, estado.canalId);
+      if (!achado.ok) return achado;
+      const canal = achado.valor;
+      const pode = proximaConexao(canal, "conexao_confirmada");
+      if (!pode.ok) return recusa(409, pode.error, { codigo: "TRANSICAO_INVALIDA" });
+
+      let cofre: ChavesDoCofre;
+      try {
+        cofre = chaves();
+      } catch {
+        return semCofre();
+      }
+
+      const cliente = lida.fabrica({ ...lida.app, redirectUri: lida.config.redirectUri });
+      let tokens: Awaited<ReturnType<typeof cliente.trocarCodigo>>;
+      try {
+        tokens = await cliente.trocarCodigo(entrada.codigo, verificadorPkce(lida.app.clientSecret, estado.nonce));
+      } catch (erro) {
+        if (erro instanceof ErroDoLogin) {
+          if (erro.codigo === "CONSENTIMENTO_DO_ADMINISTRADOR") return FRASES_DO_ERRO_DO_LOGIN.CONSENTIMENTO_DO_ADMINISTRADOR();
+          if (erro.codigo === "LOGIN_RECUSADO") return FRASES_DO_ERRO_DO_LOGIN.LOGIN_RECUSADO(servico);
+        }
+        // Qualquer outra falha (o serviço fora do ar, uma exceção de rede) é a mesma frase, sem a causa.
+        return FRASES_DO_ERRO_DO_LOGIN.SERVICO_FORA(servico);
+      }
+      const segredos = [entrada.codigo, tokens.accessToken, tokens.refreshToken];
+
+      // Só pré-conferência: o endereço do `id_token` é mutável e "não garantido" (A9, A11). A prova é o login na caixa, abaixo.
+      const informado = tokens.conta.email;
+      if (informado !== undefined && FORMA_DE_ENDERECO.test(informado) && !contaDoProvedorConfere(canal, informado)) {
+        return recusa(409, `Você entrou com ${informado}, mas este Canal é da caixa ${canal.identificadorExterno}. Entre com a conta da própria caixa.`, {
+          codigo: "CONTA_DIFERENTE",
+        });
+      }
+
+      // A PROVA da caixa: XOAUTH2 com `user` = o endereço do Canal, no IMAP e no SMTP, ANTES de gravar. Um token de outra caixa é
+      // recusado pelo servidor. A rede fica FORA da transação.
+      const servidores = deps.servidoresDoLogin?.[servico] ?? (servico === "microsoft" ? PREDEFINICOES_DE_SERVIDOR.outlook : PREDEFINICOES_DE_SERVIDOR.gmail);
+      const auth = { tipo: "oauth" as const, usuario: canal.identificadorExterno, accessToken: tokens.accessToken, expiraEm: tokens.expiraEm };
+      const contaDiferente = () =>
+        recusa<never>(
+          409,
+          `A conta que entrou não tem acesso à caixa ${canal.identificadorExterno}. Entre com a conta da própria caixa e confira se o IMAP e o SMTP autenticado estão ligados para ela.`,
+          { codigo: "CONTA_DIFERENTE" },
+        );
+      const falhou = (falha: FalhaDeConexao) => (falha.tipo === "recusou_login" ? contaDiferente() : recusaDeConexao(falha));
+
+      const imap = await verificarComSegredos<ResultadoDaVerificacaoImap>("imap", segredos, () =>
+        fabrica.verificarImap({ host: servidores.imap.host, porta: servidores.imap.porta, auth }),
+      );
+      if (!imap.ok) return falhou(imap.falha);
+      const smtp = await verificarComSegredos<void>("smtp", segredos, () =>
+        fabrica.verificarSmtp({ host: servidores.smtp.host, porta: servidores.smtp.porta, auth }),
+      );
+      if (!smtp.ok) return falhou(smtp.falha);
+
+      return gravarEConectar(membro, canal, cofre, {
+        credencial: {
+          v: 1,
+          tipo: "oauth",
+          servico,
+          usuario: canal.identificadorExterno,
+          refreshToken: tokens.refreshToken,
+          accessToken: tokens.accessToken,
+          expiraEm: tokens.expiraEm,
+        },
+        tipoDeLogin: servico,
+        servidores,
+        lido: imap.valor,
+        ...(tokens.conta.idEstavel !== undefined ? { contaExternaId: tokens.conta.idEstavel } : {}),
+      });
+    },
+
     async conectarPorSenha(membro, canalId, entrada) {
       const negado = await exigir(deps.acesso, membro, "conectar", "canal");
       if (negado) return { ok: false, ...negado };
@@ -174,46 +429,12 @@ export function criarServicoDeConexaoDoEmail(deps: DependenciasDoEmail): Servico
       );
       if (!smtp.ok) return recusaDeConexao(smtp.falha);
 
-      const lido = imap.valor;
-      return comTransacao(
-        deps.pool,
-        async (transacao) => {
-          // A linha do Espaço antes da do Canal: a mesma ordem das outras escritas de Canal (evita `40P01`).
-          await transacao.query("select 1 from plataforma.workspaces where workspace_id = $1 for update", [membro.workspaceId]);
-          const deNovo = await canalDeEmail(transacao, membro, canal.id, true);
-          if (!deNovo.ok) return deNovo;
-          const alvo = proximaConexao(deNovo.valor, "conexao_confirmada");
-          if (!alvo.ok) return recusa(409, alvo.error, { codigo: "TRANSICAO_INVALIDA" });
-
-          const dono = { workspaceId: membro.workspaceId, canalId: canal.id };
-          await guardarCredencialDoEmail(transacao, cofre, dono, { v: 1, tipo: "senha", usuario: entrada.usuario, senha: entrada.senha });
-          await gravarConta(transacao, {
-            ...dono,
-            // A conta é a do Canal: o endereço que a pessoa criou o Canal para receber.
-            endereco: deNovo.valor.identificadorExterno,
-            tipoDeLogin: "senha",
-            imap: servidores.imap,
-            smtp: servidores.smtp,
-            pastaEnviados: lido.pastaEnviados ?? null,
-            conectadaPor: membro.id,
-          });
-          await limparQueda(transacao, membro.workspaceId, canal.id);
-          // D-17-08: o leitor começa no que chegar DEPOIS de agora; o que já estava na caixa não vira Conversa.
-          await gravarCursor(transacao, membro.workspaceId, canal.id, {
-            pasta: "INBOX",
-            uidValidity: lido.uidValidity,
-            proximoUid: lido.uidNext,
-          });
-          const conectado = await criarRepositorioDeCanaisPg(transacao).definirConexao(membro.workspaceId, canal.id, alvo.value);
-          if (!conectado) return naoEncontrado();
-          await avancarRevisaoDoEspaco(transacao, membro.workspaceId);
-          await avisarCrm(transacao, { workspaceId: membro.workspaceId, tipo: "canal.mudou", canalId: canal.id });
-          // B69: o que foi escrito com o Canal fora do ar sai agora, no MESMO commit da conexão.
-          await reenfileirarPendentesDoCanal(transacao, membro.workspaceId, canal.id);
-          return sucesso(conectado);
-        },
-        FRASES,
-      );
+      return gravarEConectar(membro, canal, cofre, {
+        credencial: { v: 1, tipo: "senha", usuario: entrada.usuario, senha: entrada.senha },
+        tipoDeLogin: "senha",
+        servidores,
+        lido: imap.valor,
+      });
     },
 
     async conta(membro, canalId) {

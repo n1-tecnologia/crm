@@ -4,6 +4,9 @@
  *   POST /canais/:id/email/conectar   { usuario, senha, predefinicao? | imap + smtp } → o Canal conectado
  *   GET  /canais/:id/email/conta      a conta sem segredo (endereço, tipo de login, servidores, motivo da queda) e quais
  *                                     botões de login (Google, Microsoft) este servidor oferece
+ *   POST /canais/:id/email/oauth/:servico/autorizar   a URL da janela de login do serviço ({ url }), com `state` e PKCE
+ *   POST /canais/email/oauth/concluir { codigo, state }  a volta: a página da WEB (a URI de retorno é dela, não desta api) lê o
+ *                                     código e o `state` e chama aqui com o token da sessão, o que amarra o `state` a quem pediu
  *
  * A senha chega UMA vez, no corpo do `conectar`, e vai à fábrica de conexão e ao cofre: nenhuma resposta a devolve e nenhum
  * log a guarda (o log de requisição do Fastify registra método e URL, não o corpo). `predefinicao` (`gmail` ou `outlook`) é
@@ -39,12 +42,30 @@ const CONEXAO_POR_SENHA = z
     { message: "Escolha Gmail ou Outlook, ou informe o servidor IMAP e o SMTP.", path: ["predefinicao"] },
   );
 
+const PARAMS_DO_LOGIN = z.object({ id: z.string().min(1).max(64), servico: z.enum(["google", "microsoft"]) }).strict();
+
+const CONCLUSAO_DO_LOGIN = z
+  .object({
+    // O código e o `state` chegam UMA vez, no corpo: nenhuma resposta os devolve e nenhum log os guarda.
+    codigo: z.string().min(1).max(4096),
+    state: z.string().min(1).max(2048),
+  })
+  .strict();
+
 export async function rotasDoEmail(app: FastifyInstance, opcoes: { readonly servico: ServicoDeConexaoDoEmail }): Promise<void> {
   const rotas = app.withTypeProvider<ZodTypeProvider>();
   const { servico } = opcoes;
 
   rotas.post("/canais/:id/email/conectar", { schema: { params: PARAMS_ID, body: CONEXAO_POR_SENHA } }, async (request, reply) =>
     responder(reply, await servico.conectarPorSenha(request.membro, request.params.id, request.body)),
+  );
+
+  rotas.post("/canais/:id/email/oauth/:servico/autorizar", { schema: { params: PARAMS_DO_LOGIN } }, async (request, reply) =>
+    responder(reply, await servico.autorizar(request.membro, request.params.id, request.params.servico)),
+  );
+
+  rotas.post("/canais/email/oauth/concluir", { schema: { body: CONCLUSAO_DO_LOGIN } }, async (request, reply) =>
+    responder(reply, await servico.concluir(request.membro, request.body)),
   );
 
   rotas.get("/canais/:id/email/conta", { schema: { params: PARAMS_ID } }, async (request, reply) =>
