@@ -1,0 +1,32 @@
+Message-ID: <pedido-42@empresa.example>
+Date: Wed, 19 Nov 2026 10:00:00 -0300
+From: Cliente <cliente@empresa.example>
+To: vendas@caixa.test, outra@empresa.example
+Cc: socio@empresa.example
+Subject: Pedido 42
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="mix"
+
+--mix
+Content-Type: multipart/alternative; boundary="alt"
+
+--alt
+Content-Type: text/plain; charset=utf-8
+
+Segue o pedido 42 em anexo.
+--alt
+Content-Type: text/html; charset=utf-8
+
+<html><body><p>Segue o <b>pedido 42</b> em anexo.</p></body></html>
+--alt--
+
+--mix
+Content-Type: application/pdf; name="pedido-42.pdf"
+Content-Disposition: attachment; filename="pedido-42.pdf"
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQKMSAwIG9iajw8L1R5cGUvQ2F0YWxvZy9QYWdlcyAyIDAgUj4+ZW5kb2JqCjIgMCBv
+Ymo8PC9UeXBlL1BhZ2VzL0tpZHNbMyAwIFJdL0NvdW50IDE+PmVuZG9iagozIDAgb2JqPDwvVHlw
+ZS9QYWdlL1BhcmVudCAyIDAgUi9NZWRpYUJveFswIDAgMjAwIDIwMF0+PmVuZG9iagp0cmFpbGVy
+PDwvUm9vdCAxIDAgUi9TaXplIDQ+PgolJUVPRgo=
+--mix--
