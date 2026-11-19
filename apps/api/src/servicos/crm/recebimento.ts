@@ -16,7 +16,11 @@
  *      que chegou pela outra (a forma que chegou é procurada primeiro) e o Contato novo grava a forma com o 9;
  *   4. o Contato arquivado ou na lixeira volta a `ativo` (RN-CON-13); o mesclado é recusado;
  *   5. a Conversa é decidida por `destinoDaRecebida` (RN-CXE-09), com a janela de `inbox` em
- *      `plataforma.registros`;
+ *      `plataforma.registros`. No e-mail (17-06, D-17-14) o fio vem ANTES da regra do par: se `In-Reply-To` ou `References`
+ *      apontam para uma Mensagem DESTE Canal e Espaço (`mensagemRespondida`), a Mensagem entra na Conversa dela, com
+ *      `em_resposta_a_id`, e `destinoDoFio` decide o estado (aberta usa, pendente volta, resolvida reabre, na lixeira cai
+ *      na regra do par). O assunto nunca junta e-mails (EML-04). Se outra pessoa responde no fio (D-17-15), a Mensagem
+ *      entra na Conversa do fio com o remetente verdadeiro e o Contato da Conversa não muda;
  *   6. a Mensagem entra pelo `inserirRecebida` de sempre.
  *
  * A Mensagem digitada no celular do Canal (`digitadaNoAparelho`, 4.4.2) passa pelo mesmo caminho, com três diferenças: entra
@@ -39,12 +43,14 @@ import type { Pool, PoolClient } from "pg";
 import type { Conversa, ParticipanteDaConversa } from "@n1/dominio/crm/conversas";
 import { TIPO_DE_IDENTIFICADOR_DO_CANAL, tituloDaConversa } from "@n1/dominio/crm/conversas";
 import type { AnexoDaMensagem, Mensagem } from "@n1/dominio/crm/mensagens";
+import { mensagemRespondida } from "@n1/dominio/crm/fio-de-email";
 import { normalizarIdentificadorDeContato, variantesDoNumeroBrasileiro } from "@n1/dominio/crm/normalizacao";
 import {
   JANELA_DE_REABERTURA_PADRAO_HORAS,
   contatoDaRecebida,
   destinoDaDigitadaNoAparelho,
   destinoDaRecebida,
+  destinoDoFio,
   type DestinoDaRecebida,
   type EntradaDoDestino,
   type RecebidaDoProvedor,
@@ -99,7 +105,12 @@ function validarEvento(evento: RecebidaDoProvedor): { readonly error: string; re
   if (evento.idExterno.trim() === "") return { error: "A Mensagem recebida precisa do identificador do provedor.", field: "idExterno" };
   if (Number.isNaN(Date.parse(evento.criadoEm))) return { error: "O instante da Mensagem recebida é inválido.", field: "criadoEm" };
   const semTexto = (evento.conteudo ?? "").trim() === "";
-  if (semTexto && (evento.anexos ?? []).length === 0) return { error: "A Mensagem recebida precisa de conteúdo ou anexo.", field: "conteudo" };
+  // 17-06 (F7): o e-mail só com assunto ou só com HTML também é uma Mensagem; os arquivos já guardados contam como anexo.
+  const semAssunto = (evento.assunto ?? "").trim() === "";
+  const semAnexo = (evento.anexos ?? []).length === 0 && (evento.anexosGuardados ?? []).length === 0;
+  if (semTexto && semAnexo && semAssunto && evento.corpoHtml === undefined) {
+    return { error: "A Mensagem recebida precisa de conteúdo ou anexo.", field: "conteudo" };
+  }
   return undefined;
 }
 
@@ -156,6 +167,37 @@ function destinoDoEvento(evento: RecebidaDoProvedor, entrada: EntradaDoDestino):
   if (evento.digitadaNoAparelho !== true) return destinoDaRecebida(entrada);
   const destino = destinoDaDigitadaNoAparelho(entrada);
   return destino.acao === "usar" ? { acao: "usar", conversaId: destino.conversaId, voltaParaAberta: false } : destino;
+}
+
+/** Texto da recebida que só traz HTML (sem texto, sem anexo e sem assunto). */
+const CONTEUDO_DA_RECEBIDA_SEM_TEXTO = "(sem texto)";
+
+/**
+ * O `conteudo` que a Mensagem grava. `mensagens_conteudo_ck` (008, imutável) exige texto OU anexo: o e-mail só com assunto ou só
+ * com HTML (F7) nasce com o assunto no lugar do texto, ou, sem assunto, com uma frase fixa; assim a Mensagem existe e a tela
+ * mostra o que chegou (o HTML fica em `corpo_html`).
+ */
+function conteudoDaMensagem(evento: RecebidaDoProvedor, anexos: readonly AnexoDaMensagem[]): string | null {
+  const texto = evento.conteudo ?? "";
+  if (texto.trim() !== "" || anexos.length > 0) return evento.conteudo ?? null;
+  const assunto = (evento.assunto ?? "").trim();
+  return assunto !== "" ? assunto : CONTEUDO_DA_RECEBIDA_SEM_TEXTO;
+}
+
+/** A Mensagem que o e-mail responde (`In-Reply-To`, depois `References`), só entre as do Canal; `undefined` sem cabeçalho de fio. */
+async function achaOFio(
+  evento: RecebidaDoProvedor,
+  buscar: (idExterno: string) => Promise<Mensagem | undefined>,
+): Promise<{ readonly mensagemId: string; readonly conversaId: string } | undefined> {
+  const inReplyTo = evento.emRespostaAIdExterno === undefined ? [] : [evento.emRespostaAIdExterno];
+  const references = evento.referencias ?? [];
+  if (inReplyTo.length === 0 && references.length === 0) return undefined;
+  if (evento.digitadaNoAparelho === true) return undefined;
+  const achada = await mensagemRespondida({ inReplyTo, references }, async (id) => {
+    const mensagem = await buscar(id);
+    return mensagem ? { mensagemId: mensagem.id, conversaId: mensagem.conversaId } : undefined;
+  });
+  return achada;
 }
 
 async function processar(
@@ -263,15 +305,28 @@ async function processar(
 
   const valorDoIdentificador = detentor ? valorDoDetentor : valorParaCriar;
 
+  // EML-04, D-17-14: no e-mail o fio (`In-Reply-To`, depois `References`) decide a Conversa ANTES da regra do par. A busca nunca sai
+  // de (Espaço, Canal): um `In-Reply-To` forjado com o id de uma Mensagem de outro Canal não acha nada (T-17-15).
+  // Só o Canal de e-mail tem fio: a citação do WhatsApp e do Instagram nunca muda a Conversa (regra do par, RN-CXE-09).
+  const doFio = canal.tipo === "email" ? await achaOFio(evento, (id) => mensagens.obterPorIdExterno(workspaceId, canal.id, id)) : undefined;
+  const conversaAchada = doFio ? await conversas.obter(workspaceId, doFio.conversaId) : undefined;
+  const destinoDoFioAchado = conversaAchada ? destinoDoFio(conversaAchada) : undefined;
+  const veioDoFio = destinoDoFioAchado !== undefined && destinoDoFioAchado.acao !== "seguir_regra_do_par";
+
   // A Conversa (RN-CXE-09): reaproveita a aberta/pendente, reabre a resolvida na janela, ou abre outra.
-  const aberta = await conversas.abertaDoPar(workspaceId, contatoId, canal.id);
-  const ultimaResolvida = aberta ? null : await ultimaResolvidaDoPar(cliente, workspaceId, contatoId, canal.id);
-  const destino = destinoDoEvento(evento, {
-    aberta: aberta ? { id: aberta.id, situacao: aberta.situacao === "pendente" ? "pendente" : "aberta" } : null,
-    ultimaResolvida,
-    janelaDeReaberturaHoras: await janelaDeReaberturaHoras(cliente, workspaceId),
-    agora: Date.now(),
-  });
+  let destino: DestinoDaRecebida;
+  if (destinoDoFioAchado !== undefined && destinoDoFioAchado.acao !== "seguir_regra_do_par") {
+    destino = destinoDoFioAchado;
+  } else {
+    const aberta = await conversas.abertaDoPar(workspaceId, contatoId, canal.id);
+    const ultimaResolvida = aberta ? null : await ultimaResolvidaDoPar(cliente, workspaceId, contatoId, canal.id);
+    destino = destinoDoEvento(evento, {
+      aberta: aberta ? { id: aberta.id, situacao: aberta.situacao === "pendente" ? "pendente" : "aberta" } : null,
+      ultimaResolvida,
+      janelaDeReaberturaHoras: await janelaDeReaberturaHoras(cliente, workspaceId),
+      agora: Date.now(),
+    });
+  }
 
   let conversa: Conversa | undefined;
   let conversaNova = false;
@@ -311,23 +366,30 @@ async function processar(
   // 4.4.2: a citação (`emRespostaAIdExterno`) só liga a uma Mensagem DESTA Conversa e deste Canal (INV-CXE-10: a FK composta
   // recusa outra). A citada que ainda não existe aqui, ou que é de outra Conversa (já resolvida), deixa a Mensagem sem ligação.
   let emRespostaAId: string | null = null;
-  if (evento.emRespostaAIdExterno !== undefined) {
+  if (veioDoFio && doFio && doFio.conversaId === conversa.id) {
+    // O fio decidiu a Conversa: a Mensagem achada é a que este e-mail responde (mesmo Canal e Espaço, mesma Conversa).
+    emRespostaAId = doFio.mensagemId;
+  } else if (evento.emRespostaAIdExterno !== undefined) {
     const citada = await mensagens.obterPorIdExterno(workspaceId, canal.id, evento.emRespostaAIdExterno);
     if (citada && citada.conversaId === conversa.id) emRespostaAId = citada.id;
   }
+
+  // Com a entrada de mídia (16-10) os anexos chegam prontos (`baixado: true` e a chave); sem ela, só a referência do provedor.
+  const anexosDaMensagem: readonly AnexoDaMensagem[] =
+    opcoes.anexos ??
+    evento.anexosGuardados ??
+    (evento.anexos ?? []).map((anexo) => ({ tipoDeMidia: anexo.tipoDeMidia, nome: anexo.nome, referenciaExterna: anexo.referenciaNoProvedor, baixado: false }));
 
   const gravada = await mensagens.inserirRecebida(workspaceId, {
     conversaId: conversa.id,
     canalId: canal.id,
     idExterno: evento.idExterno,
     criadoEm: evento.criadoEm,
-    conteudo: evento.conteudo ?? null,
-    // Com a entrada de mídia (16-10) os anexos chegam prontos (`baixado: true` e a chave); sem ela, só a referência do provedor.
-    anexos:
-      opcoes.anexos ??
-      (evento.anexos ?? []).map((anexo) => ({ tipoDeMidia: anexo.tipoDeMidia, nome: anexo.nome, referenciaExterna: anexo.referenciaNoProvedor, baixado: false })),
+    conteudo: conteudoDaMensagem(evento, anexosDaMensagem),
+    anexos: anexosDaMensagem,
     assunto: evento.assunto ?? null,
-    enderecosAdicionais: [],
+    enderecosAdicionais: evento.enderecosAdicionais ?? [],
+    corpoHtml: evento.corpoHtml ?? null,
     emRespostaAId,
     remetenteExterno: evento.remetente.valor,
     identificadorId,
@@ -341,7 +403,18 @@ async function processar(
   // `commit`). A repetida (acima) não grava nada e por isso não avisa.
   await avisarCrm(cliente, { workspaceId, tipo: "mensagem.nova", conversaId: conversa.id, mensagemId: gravada.id });
 
-  return sucesso({ mensagem: gravada, conversa, contatoId, contatoNovo, conversaNova, conversaReaberta, repetida: false });
+  // D-17-15: o `contatoId` devolvido é o da Conversa (a Tarefa conversacional continua presa a ela). Quando outra pessoa responde
+  // no fio, o remetente verdadeiro já ficou na Mensagem (`remetente_externo`, Identificador) e virou Contato à parte, mas a
+  // Conversa segue do Contato que a começou; a resposta da Caixa sai para o Contato da Conversa (`identificadorDeResposta`).
+  return sucesso({
+    mensagem: gravada,
+    conversa,
+    contatoId: veioDoFio ? conversa.contatoId : contatoId,
+    contatoNovo,
+    conversaNova,
+    conversaReaberta,
+    repetida: false,
+  });
 }
 
 export function criarServicoDeRecebimento(deps: { readonly pool: () => Pool }): ServicoDeRecebimento {

@@ -16,7 +16,8 @@
  * `gravarEnvio` e `marcarFalha`: o desfecho da entrega pelo provedor. 16-06 acrescenta
  * `voltarParaPendente` ("Tentar de novo") e `atualizarStatusDeEntrega` (o status que o provedor informa): as únicas
  * mudanças de status que o repositório faz. 16-10 acrescenta `completarAnexos` (a mídia recebida que baixou numa passada
- * seguinte): a única mudança de anexo, e só na `recebida`.
+ * seguinte): a única mudança de anexo, e só na `recebida`. 17-06 acrescenta `corpo_html` (o HTML do e-mail recebido, 017) à leitura e à
+ * gravação da `recebida`.
  */
 
 import type { Pool, PoolClient } from "pg";
@@ -31,6 +32,7 @@ import {
   proximoStatusDeEntrega,
   type AnexoDaMensagem,
   type AtorDaMensagem,
+  type CorpoHtmlDaMensagem,
   type DirecaoDaMensagem,
   type EnderecoAdicional,
   type MarcacaoDeExclusao,
@@ -74,6 +76,8 @@ export interface LinhaDeMensagemRecebida {
   readonly anexos: readonly AnexoDaMensagem[];
   readonly assunto: string | null;
   readonly enderecosAdicionais: readonly EnderecoAdicional[];
+  /** E-mail (D-17-13): o HTML do corpo já guardado no bucket; `null`/ausente nos outros Canais. */
+  readonly corpoHtml?: CorpoHtmlDaMensagem | null;
   /** A Mensagem da MESMA Conversa que esta cita (INV-CXE-10); quem chama já conferiu que ela existe nessa Conversa. */
   readonly emRespostaAId?: string | null;
   readonly remetenteExterno: string | null;
@@ -174,7 +178,7 @@ export interface RepositorioDeMensagens {
 /** Todas as colunas lidas e devolvidas, menos o Espaço e o payload cru do provedor. `seq` vai como texto (bigint). */
 export const COLUNAS_DE_MENSAGEM = `id, conversa_id, canal_id, seq::text as seq, direcao, ator_tipo, ator_id,
   delegante_tipo, delegante_id, remetente_participante_id, identificador_id, remetente_externo, conteudo, anexos,
-  assunto, enderecos_adicionais, em_resposta_a_id, modelo_usado, id_externo, status_entrega, status_entrega_em,
+  assunto, enderecos_adicionais, corpo_html, em_resposta_a_id, modelo_usado, id_externo, status_entrega, status_entrega_em,
   motivo_falha, leituras_internas, reacoes, marcacao_exclusao, edicoes_externas, anonimizada, criado_em, registrado_em`;
 
 export interface LinhaDoBancoDeMensagem {
@@ -195,6 +199,8 @@ export interface LinhaDoBancoDeMensagem {
   readonly anexos: readonly (Omit<AnexoDaMensagem, "baixado"> & { readonly baixado?: boolean })[];
   readonly assunto: string | null;
   readonly enderecos_adicionais: readonly EnderecoAdicional[];
+  /** 017: `{ objectKey, tamanhoBytes }` ou nulo. */
+  readonly corpo_html?: CorpoHtmlDaMensagem | null;
   readonly em_resposta_a_id: string | null;
   readonly modelo_usado: { readonly idNoProvedor: string; readonly nome: string; readonly idioma?: string; readonly variaveis?: readonly string[] } | null;
   readonly id_externo: string | null;
@@ -230,6 +236,7 @@ export function linhaParaMensagem(linha: LinhaDoBancoDeMensagem): Mensagem {
     anexos: linha.anexos.map((anexo) => ({ ...anexo, baixado: anexo.baixado ?? false })),
     assunto: linha.assunto,
     enderecosAdicionais: linha.enderecos_adicionais,
+    corpoHtml: linha.corpo_html ?? null,
     emRespostaAId: linha.em_resposta_a_id,
     modeloUsado: linha.modelo_usado,
     idExterno: linha.id_externo,
@@ -342,10 +349,10 @@ export function criarRepositorioDeMensagensPg(cliente: Pool | PoolClient): Repos
         `insert into plataforma.mensagens
            (workspace_id, conversa_id, canal_id, direcao, ator_tipo, ator_id, id_externo, criado_em,
             conteudo, anexos, assunto, enderecos_adicionais, remetente_externo, identificador_id, carga_bruta,
-            status_entrega, status_entrega_em, em_resposta_a_id)
+            status_entrega, status_entrega_em, em_resposta_a_id, corpo_html)
          values ($1, $2, $3, $13::text, 'integration', $3, $4, $5::timestamptz,
                  $6, $7::jsonb, $8, $9::jsonb, $10, $11, $12::jsonb,
-                 $14::text, case when $14::text is null then null else $5::timestamptz end, $15::text)
+                 $14::text, case when $14::text is null then null else $5::timestamptz end, $15::text, $16::jsonb)
          on conflict (workspace_id, canal_id, id_externo) where id_externo is not null do nothing
          returning ${COLUNAS_DE_MENSAGEM}`,
         [
@@ -364,6 +371,7 @@ export function criarRepositorioDeMensagensPg(cliente: Pool | PoolClient): Repos
           doAparelho ? "enviada" : "recebida",
           doAparelho ? "enviada" : null,
           linha.emRespostaAId ?? null,
+          linha.corpoHtml == null ? null : JSON.stringify(linha.corpoHtml),
         ],
       );
       return rows[0] ? linhaParaMensagem(rows[0]) : undefined;

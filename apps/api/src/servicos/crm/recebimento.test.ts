@@ -11,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { RecebidaDoProvedor } from "@n1/dominio/crm/recebimento";
 import { encerrar, pool } from "../../persistencia/conexao";
 import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
+import { criarRepositorioDeMensagensPg } from "../../repositorios/crm/mensagens";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearCanal, semearMembro } from "../../testes/banco-crm";
 import { criarServicoDeRecebimento } from "./recebimento";
 import type { ResultadoCrm } from "./resultado";
@@ -752,5 +753,151 @@ describeComBanco("ServicoDeRecebimento — Postgres local", () => {
     } finally {
       rival.release();
     }
+  });
+  // ---------------------------------------------------------------------------------------------------------------------
+  // 17-06 (EML-04, D-17-12, D-17-14, D-17-15): o e-mail acha a Conversa pelo fio, não pelo assunto.
+  // ---------------------------------------------------------------------------------------------------------------------
+  describe("e-mail: o fio decide a Conversa", () => {
+    const CLIENTE = "cliente@empresa.com";
+
+    /** Um Espaço com um Canal de e-mail conectado (Fila e Proprietário padrão como o do WhatsApp). */
+    async function espacoDeEmail(rotulo: string) {
+      const ws = novoEspacoDeTeste(rotulo);
+      espacos.push(ws);
+      await semearMembro(ws, { id: "mem_dona", base: "membro", state: "ativo" });
+      const canalId = await semearCanal(ws, {
+        nome: "Atendimento",
+        tipo: "email",
+        provedor: "email-imap-smtp",
+        identificadorExterno: "atendimento@nossa.com",
+        conexao: "conectada",
+        configuradoPor: "mem_dona",
+      });
+      await pool().query(
+        "update plataforma.canais set fila_padrao_id = 'fila_vendas', proprietario_padrao_id = 'mem_dona' where workspace_id = $1 and id = $2",
+        [ws, canalId],
+      );
+      return { ws, canalId };
+    }
+
+    function email(extras: Partial<RecebidaDoProvedor> = {}): RecebidaDoProvedor {
+      return {
+        idExterno: "a@x",
+        criadoEm: new Date().toISOString(),
+        remetente: { tipo: "email", valor: CLIENTE, nomeExibido: "Cliente" },
+        conteudo: "Preciso de um orçamento",
+        assunto: "Orçamento",
+        cargaBruta: { raw: "..." },
+        ...extras,
+      };
+    }
+
+    /** Grava a Mensagem enviada pelo CRM (Message-ID gerado por nós) na Conversa, como o envio da 17-09 deixa. */
+    async function gravarEnviada(ws: string, canalId: string, conversaId: string, idExterno: string): Promise<string> {
+      const { rows } = await pool().query<{ id: string }>(
+        `insert into plataforma.mensagens
+           (workspace_id, conversa_id, canal_id, direcao, ator_tipo, ator_id, conteudo, status_entrega, status_entrega_em, id_externo)
+         values ($1, $2, $3, 'enviada', 'member', 'mem_dona', 'Segue o orçamento', 'enviada', now(), $4)
+         returning id`,
+        [ws, conversaId, canalId, idExterno],
+      );
+      return rows[0]!.id;
+    }
+
+    it("a resposta ao e-mail que o CRM enviou entra na Conversa dele, ligada a ele por em_resposta_a_id", async () => {
+      const c = await espacoDeEmail("fio-in-reply-to");
+      const a = valor(await servico.receberMensagem(c.ws, c.canalId, email()));
+      const b = await gravarEnviada(c.ws, c.canalId, a.conversa.id, "n1.b@nossa.com");
+
+      const r = valor(await servico.receberMensagem(c.ws, c.canalId, email({ idExterno: "c@x", conteudo: "Fechado", emRespostaAIdExterno: "n1.b@nossa.com" })));
+
+      expect(r).toMatchObject({ conversaNova: false, conversaReaberta: false, contatoNovo: false, repetida: false });
+      expect(r.conversa.id).toBe(a.conversa.id);
+      expect(r.mensagem.emRespostaAId).toBe(b);
+      expect(await contar(c.ws, "conversas")).toBe(1);
+    });
+
+    it("a Conversa resolvida fora da janela do par reabre pelo fio (References), apontando para a Mensagem achada", async () => {
+      const c = await espacoDeEmail("fio-references");
+      const a = valor(await servico.receberMensagem(c.ws, c.canalId, email()));
+      await prepararConversa(c.ws, a.conversa.id, { situacao: "resolvida", resolvidaHaHoras: 500 });
+
+      const r = valor(
+        await servico.receberMensagem(c.ws, c.canalId, email({ idExterno: "d@x", conteudo: "Mais uma dúvida", emRespostaAIdExterno: "desconhecido@x", referencias: ["a@x"] })),
+      );
+
+      expect(r).toMatchObject({ conversaNova: false, conversaReaberta: true });
+      expect(r.conversa.id).toBe(a.conversa.id);
+      expect(r.mensagem.emRespostaAId).toBe(a.mensagem.id);
+      expect(await lerConversa(c.ws, a.conversa.id)).toMatchObject({ situacao: "aberta", reaberturas: 1 });
+      expect(await contar(c.ws, "conversas")).toBe(1);
+    });
+
+    it("a Conversa pendente volta a aberta pelo fio, sem Adiamento e sem contar reabertura", async () => {
+      const c = await espacoDeEmail("fio-pendente");
+      const a = valor(await servico.receberMensagem(c.ws, c.canalId, email()));
+      await prepararConversa(c.ws, a.conversa.id, { situacao: "pendente", adiada: true });
+
+      const r = valor(await servico.receberMensagem(c.ws, c.canalId, email({ idExterno: "e@x", emRespostaAIdExterno: "a@x" })));
+
+      expect(r).toMatchObject({ conversaNova: false, conversaReaberta: false });
+      expect(r.conversa.id).toBe(a.conversa.id);
+      expect(await lerConversa(c.ws, a.conversa.id)).toMatchObject({ situacao: "aberta", adiada_ate: null, reaberturas: 0 });
+    });
+
+    it("grava as cópias (enderecos_adicionais) e o corpo HTML da recebida, e obter devolve corpoHtml", async () => {
+      const c = await espacoDeEmail("html-e-copias");
+      const r = valor(
+        await servico.receberMensagem(
+          c.ws,
+          c.canalId,
+          email({
+            enderecosAdicionais: [
+              { tipo: "para", endereco: "atendimento@nossa.com" },
+              { tipo: "copia", endereco: "chefe@empresa.com", nomeExibido: "Chefe" },
+            ],
+            corpoHtml: { objectKey: `workspace/${c.ws}/entrada/abc/corpo.html`, tamanhoBytes: 1234 },
+          }),
+        ),
+      );
+
+      const linha = (
+        await pool().query<{ enderecos_adicionais: unknown; corpo_html: unknown }>(
+          "select enderecos_adicionais, corpo_html from plataforma.mensagens where workspace_id = $1 and id = $2",
+          [c.ws, r.mensagem.id],
+        )
+      ).rows[0]!;
+      expect(linha.enderecos_adicionais).toEqual([
+        { tipo: "para", endereco: "atendimento@nossa.com" },
+        { tipo: "copia", endereco: "chefe@empresa.com", nomeExibido: "Chefe" },
+      ]);
+      expect(linha.corpo_html).toEqual({ objectKey: `workspace/${c.ws}/entrada/abc/corpo.html`, tamanhoBytes: 1234 });
+      expect(r.mensagem.corpoHtml).toEqual({ objectKey: `workspace/${c.ws}/entrada/abc/corpo.html`, tamanhoBytes: 1234 });
+      expect(r.mensagem.enderecosAdicionais).toHaveLength(2);
+
+      const lida = await criarRepositorioDeMensagensPg(pool()).obter(c.ws, r.mensagem.id);
+      expect(lida?.corpoHtml).toEqual({ objectKey: `workspace/${c.ws}/entrada/abc/corpo.html`, tamanhoBytes: 1234 });
+    });
+
+    it("sem texto e sem anexo, aceita a recebida que tem assunto ou HTML; sem nenhum dos quatro, recusa com 400", async () => {
+      const c = await espacoDeEmail("so-assunto");
+      const soAssunto = valor(await servico.receberMensagem(c.ws, c.canalId, email({ idExterno: "s1@x", conteudo: "", assunto: "Só o assunto" })));
+      expect(soAssunto.mensagem.assunto).toBe("Só o assunto");
+      // `mensagens_conteudo_ck` exige texto ou anexo: o assunto ocupa o lugar do texto.
+      expect(soAssunto.mensagem.conteudo).toBe("Só o assunto");
+
+      const soHtml = valor(
+        await servico.receberMensagem(
+          c.ws,
+          c.canalId,
+          email({ idExterno: "s2@x", conteudo: undefined as unknown as string, assunto: undefined as unknown as string, corpoHtml: { objectKey: `workspace/${c.ws}/entrada/h/corpo.html`, tamanhoBytes: 10 } }),
+        ),
+      );
+      expect(soHtml.mensagem.conteudo).toBe("(sem texto)");
+      expect(soHtml.mensagem.corpoHtml).not.toBeNull();
+
+      const nada = recusado(await servico.receberMensagem(c.ws, c.canalId, email({ idExterno: "s3@x", conteudo: "  ", assunto: "   " })));
+      expect(nada).toMatchObject({ status: 400, codigo: "VALOR_INVALIDO" });
+    });
   });
 });
