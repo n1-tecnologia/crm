@@ -23,6 +23,7 @@ import { criarServidorFalso, type ServidorFalso } from "../../../testes/servidor
 import type { CanalParaProvedor } from "../../provedor";
 import type { ConfiguracaoDoOauth } from "./configuracao";
 import { TIPO_DA_CREDENCIAL, acessoDoEmailDoAmbiente, criarAcessoDoEmail, guardarCredencialDoEmail, lerCredencialDoEmail, type CredencialDoEmail } from "./credencial";
+import { criarClienteGoogle, FRASE_GOOGLE_RENOVACAO_PERMANENTE } from "./oauth/google";
 import { criarClienteMicrosoft, FRASE_MICROSOFT_RENOVACAO_PERMANENTE } from "./oauth/microsoft";
 import { registrarQuedaDoEmail } from "./queda";
 import { renovadoresDoAmbiente } from "./token";
@@ -33,6 +34,7 @@ const CLIENT_ID = "id-do-app-de-teste";
 const CLIENT_SECRET = "segredo-do-app-de-teste-17-12";
 const REDIRECT_URI = "https://crm.exemplo.test/retorno";
 const CONFIG: ConfiguracaoDoOauth = { redirectUri: REDIRECT_URI, microsoft: { clientId: CLIENT_ID, clientSecret: CLIENT_SECRET } };
+const CONFIG_GOOGLE: ConfiguracaoDoOauth = { redirectUri: REDIRECT_URI, google: { clientId: "id-google-de-teste", clientSecret: "segredo-google-de-teste-17-13" } };
 
 const REFRESH_ANTIGO = "refresh-antigo-17-12";
 const REFRESH_NOVO = "refresh-novo-17-12";
@@ -56,8 +58,9 @@ describe("renovadoresDoAmbiente", () => {
     expect(Object.keys(renovadoresDoAmbiente(CONFIG))).toEqual(["microsoft"]);
     expect(renovadoresDoAmbiente(undefined)).toEqual({});
     expect(renovadoresDoAmbiente({ redirectUri: REDIRECT_URI })).toEqual({});
-    // O Google ainda não tem cliente (17-13): mesmo configurado, não há renovador.
-    expect(renovadoresDoAmbiente({ redirectUri: REDIRECT_URI, google: { clientId: "g", clientSecret: "g" } })).toEqual({});
+    // O Google tem renovador quando tem o par; só ele configurado não liga a Microsoft (17-13).
+    expect(Object.keys(renovadoresDoAmbiente({ redirectUri: REDIRECT_URI, google: { clientId: "g", clientSecret: "g" } }))).toEqual(["google"]);
+    expect(Object.keys(renovadoresDoAmbiente({ ...CONFIG, google: { clientId: "g", clientSecret: "g" } })).sort()).toEqual(["google", "microsoft"]);
   });
 
   it("usa as fábricas dadas (testes trocam o cliente de produção por um que fala com o servidor falso)", async () => {
@@ -95,8 +98,10 @@ describeComBanco("a renovação do token da Microsoft — Postgres local e servi
     await guardarCredencialDoEmail(pool(), CHAVES, { workspaceId: ws, canalId }, credencial);
     const login = await criarServidorFalso();
     logins.push(login);
-    const renovadores = renovadoresDoAmbiente(CONFIG, {
+    const renovadores = renovadoresDoAmbiente({ ...CONFIG, ...CONFIG_GOOGLE }, {
       microsoft: (config) => criarClienteMicrosoft(config, { autorizacao: `${login.url}/authorize`, token: `${login.url}/token` }, { agora: () => AGORA, ...opcoes }),
+      google: (config) =>
+        criarClienteGoogle(config, { autorizacao: `${login.url}/authorize`, token: `${login.url}/token`, revogacao: `${login.url}/revoke` }, { agora: () => AGORA, ...opcoes }),
     });
     const acesso = criarAcessoDoEmail({ pool, chaves: () => CHAVES, agora: () => AGORA, renovadores });
     const doCofre = async (): Promise<CanalParaProvedor> => ({
@@ -183,6 +188,24 @@ describeComBanco("a renovação do token da Microsoft — Postgres local e servi
       expect(await registrarQuedaDoEmail(() => pool(), { workspaceId: c.ws, canalId: c.canalId }, r.motivo)).toEqual({ mudou: true });
     }
     const linha = (await pool().query<{ conexao: string }>("select conexao from plataforma.canais where workspace_id = $1 and id = $2", [c.ws, c.canalId])).rows[0]!;
+    expect(linha.conexao).toBe("desconectada");
+  });
+
+  it("Google: renova sem girar o token (o cofre fica com o mesmo refreshToken) e a recusa invalid_grant vira queda com a frase do Google", async () => {
+    const c = await preparar("google-renova", oauth({ servico: "google", accessToken: ACCESS_ANTIGO, expiraEm: emMin(1) }));
+    c.login.enfileirar({ kind: "ok", status: 200, corpo: { access_token: ACCESS_NOVO, expires_in: 3599, token_type: "Bearer" } });
+    expect(await c.acesso.acessoParaUsar(await c.doCofre())).toMatchObject({ ok: true, servico: "google", auth: { tipo: "oauth", accessToken: ACCESS_NOVO } });
+    expect(camposDoPedido(c.login.recebidas[0]!)).toMatchObject({ grant_type: "refresh_token", refresh_token: REFRESH_ANTIGO, client_id: "id-google-de-teste" });
+    expect(lerCredencialDoEmail((await c.doCofre()).credencial)).toMatchObject({ servico: "google", refreshToken: REFRESH_ANTIGO, accessToken: ACCESS_NOVO });
+
+    // Os 7 dias do modo de teste, a senha trocada e o acesso retirado são o mesmo `invalid_grant`.
+    const vencida = await preparar("google-vence", oauth({ servico: "google", accessToken: ACCESS_ANTIGO, expiraEm: emMin(1) }));
+    vencida.login.enfileirar({ kind: "ok", status: 400, corpo: { error: "invalid_grant", error_description: `Token has been expired or revoked. ${REFRESH_ANTIGO}` } });
+    const r = await vencida.acesso.acessoParaUsar(await vencida.doCofre());
+    expect(r).toEqual({ ok: false, permanente: true, codigo: "AUTORIZACAO_RECUSADA", motivo: FRASE_GOOGLE_RENOVACAO_PERMANENTE });
+    expect(JSON.stringify(r)).not.toContain(REFRESH_ANTIGO);
+    if (!r.ok) expect(await registrarQuedaDoEmail(() => pool(), { workspaceId: vencida.ws, canalId: vencida.canalId }, r.motivo)).toEqual({ mudou: true });
+    const linha = (await pool().query<{ conexao: string }>("select conexao from plataforma.canais where workspace_id = $1 and id = $2", [vencida.ws, vencida.canalId])).rows[0]!;
     expect(linha.conexao).toBe("desconectada");
   });
 
