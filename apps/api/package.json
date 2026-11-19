@@ -51,11 +51,18 @@
     "@supabase/supabase-js": "^2.116.0",
     "@types/pg": "^8.23.1",
     "fastify": "^5.12.5",
+    "imapflow": "2.12.1",
+    "mailparser": "3.14.5",
+    "nodemailer": "10.6.0",
     "pg": "^8.23.0",
+    "sanitize-html": "2.18.2",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "^24.13.4",
+    "@types/sanitize-html": "2.16.2",
+    "imapkit": "5.3.2",
+    "smtp-server": "3.21.6",
     "typescript": "^5",
     "vite-node": "^6.0.0",
     "vitest": "^5.0.0"
