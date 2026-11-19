@@ -60,6 +60,10 @@ export interface LinhaNovaDeMensagem {
    * preenchidas: a entrega os lê para montar o envio. Sem modelo, a coluna fica nula.
    */
   readonly modeloUsado?: { readonly idNoProvedor: string; readonly nome: string; readonly idioma: string; readonly variaveis: readonly string[] };
+  /** 17-07 (D-17-19): o `Subject` do e-mail; `null`/ausente nos outros Canais. */
+  readonly assunto?: string | null;
+  /** 17-07: para, cópia e cópia oculta além do Contato, já normalizados; ausente grava `[]`. */
+  readonly enderecosAdicionais?: readonly EnderecoAdicional[];
 }
 
 /**
@@ -102,6 +106,8 @@ export interface RepositorioDeMensagens {
   listar(workspaceId: string, filtro: FiltroDeMensagens): Promise<Pagina<Mensagem>>;
   /** O `criadoEm` (do provedor) da `recebida` mais recente da Conversa, ou `null` (RN-CXE-19). */
   ultimaRecebidaEm(workspaceId: string, conversaId: string): Promise<string | null>;
+  /** O `assunto` da `recebida` mais recente da Conversa que tem um, ou `null` (D-17-16: a resposta de e-mail sem assunto vira "Re: ..."). */
+  assuntoDaUltimaRecebida(workspaceId: string, conversaId: string): Promise<string | null>;
   /**
    * O `identificador_id` da `recebida` mais recente da Conversa que tem Identificador (por `criado_em` e `seq`): por onde o
    * Contato escreveu por último (WR-04), ou `null` sem nenhuma. Só escolhe o destino da resposta; quem o usa o confere na lista
@@ -271,9 +277,9 @@ export function criarRepositorioDeMensagensPg(cliente: Pool | PoolClient): Repos
       const { rows } = await cliente.query<LinhaDoBancoDeMensagem>(
         `insert into plataforma.mensagens
            (workspace_id, conversa_id, canal_id, direcao, ator_tipo, ator_id, conteudo,
-            status_entrega, status_entrega_em, em_resposta_a_id, anexos, modelo_usado)
+            status_entrega, status_entrega_em, em_resposta_a_id, anexos, modelo_usado, assunto, enderecos_adicionais)
          values ($1, $2, $3, $4, $5, $6, $7, $8::text,
-                 case when $8::text is null then null else now() end, $9, $10::jsonb, $11::jsonb)
+                 case when $8::text is null then null else now() end, $9, $10::jsonb, $11::jsonb, $12, $13::jsonb)
          returning ${COLUNAS_DE_MENSAGEM}`,
         [
           workspaceId,
@@ -287,6 +293,8 @@ export function criarRepositorioDeMensagensPg(cliente: Pool | PoolClient): Repos
           linha.emRespostaAId ?? null,
           JSON.stringify(linha.anexos ?? []),
           linha.modeloUsado === undefined ? null : JSON.stringify(linha.modeloUsado),
+          linha.assunto ?? null,
+          JSON.stringify(linha.enderecosAdicionais ?? []),
         ],
       );
       return linhaParaMensagem(rows[0]!);
@@ -317,6 +325,18 @@ export function criarRepositorioDeMensagensPg(cliente: Pool | PoolClient): Repos
       );
       const ultima = rows[0]?.ultima;
       return ultima ? ultima.toISOString() : null;
+    },
+
+    async assuntoDaUltimaRecebida(workspaceId, conversaId) {
+      const { rows } = await cliente.query<{ assunto: string }>(
+        `select assunto
+           from plataforma.mensagens
+          where workspace_id = $1 and conversa_id = $2 and direcao = 'recebida' and assunto is not null and btrim(assunto) <> ''
+          order by criado_em desc, plataforma.mensagens.seq desc
+          limit 1`,
+        [workspaceId, conversaId],
+      );
+      return rows[0]?.assunto ?? null;
     },
 
     async identificadorDaUltimaRecebida(workspaceId, conversaId) {

@@ -29,7 +29,7 @@ import type { ZodTypeProvider } from "@fastify/type-provider-zod";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { LIMITES_CRM } from "@n1/dominio/crm/comum";
-import { DIRECOES_DE_ENVIO, MAX_ANEXOS_POR_MENSAGEM } from "@n1/dominio/crm/mensagens";
+import { DIRECOES_DE_ENVIO, LIMITE_DO_ASSUNTO, MAX_ANEXOS_POR_EMAIL, MAX_ENDERECOS_ADICIONAIS } from "@n1/dominio/crm/mensagens";
 import type { ServicoDeMensagens } from "../../servicos/crm/mensagens";
 import { responder, responderLista, TEXTO_LONGO, VARIAVEIS_DO_MODELO } from "./comum";
 
@@ -46,6 +46,15 @@ export const QUERY_LISTA_DE_MENSAGENS = z
 /** O arquivo que a pessoa subiu pelo ticket: o servidor escolhe a chave, o cliente só devolve o que recebeu (T-16-33). */
 const ANEXO_ENVIADO = z.object({ submissionId: ID, objectId: ID }).strict();
 
+/** D-17-19: um endereço além do Contato (para, cópia ou cópia oculta). O domínio normaliza e recusa controle de linha (T-17-25). */
+const ENDERECO_ADICIONAL = z
+  .object({
+    tipo: z.enum(["para", "copia", "copiaOculta"]),
+    endereco: z.string().min(1).max(320),
+    nomeExibido: z.string().max(200).optional(),
+  })
+  .strict();
+
 export const NOVA_MENSAGEM = z
   .object({
     conversaId: ID,
@@ -53,10 +62,14 @@ export const NOVA_MENSAGEM = z
     /** Pode ser vazio quando há anexo (INV-CXE-07): a rota recusa vazio SEM anexo, no refinamento abaixo. */
     conteudo: TEXTO_LONGO,
     emRespostaAId: ID.optional(),
-    anexos: z.array(ANEXO_ENVIADO).max(MAX_ANEXOS_POR_MENSAGEM).optional(),
+    // O limite por Canal (um arquivo, ou 10 no e-mail) é do domínio, que conhece o Canal da Conversa; aqui só o teto de todos.
+    anexos: z.array(ANEXO_ENVIADO).max(MAX_ANEXOS_POR_EMAIL).optional(),
     /** 7.3: a Mensagem de modelo (WhatsApp oficial). O `conteudo` pode ficar vazio: o servidor grava o texto do modelo preenchido. */
     modeloId: ID.optional(),
     variaveis: VARIAVEIS_DO_MODELO.optional(),
+    /** 17-07 (D-17-19): só o Canal de e-mail aceita; num Canal sem assunto nem cópias o serviço responde 400. */
+    assunto: z.string().max(LIMITE_DO_ASSUNTO).optional(),
+    enderecosAdicionais: z.array(ENDERECO_ADICIONAL).max(MAX_ENDERECOS_ADICIONAIS).optional(),
   })
   .strict()
   .refine((corpo) => corpo.conteudo !== "" || (corpo.anexos?.length ?? 0) > 0 || corpo.modeloId !== undefined, {

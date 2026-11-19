@@ -46,11 +46,13 @@ import type { Pool, PoolClient } from "pg";
 import type { Pagina } from "@n1/dominio/crm/comum";
 import type { Conversa } from "@n1/dominio/crm/conversas";
 import { recusaPorFaltaDeConsentimento } from "@n1/dominio/crm/consentimentos";
+import { assuntoDaResposta } from "@n1/dominio/crm/fio-de-email";
 import {
   statusInicialDeEnvio,
   validarAnexosDoEnvio,
   validarEnvio,
   validarNovaMensagem,
+  validarTamanhoDoEmail,
   type AnexoConfirmado,
   type Mensagem,
   type NovaMensagem,
@@ -188,8 +190,19 @@ export function criarServicoDeMensagens(deps: {
       const negado = await exigir(deps.acesso, membro, "enviar", "mensagem");
       if (negado) return { ok: false, ...negado };
 
-      const validacao = validarNovaMensagem(entrada);
+      // 17-07 (D-17-19): a forma depende do Canal da Conversa (assunto, cópias e quantos arquivos), lido antes de abrir a
+      // transação. Conversa ou Canal que não existem validam como antes e a transação responde 404.
+      const conversaDaEntrada = await criarRepositorioDeConversasPg(deps.pool()).obter(membro.workspaceId, entrada.conversaId);
+      const canalDaEntrada = conversaDaEntrada
+        ? await criarRepositorioDeCanaisPg(deps.pool()).obter(membro.workspaceId, conversaDaEntrada.canalId)
+        : undefined;
+      const validacao = validarNovaMensagem(
+        entrada,
+        canalDaEntrada ? { capacidades: capacidadesDoCanal({ channelType: canalDaEntrada.tipo, provider: canalDaEntrada.provedor }) } : undefined,
+      );
       if (!validacao.ok) return valorInvalido(validacao);
+      // Os endereços adicionais voltam normalizados (`normalizarEmail`); é esta forma que se grava.
+      const enderecosAdicionais = validacao.value.enderecosAdicionais ?? [];
 
       return comTransacao(
         deps.pool,
@@ -273,9 +286,22 @@ export function criarServicoDeMensagens(deps: {
             sessoesDosAnexos.push(referencia.submissionId);
           }
           // 3.9.1: o Canal só envia as categorias que declara. A nota interna não sai pelo Canal, então não passa por aqui.
+          const capacidadesDoEnvio = capacidadesDoCanal({ channelType: canal.tipo, provider: canal.provedor });
           if (entrada.direcao === "enviada" && confirmados.length > 0) {
-            const permitido = validarAnexosDoEnvio(confirmados, capacidadesDoCanal({ channelType: canal.tipo, provider: canal.provedor }).sendableMediaTypes);
+            const permitido = validarAnexosDoEnvio(confirmados, capacidadesDoEnvio.sendableMediaTypes);
             if (!permitido.ok) return tipoNaoEnviadoPeloCanal();
+            // D-17-18: o e-mail tem teto no TOTAL; a soma vem dos tamanhos CONFIRMADOS no bucket, nunca dos que o cliente diz.
+            if (capacidadesDoEnvio.hasSubjectAndCopies) {
+              const total = validarTamanhoDoEmail(confirmados.map((c) => c.tamanhoBytes));
+              if (!total.ok) return recusa<never>(422, total.error, { codigo: "EMAIL_GRANDE_DEMAIS", campo: "anexos" });
+            }
+          }
+
+          // D-17-16 / 9.4.1: a resposta de e-mail sem assunto sai como "Re: " + o assunto da última recebida; sem recebida, sem assunto.
+          let assunto: string | null = null;
+          if (entrada.direcao === "enviada" && capacidadesDoEnvio.hasSubjectAndCopies) {
+            const digitado = entrada.assunto?.trim() ?? "";
+            assunto = digitado !== "" ? digitado : assuntoDaResposta(await mensagens.assuntoDaUltimaRecebida(membro.workspaceId, conversa.id)) || null;
           }
 
           const mensagem = await mensagens.inserir(membro.workspaceId, {
@@ -301,6 +327,8 @@ export function criarServicoDeMensagens(deps: {
                 }
               : {}),
             ...(entrada.emRespostaAId !== undefined ? { emRespostaAId: entrada.emRespostaAId } : {}),
+            ...(assunto !== null ? { assunto } : {}),
+            ...(entrada.direcao === "enviada" && enderecosAdicionais.length > 0 ? { enderecosAdicionais } : {}),
             ...(confirmados.length > 0
               ? {
                   anexos: confirmados.map((c) => ({

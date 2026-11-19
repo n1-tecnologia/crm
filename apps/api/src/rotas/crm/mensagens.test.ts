@@ -135,6 +135,46 @@ describe("rotas de Mensagens — serviço falso, sem banco", () => {
     });
   });
 
+  describe("assunto e cópias do e-mail (17-07, D-17-19)", () => {
+    const corpoDeEmail = {
+      conversaId: "v1",
+      direcao: "enviada",
+      conteudo: "Segue a proposta.",
+      assunto: "Proposta",
+      enderecosAdicionais: [{ tipo: "copia", endereco: "Socio@Empresa.com", nomeExibido: "Sócio" }],
+    };
+
+    it("assunto e enderecosAdicionais passam ao serviço, sem tocar no corpo", async () => {
+      const { servico, chamadas } = novoFalso();
+      const resposta = await appCom(servico).inject({ method: "POST", url: "/mensagens", headers: AUTORIZACAO, payload: corpoDeEmail });
+      expect(resposta.statusCode).toBe(201);
+      expect(chamadas[0]?.[2]).toEqual(corpoDeEmail);
+    });
+
+    it.each([
+      ["campo desconhecido no corpo (strict)", { ...corpoDeEmail, cco: "x@y.com" }],
+      ["campo desconhecido no endereço (strict)", { ...corpoDeEmail, enderecosAdicionais: [{ tipo: "copia", endereco: "a@b.com", extra: 1 }] }],
+      ["tipo de endereço fora da lista", { ...corpoDeEmail, enderecosAdicionais: [{ tipo: "bcc", endereco: "a@b.com" }] }],
+      ["endereço vazio", { ...corpoDeEmail, enderecosAdicionais: [{ tipo: "copia", endereco: "" }] }],
+      ["assunto acima de 500 caracteres", { ...corpoDeEmail, assunto: "a".repeat(501) }],
+      ["mais de 100 endereços adicionais", { ...corpoDeEmail, enderecosAdicionais: Array.from({ length: 101 }, () => ({ tipo: "copia", endereco: "a@b.com" })) }],
+      ["11 arquivos", { ...corpoDeEmail, anexos: Array.from({ length: 11 }, (_, i) => ({ submissionId: `s${i}`, objectId: `o${i}` })) }],
+    ])("%s: 400 e o serviço não é chamado", async (_nome, payload) => {
+      const { servico, chamadas } = novoFalso();
+      const resposta = await appCom(servico).inject({ method: "POST", url: "/mensagens", headers: AUTORIZACAO, payload });
+      expect(resposta.statusCode).toBe(400);
+      expect(chamadas).toEqual([]);
+    });
+
+    it("10 arquivos passam do esquema (o limite por Canal é do domínio)", async () => {
+      const { servico, chamadas } = novoFalso();
+      const anexos = Array.from({ length: 10 }, (_, i) => ({ submissionId: `s${i}`, objectId: `o${i}` }));
+      const resposta = await appCom(servico).inject({ method: "POST", url: "/mensagens", headers: AUTORIZACAO, payload: { ...corpoDeEmail, anexos } });
+      expect(resposta.statusCode).toBe(201);
+      expect(chamadas).toHaveLength(1);
+    });
+  });
+
   it("POST /mensagens sem conteúdo (ou só espaços) ou sem conversaId responde 400", async () => {
     const { servico, chamadas } = novoFalso();
     const app = appCom(servico);
@@ -256,12 +296,10 @@ describe("rotas de Mensagens — serviço falso, sem banco", () => {
     expect(chamadas).toHaveLength(1);
   });
 
-  it("(16-09) POST /mensagens com dois anexos, ou com a chave do objeto no anexo, responde 400", async () => {
+  it("(16-09) POST /mensagens com a chave do objeto no anexo responde 400 (o limite de arquivos por Canal é do serviço, 17-07)", async () => {
     const { servico, chamadas } = novoFalso();
     const app = appCom(servico);
     const um = { submissionId: "s1", objectId: "o1" };
-    const dois = await app.inject({ method: "POST", url: "/mensagens", headers: AUTORIZACAO, payload: { ...corpoValido, anexos: [um, { submissionId: "s2", objectId: "o2" }] } });
-    expect(dois.statusCode).toBe(400);
     const comChave = await app.inject({ method: "POST", url: "/mensagens", headers: AUTORIZACAO, payload: { ...corpoValido, anexos: [{ ...um, objectKey: "workspace/x/y" }] } });
     expect(comChave.statusCode).toBe(400);
     expect(chamadas).toEqual([]);
@@ -396,6 +434,72 @@ describeComBanco("rotas de Mensagens — serviço real, Postgres local", () => {
     expect(oficial.statusCode).toBe(409);
     expect(oficial.json()).toMatchObject({ ok: false, codigo: "JANELA_EXPIRADA", campo: "modelo" });
     expect(oficial.body).not.toContain("argaBruta");
+  });
+
+  describe("assunto e cópias (17-07): o servidor real", () => {
+    it("no WhatsApp, o assunto e as cópias dão 400 \"Este Canal não tem assunto nem cópias.\"", async () => {
+      for (const extra of [{ assunto: "Proposta" }, { enderecosAdicionais: [{ tipo: "copia", endereco: "a@b.com" }] }]) {
+        const resposta = await app().inject({
+          method: "POST",
+          url: "/mensagens",
+          headers: AUTORIZACAO,
+          payload: { conversaId: ids.suporte.conversaId, direcao: "enviada", conteudo: "Oi", ...extra },
+        });
+        expect(resposta.statusCode).toBe(400);
+        expect(resposta.json()).toMatchObject({ ok: false, error: "Este Canal não tem assunto nem cópias.", codigo: "VALOR_INVALIDO" });
+      }
+    });
+
+    it("no WhatsApp, dois arquivos continuam 400 (o servidor aplica o limite do Canal)", async () => {
+      const resposta = await app().inject({
+        method: "POST",
+        url: "/mensagens",
+        headers: AUTORIZACAO,
+        payload: {
+          conversaId: ids.suporte.conversaId,
+          direcao: "enviada",
+          conteudo: "Oi",
+          anexos: [
+            { submissionId: "s1", objectId: "o1" },
+            { submissionId: "s2", objectId: "o2" },
+          ],
+        },
+      });
+      expect(resposta.statusCode).toBe(400);
+      expect(resposta.json()).toMatchObject({ error: "Uma Mensagem leva um arquivo por vez." });
+    });
+
+    it("no e-mail, grava o assunto e a cópia normalizada e responde 201", async () => {
+      const contato = await criarRepositorioDeContatosPg(pool()).inserir(ws, { nome: "Cliente", proprietarioId: "mem_maryane", criadoPor: "mem_maryane" });
+      await criarRepositorioDeContatosPg(pool()).inserirIdentificador(ws, contato.id, { tipo: "email", valor: "cliente@empresa.com", principal: true });
+      const canalId = await semearCanal(ws, { nome: "Atendimento", tipo: "email", provedor: "email-imap-smtp", identificadorExterno: "atendimento@nossa.com", conexao: "conectada" });
+      const conversa = await criarRepositorioDeConversasPg(pool()).inserir(ws, {
+        canalId,
+        contatoId: contato.id,
+        titulo: "Cliente — Atendimento",
+        filaId: null,
+        atribuido: { tipo: "membro", id: "mem_maryane" },
+        participantes: [],
+        criadoPor: { tipo: "member", id: "mem_maryane" },
+      });
+      const resposta = await app().inject({
+        method: "POST",
+        url: "/mensagens",
+        headers: AUTORIZACAO,
+        payload: {
+          conversaId: conversa.id,
+          direcao: "enviada",
+          conteudo: "Segue a proposta.",
+          assunto: "Proposta",
+          enderecosAdicionais: [{ tipo: "copia", endereco: "Socio@Empresa.com" }],
+        },
+      });
+      expect(resposta.statusCode).toBe(201);
+      expect(resposta.json()).toMatchObject({
+        ok: true,
+        dados: { assunto: "Proposta", statusEntrega: "pendente", enderecosAdicionais: [{ tipo: "copia", endereco: "socio@empresa.com" }] },
+      });
+    });
   });
 
   it("POST /mensagens com emRespostaAId de outra Conversa responde 409 RESPOSTA_DE_OUTRA_CONVERSA sem expor o constraint", async () => {

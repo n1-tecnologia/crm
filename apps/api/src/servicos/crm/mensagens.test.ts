@@ -17,7 +17,8 @@ import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
 import { criarRepositorioDeConversasPg } from "../../repositorios/crm/conversas";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearCanal, semearMembro } from "../../testes/banco-crm";
 import { criarAcessoAoCrmPg } from "./acesso";
-import { criarServicoDeMensagens } from "./mensagens";
+import { criarArmazenamentoFalso } from "../../testes/armazenamento-falso";
+import { criarServicoDeMensagens, formIdDaConversa } from "./mensagens";
 import { criarServicoDeRecebimento } from "./recebimento";
 import type { ResultadoCrm } from "./resultado";
 
@@ -354,6 +355,155 @@ describeComBanco("ServicoDeMensagens — Postgres local", () => {
       const c = await espacoComMarketing("interna");
       const m = valor(await enviarSuporte(comCategoria("marketing"), c, "interna"));
       expect(m).toMatchObject({ direcao: "interna", statusEntrega: null });
+    });
+  });
+  // ---------------------------------------------------------------------------------------------------------------------
+  // 17-07 (D-17-16, D-17-18, D-17-19): a saída do e-mail grava assunto e cópias e confere os arquivos pelo bucket.
+  // ---------------------------------------------------------------------------------------------------------------------
+  describe("e-mail: assunto, cópias e arquivos (17-07)", () => {
+    const PDF = Buffer.from("%PDF-1.4\n%teste\n");
+    const pdfDe = (megas: number) => Buffer.concat([PDF, Buffer.alloc(megas * 1024 * 1024)]);
+
+    async function espacoDeEmail(rotulo: string) {
+      const ws = novoEspacoDeTeste(rotulo);
+      espacos.push(ws);
+      await semearMembro(ws, { id: "mem_ana", base: "membro", state: "ativo" });
+      const contato = await criarRepositorioDeContatosPg(pool()).inserir(ws, { nome: "Cliente", proprietarioId: "mem_ana", criadoPor: "mem_ana" });
+      await criarRepositorioDeContatosPg(pool()).inserirIdentificador(ws, contato.id, { tipo: "email", valor: "cliente@empresa.com", principal: true });
+      const canalId = await semearCanal(ws, {
+        nome: "Atendimento",
+        tipo: "email",
+        provedor: "email-imap-smtp",
+        identificadorExterno: "atendimento@nossa.com",
+        conexao: "conectada",
+      });
+      const conversa = await criarRepositorioDeConversasPg(pool()).inserir(ws, {
+        canalId,
+        contatoId: contato.id,
+        titulo: "Cliente — Atendimento",
+        filaId: null,
+        atribuido: { tipo: "membro", id: "mem_ana" },
+        participantes: [],
+        criadoPor: { tipo: "member", id: "mem_ana" },
+      });
+      return { ws, membro: sessao(ws, "mem_ana"), canalId, conversaId: conversa.id };
+    }
+
+    /** O navegador: abre a sessão da Conversa, pede o ticket e sobe os bytes no falso. */
+    async function subir(armazenamento: ReturnType<typeof criarArmazenamentoFalso>, c: { ws: string; conversaId: string }, bytes: Buffer, nome = "proposta.pdf") {
+      const sessaoDeEnvio = await armazenamento.abrirSessao({ workspaceId: c.ws, formId: formIdDaConversa(c.conversaId) });
+      const ticket = await armazenamento.emitirTicket({
+        submissionId: sessaoDeEnvio.submissionId,
+        displayName: nome,
+        mediaType: "application/pdf",
+        tipos: ["application/pdf"],
+        prefixoDaChave: `workspace/${c.ws}/conversas/${c.conversaId}`,
+        tetoBytes: armazenamento.tetoDoTipo("application/pdf"),
+        tamanhoBytes: bytes.byteLength,
+      });
+      armazenamento.colocarBytes(ticket.objectId, bytes);
+      return { submissionId: sessaoDeEnvio.submissionId, objectId: ticket.objectId };
+    }
+
+    const gravarRecebida = (ws: string, canalId: string, conversaId: string, assunto: string) =>
+      pool().query(
+        `insert into plataforma.mensagens (workspace_id, conversa_id, canal_id, direcao, ator_tipo, ator_id, conteudo, assunto, id_externo, status_entrega)
+         values ($1, $2, $3, 'recebida', 'integration', $3, 'Preciso de um orçamento', $4, 'a@x', null)`,
+        [ws, conversaId, canalId, assunto],
+      );
+
+    it("grava o assunto e as cópias normalizadas e enfileira o envio no mesmo commit", async () => {
+      const c = await espacoDeEmail("email-assunto");
+      const m = valor(
+        await servico.enviar(c.membro, {
+          conversaId: c.conversaId,
+          direcao: "enviada",
+          conteudo: "Segue a proposta.",
+          assunto: "Proposta",
+          enderecosAdicionais: [{ tipo: "copia", endereco: "Socio@Empresa.com" }],
+        }),
+      );
+      expect(m).toMatchObject({ assunto: "Proposta", statusEntrega: "pendente", enderecosAdicionais: [{ tipo: "copia", endereco: "socio@empresa.com" }] });
+      const linhas = await filaDeSaida(c.ws);
+      expect(linhas).toHaveLength(1);
+      expect(linhas[0]).toMatchObject({ event_type: "mensagem.enviar.v1", aggregate_id: m.id });
+    });
+
+    it("sem assunto e com uma recebida de assunto \"Orçamento\", grava \"Re: Orçamento\"", async () => {
+      const c = await espacoDeEmail("email-re");
+      await gravarRecebida(c.ws, c.canalId, c.conversaId, "Orçamento");
+      const m = valor(await servico.enviar(c.membro, { conversaId: c.conversaId, direcao: "enviada", conteudo: "Segue" }));
+      expect(m.assunto).toBe("Re: Orçamento");
+    });
+
+    it("sem assunto e sem recebida anterior, o assunto fica nulo", async () => {
+      const c = await espacoDeEmail("email-sem-assunto");
+      const m = valor(await servico.enviar(c.membro, { conversaId: c.conversaId, direcao: "enviada", conteudo: "Olá", assunto: "   " }));
+      expect(m.assunto).toBeNull();
+    });
+
+    it("não duplica o Re: quando a última recebida já o traz", async () => {
+      const c = await espacoDeEmail("email-re-re");
+      await gravarRecebida(c.ws, c.canalId, c.conversaId, "RE: Orçamento");
+      const m = valor(await servico.enviar(c.membro, { conversaId: c.conversaId, direcao: "enviada", conteudo: "Segue" }));
+      expect(m.assunto).toBe("RE: Orçamento");
+    });
+
+    it("no WhatsApp, o assunto e as cópias são recusados com 400", async () => {
+      const c = await espaco("assunto-whatsapp");
+      const comAssunto = recusado(await servico.enviar(c.membro, { conversaId: c.suporte.conversaId, direcao: "enviada", conteudo: "Oi", assunto: "Proposta" }));
+      expect(comAssunto).toMatchObject({ status: 400, error: "Este Canal não tem assunto nem cópias." });
+      const comCopia = recusado(
+        await servico.enviar(c.membro, {
+          conversaId: c.suporte.conversaId,
+          direcao: "enviada",
+          conteudo: "Oi",
+          enderecosAdicionais: [{ tipo: "copia", endereco: "a@b.com" }],
+        }),
+      );
+      expect(comCopia.status).toBe(400);
+      expect(await contar(c.ws)).toBe(0);
+    });
+
+    it("injeção de cabeçalho no assunto é recusada antes de gravar", async () => {
+      const c = await espacoDeEmail("email-injecao");
+      const r = recusado(await servico.enviar(c.membro, { conversaId: c.conversaId, direcao: "enviada", conteudo: "Oi", assunto: "Oi\r\nBcc: x@y.com" }));
+      expect(r.status).toBe(400);
+      expect(await contar(c.ws)).toBe(0);
+    });
+
+    it("3 arquivos confirmados (5 MB no total) saem na mesma Mensagem", async () => {
+      const armazenamento = criarArmazenamentoFalso();
+      const comArquivos = criarServicoDeMensagens({ pool, acesso: criarAcessoAoCrmPg(pool), armazenamento });
+      const c = await espacoDeEmail("email-3-anexos");
+      const anexos = [await subir(armazenamento, c, pdfDe(1), "a.pdf"), await subir(armazenamento, c, pdfDe(2), "b.pdf"), await subir(armazenamento, c, pdfDe(2), "c.pdf")];
+      const m = valor(await comArquivos.enviar(c.membro, { conversaId: c.conversaId, direcao: "enviada", conteudo: "Seguem", anexos }));
+      expect(m.anexos).toHaveLength(3);
+      expect(m.anexos.map((a) => a.nome)).toEqual(["a.pdf", "b.pdf", "c.pdf"]);
+    });
+
+    it("2 arquivos que somam 21 MB: 422 com a frase do teto e nada gravado", async () => {
+      const armazenamento = criarArmazenamentoFalso();
+      const comArquivos = criarServicoDeMensagens({ pool, acesso: criarAcessoAoCrmPg(pool), armazenamento });
+      const c = await espacoDeEmail("email-21mb");
+      const anexos = [await subir(armazenamento, c, pdfDe(10), "a.pdf"), await subir(armazenamento, c, pdfDe(11), "b.pdf")];
+      const r = recusado(await comArquivos.enviar(c.membro, { conversaId: c.conversaId, direcao: "enviada", conteudo: "Seguem", anexos }));
+      expect(r).toMatchObject({ status: 422, codigo: "EMAIL_GRANDE_DEMAIS", error: "O e-mail passa de 20 MB: muitos servidores recusam." });
+      expect(await contar(c.ws)).toBe(0);
+      expect(await filaDeSaida(c.ws)).toHaveLength(0);
+    });
+
+    it("11 arquivos são recusados com 400 e os outros Canais seguem com um arquivo só", async () => {
+      const c = await espacoDeEmail("email-11");
+      const onze = Array.from({ length: 11 }, (_, i) => ({ submissionId: `s${i}`, objectId: `o${i}` }));
+      expect(recusado(await servico.enviar(c.membro, { conversaId: c.conversaId, direcao: "enviada", conteudo: "x", anexos: onze })).status).toBe(400);
+
+      const w = await espaco("anexo-whatsapp");
+      const dois = [
+        { submissionId: "s1", objectId: "o1" },
+        { submissionId: "s2", objectId: "o2" },
+      ];
+      expect(recusado(await servico.enviar(w.membro, { conversaId: w.suporte.conversaId, direcao: "enviada", conteudo: "x", anexos: dois })).status).toBe(400);
     });
   });
 });
