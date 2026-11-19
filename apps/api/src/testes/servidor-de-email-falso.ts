@@ -1,0 +1,168 @@
+/**
+ * Os dublês de e-mail da Fase 17 (17-02): um IMAP e um SMTP de verdade, em `127.0.0.1`, porta efêmera, TLS de teste.
+ *
+ * Como `servidor-falso.ts`, nunca é um mock do cliente: o `imapflow` e o `nodemailer` conversam com ele pelo socket, e é
+ * o transporte (certificado, SNI, autenticação, queda, silêncio) que os planos de conexão, leitura e envio precisam
+ * provar falhando de verdade. O certificado nasce na hora do teste (`certificado-de-teste.ts`) e chega ao cliente só
+ * como `ca` (`ServidorDeEmailFalso.ca`): nada disto existe na produção.
+ *
+ * A parte IMAP é o `imapkit` (spike do pressuposto A1, resultado no `CONTEXT.md` desta pasta) usado como módulo, com
+ * TLS direto na porta principal (`secureConnection`). Um limite dele, de propósito do `imapkit`: a árvore de caixas é
+ * UMA só para o servidor inteiro ("single user, multiple connection"). Vários `usuarios` autenticam com credenciais
+ * próprias, mas enxergam as mesmas pastas e mensagens; o argumento `usuario` de `adicionarMensagem`, `recriarCaixa` e
+ * `mensagensDaPasta` só documenta de quem é a caixa no teste. Um teste que precisa de duas caixas separadas sobe dois
+ * servidores.
+ */
+
+import type { Socket } from "node:net";
+import type { TLSSocket } from "node:tls";
+import imapkit from "imapkit";
+import { gerarCertificadoDeTeste } from "./certificado-de-teste";
+
+export interface UsuarioDeEmailFalso {
+  readonly usuario: string;
+  /** Senha aceita por LOGIN e AUTHENTICATE PLAIN. */
+  readonly senha?: string;
+  /** Tokens aceitos por XOAUTH2. */
+  readonly tokens?: readonly string[];
+}
+
+export interface OpcoesDoServidorDeEmailFalso {
+  readonly usuarios?: readonly UsuarioDeEmailFalso[];
+}
+
+export interface ConexaoRegistrada {
+  /** `endereço:porta` de quem conectou. */
+  readonly remoto: string;
+  /** O nome que o cliente pediu no TLS (SNI), se pediu. */
+  readonly sni?: string;
+}
+
+export interface ServidorDeEmailFalso {
+  readonly imap: { readonly host: "127.0.0.1"; readonly porta: number };
+  /** A CA de teste, para o cliente (`tls.ca`). Só existe no teste. */
+  readonly ca: string;
+  /**
+   * Insere uma mensagem na pasta (INBOX por padrão) como se tivesse chegado, avisando as sessões em IDLE.
+   * Devolve o UID.
+   */
+  adicionarMensagem(usuario: string, mime: string | Buffer, pasta?: string): Promise<number>;
+  /**
+   * Muda o UIDVALIDITY da pasta (as mensagens ficam, renumeradas de 1 a n), como quando o servidor recria a caixa. As
+   * sessões que a têm aberta recebem `BYE`.
+   */
+  recriarCaixa(usuario: string, pasta?: string): Promise<void>;
+  /** O MIME cru de cada mensagem da pasta, na ordem dos UIDs. */
+  mensagensDaPasta(usuario: string, pasta: string): Promise<readonly Buffer[]>;
+  conexoesImap(): readonly ConexaoRegistrada[];
+  /** Destrói os sockets abertos (queda de rede); o servidor continua aceitando conexões novas. */
+  derrubarConexoes(): void;
+  fechar(): Promise<void>;
+}
+
+const USUARIOS_PADRAO: readonly UsuarioDeEmailFalso[] = [
+  { usuario: "ana@caixa.teste", senha: "senha-certa", tokens: ["token-certo"] },
+];
+
+/** A pasta de enviados do dublê tem nome em português de propósito: o código tem de achá-la por SPECIAL-USE. */
+export const PASTA_DE_ENVIADOS_FALSA = "Enviados";
+
+const PLUGINS_DO_IMAP = [
+  "IDLE",
+  "SASL-IR",
+  "AUTH-PLAIN",
+  "XOAUTH2",
+  "SPECIAL-USE",
+  "UIDPLUS",
+  "MOVE",
+  "NAMESPACE",
+  "ID",
+  "ENABLE",
+  "UNSELECT",
+  "LITERAL+",
+];
+
+function paraTexto(mime: string | Buffer): string | Uint8Array {
+  return typeof mime === "string" ? mime : new Uint8Array(mime);
+}
+
+export async function iniciarServidorDeEmailFalso(
+  opcoes: OpcoesDoServidorDeEmailFalso = {},
+): Promise<ServidorDeEmailFalso> {
+  const usuarios = opcoes.usuarios ?? USUARIOS_PADRAO;
+  const certificado = gerarCertificadoDeTeste();
+
+  const tokensPorUsuario = new Map<string, readonly string[]>();
+  const usuariosDoImap: Record<string, { password?: string; xoauth2?: { accessToken: string } }> = {};
+  for (const u of usuarios) {
+    tokensPorUsuario.set(u.usuario, u.tokens ?? []);
+    usuariosDoImap[u.usuario] = {
+      ...(u.senha !== undefined ? { password: u.senha } : {}),
+      ...(u.tokens && u.tokens[0] !== undefined ? { xoauth2: { accessToken: u.tokens[0] } } : {}),
+    };
+  }
+
+  const imap = imapkit({
+    plugins: PLUGINS_DO_IMAP,
+    users: usuariosDoImap,
+    secureConnection: true,
+    credentials: { key: certificado.chave, cert: certificado.cert },
+    storage: {
+      INBOX: {},
+      "": {
+        folders: {
+          [PASTA_DE_ENVIADOS_FALSA]: { "special-use": "\\Sent" },
+          Rascunhos: { "special-use": "\\Drafts" },
+        },
+      },
+    },
+  });
+
+  // O `imapkit` guarda um token por usuário; o dublê aceita a lista inteira (um token trocado por refresh, por exemplo).
+  imap.checkAccessToken = (token: string, username?: string) => {
+    const dono = username ?? [...tokensPorUsuario.keys()].find((u) => tokensPorUsuario.get(u)?.includes(token));
+    return dono !== undefined && tokensPorUsuario.get(dono)?.includes(token)
+      ? { user: dono }
+      : { error: "invalid_token", reason: "token desconhecido" };
+  };
+
+  const conexoes: ConexaoRegistrada[] = [];
+  const sockets = new Set<Socket>();
+  imap.server.on("connection", (socket: Socket) => {
+    sockets.add(socket);
+    socket.on("close", () => sockets.delete(socket));
+  });
+  imap.server.on("secureConnection", (socket: TLSSocket) => {
+    conexoes.push({
+      remoto: `${socket.remoteAddress ?? "?"}:${socket.remotePort ?? 0}`,
+      ...(socket.servername ? { sni: socket.servername } : {}),
+    });
+  });
+
+  const portaDoImap = await imap.start(0, "127.0.0.1");
+
+  return {
+    imap: { host: "127.0.0.1", porta: portaDoImap },
+    ca: certificado.cert,
+    async adicionarMensagem(_usuario, mime, pasta = "INBOX") {
+      return imap.control.addMessage(pasta, { raw: paraTexto(mime) }).uid;
+    },
+    async recriarCaixa(_usuario, pasta = "INBOX") {
+      imap.control.resetUidValidity(pasta, { uids: "renumber" });
+    },
+    async mensagensDaPasta(_usuario, pasta) {
+      return imap.control
+        .listMessages(pasta, { raw: true })
+        .map((mensagem) => mensagem.raw)
+        .filter((raw): raw is Buffer => raw !== undefined);
+    },
+    conexoesImap: () => conexoes.slice(),
+    derrubarConexoes() {
+      for (const socket of sockets) socket.destroy();
+    },
+    async fechar() {
+      for (const socket of sockets) socket.destroy();
+      await imap.stop();
+    },
+  };
+}
