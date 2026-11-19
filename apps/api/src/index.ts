@@ -81,6 +81,7 @@ import { carregarEnv, encerrar, pool } from "./persistencia/conexao";
 import { criarOutboxWorker } from "./persistencia/outbox-worker";
 import { criarColetaDeOrfaos } from "./mensageria/coleta-de-orfaos";
 import { criarConferenciaDaEvolution } from "./mensageria/provedores/evolution/conferencia";
+import { criarLeitorDeEmail, deveIniciarOLeitorDeEmail } from "./mensageria/provedores/email/leitor";
 import { criarSincronizadorDeModelos } from "./mensageria/provedores/whatsapp-cloud/sincronizacao";
 import { criarWorkerDeSaida } from "./mensageria/entregar-mensagem";
 import { criarHubDeEventos } from "./mensageria/hub-de-eventos";
@@ -322,6 +323,28 @@ if (process.env.MENSAGERIA_WORKER_ATIVO === "true") {
   acordadores.saida = () => saida.acordar();
   aoEncerrar(() => saida.parar());
   app.log.info("worker de saída da mensageria ativo");
+}
+
+// Fase 17 (17-10, D-17-09): o leitor da caixa de entrada do e-mail. Desligado por padrão: só com `EMAIL_LEITOR_ATIVO=true` E com
+// `MENSAGERIA_WORKER_ATIVO=true` (sem o processador de entrada a fila encheria, e a coleta de órfãos apagaria anexos que ainda
+// não viraram Mensagem, F6). Ele mantém uma sessão IMAP por Canal de e-mail conectado e põe o e-mail novo na fila de entrada; o
+// processador acima o transforma em Conversa. Custa UMA conexão a mais com o banco, FORA do pool, que segura as travas
+// consultivas (uma por Canal, F5): o orçamento passa a ser pool de 10, ouvinte do tempo real 1 e leitor 1. O acordar do
+// processador vem da referência `acordadores.entrada` (já trocada pelo bloco anterior); o registro leva só contagens e o id do
+// Canal, nunca endereço, assunto, corpo nem senha.
+const leitorDeEmail = deveIniciarOLeitorDeEmail(process.env);
+if (leitorDeEmail.iniciar) {
+  const leitor = criarLeitorDeEmail({
+    aoEnfileirar: () => acordadores.entrada(),
+    registrar: (nivel, mensagem, dados) => {
+      app.log[nivel](dados ?? {}, mensagem);
+    },
+  });
+  leitor.iniciar();
+  aoEncerrar(() => leitor.parar());
+  app.log.info("leitor de e-mail ativo");
+} else if (leitorDeEmail.motivo) {
+  app.log.warn(leitorDeEmail.motivo);
 }
 
 // Fase 16 (16-10): a coleta diária de órfãos do bucket (sessões de upload expiradas e mídia de `entrada/` sem Mensagem).
