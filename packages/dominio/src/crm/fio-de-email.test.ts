@@ -12,6 +12,7 @@ import {
   idsDoCabecalho,
   mensagemRespondida,
   messageIdDaMensagem,
+  motivoParaIgnorarEmail,
   type MensagemDoFio,
 } from "./fio-de-email";
 
@@ -165,5 +166,65 @@ describe("assuntoDaResposta (D-17-16)", () => {
   it("sem assunto devolve vazio", () => {
     expect(assuntoDaResposta(null)).toBe("");
     expect(assuntoDaResposta(undefined)).toBe("");
+  });
+});
+
+describe("motivoParaIgnorarEmail (D-17-11)", () => {
+  const CANAL = "Vendas@Empresa.com";
+  const base = { cabecalhos: {}, de: "cliente@exemplo.com", enderecoDoCanal: CANAL, tipoDeConteudo: "text/plain; charset=utf-8" };
+  const com = (mudanca: Partial<typeof base>) => motivoParaIgnorarEmail({ ...base, ...mudanca });
+
+  it("um e-mail comum de cliente entra", () => {
+    expect(motivoParaIgnorarEmail(base)).toBeUndefined();
+  });
+
+  it("Auto-Submitted diferente de no é resposta automática", () => {
+    expect(com({ cabecalhos: { "Auto-Submitted": "auto-replied" } })).toBe("resposta_automatica");
+    expect(com({ cabecalhos: { "Auto-Submitted": "auto-generated; foo=bar" } })).toBe("resposta_automatica");
+  });
+
+  it("Auto-Submitted: no não descarta", () => {
+    expect(com({ cabecalhos: { "Auto-Submitted": "no" } })).toBeUndefined();
+  });
+
+  it("multipart/report é aviso de não entrega", () => {
+    expect(com({ tipoDeConteudo: "multipart/report; report-type=delivery-status" })).toBe("nao_entrega");
+  });
+
+  it("MAILER-DAEMON e postmaster no From são não entrega", () => {
+    expect(com({ de: "MAILER-DAEMON@mx.exemplo.com" })).toBe("nao_entrega");
+    expect(com({ de: "postmaster@exemplo.com" })).toBe("nao_entrega");
+  });
+
+  it("Precedence bulk, list e junk é lista, em qualquer caixa; first-class não", () => {
+    expect(com({ cabecalhos: { Precedence: "bulk" } })).toBe("lista");
+    expect(com({ cabecalhos: { Precedence: "LIST" } })).toBe("lista");
+    expect(com({ cabecalhos: { Precedence: "junk" } })).toBe("lista");
+    expect(com({ cabecalhos: { Precedence: "first-class" } })).toBeUndefined();
+  });
+
+  it("o From igual ao endereço do Canal, com outras maiúsculas, é o próprio Canal", () => {
+    expect(com({ de: "vendas@EMPRESA.com" })).toBe("proprio_canal");
+  });
+
+  it("googlemail.com e gmail.com são o mesmo endereço do próprio Canal", () => {
+    expect(com({ de: "pessoa@googlemail.com", enderecoDoCanal: "pessoa@gmail.com" })).toBe("proprio_canal");
+  });
+
+  it("o From no formato Nome <endereço> também é comparado pelo endereço", () => {
+    expect(com({ de: "Vendas <vendas@empresa.com>" })).toBe("proprio_canal");
+  });
+
+  it("List-Unsubscribe sozinho NÃO descarta o e-mail", () => {
+    expect(com({ cabecalhos: { "List-Unsubscribe": "<mailto:sair@exemplo.com>" } })).toBeUndefined();
+  });
+
+  it("os nomes de cabeçalho valem em qualquer caixa", () => {
+    expect(com({ cabecalhos: { "AUTO-SUBMITTED": "auto-replied" } })).toBe("resposta_automatica");
+    expect(com({ cabecalhos: { precedence: "bulk" } })).toBe("lista");
+  });
+
+  it("o próprio Canal vence os outros motivos", () => {
+    expect(com({ de: "vendas@empresa.com", cabecalhos: { "Auto-Submitted": "auto-replied" } })).toBe("proprio_canal");
   });
 });

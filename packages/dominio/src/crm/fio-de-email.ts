@@ -117,3 +117,14 @@ export function messageIdDaMensagem(mensagemId: string, enderecoDoCanal: string)
   const usavel = enderecoDoCanal.includes("@") && /^[a-z0-9.-]+$/.test(dominio) ? dominio : DOMINIO_SEM_ENDERECO;
   return `n1.${local}@${usavel}`;
 }
+
+export type MotivoParaIgnorarEmail = "resposta_automatica" | "nao_entrega" | "lista" | "proprio_canal";
+
+export function motivoParaIgnorarEmail(_entrada: {
+  cabecalhos: Readonly<Record<string, string>>;
+  de: string;
+  enderecoDoCanal: string;
+  tipoDeConteudo: string;
+}): MotivoParaIgnorarEmail | undefined {
+  return undefined;
+}
