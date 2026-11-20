@@ -1742,3 +1742,101 @@ describe("ConversationThread — o e-mail leva até 10 arquivos e 20 MB; os outr
     expect(screen.getByRole("button", { name: "Remover" })).toBeTruthy();
   });
 });
+
+describe("ConversationThread — o fio do e-mail mostra assunto, cópias, quem escreveu e o e-mail formatado numa moldura isolada (17-15, D-17-13)", () => {
+  const fio = () => document.querySelector("[data-fio='mensagens']") as HTMLElement;
+  const doEmail = (seq: number, direcao: Mensagem["direcao"], extras: Partial<Mensagem> = {}): Mensagem => ({
+    ...novaMensagem("cnv_mail", "chn_mail", seq, direcao, `2026-10-11T0${seq}:00:00.000Z`, `texto do e-mail ${seq}`),
+    ...extras,
+  });
+  const quadros = () => fio().querySelectorAll("iframe");
+  const pediuCorpoHtml = () => fetchMock.mock.calls.some((c) => /\/corpo-html$/.test(String(c[0])));
+
+  beforeEach(() => {
+    identificadoresDaApi = [identificador("email")];
+    conversasDaApi = [novaConversa("cnv_mail", "chn_mail", { ultimaRecebidaEm: "2026-10-11T09:00:00.000Z" })];
+    mensagensDaApi = { cnv_mail: [doEmail(1, "recebida", { assunto: "Pedido 42", enderecosAdicionais: [{ tipo: "copia", endereco: "socio@empresa.com" }] })] };
+    const padrao = rotaPadrao;
+    rotaPadrao = async (url, init) => {
+      const alvo = new URL(url);
+      const html = /^\/mensagens\/([^/]+)\/corpo-html$/.exec(alvo.pathname);
+      if ((init?.method ?? "GET") === "GET" && html) return resposta(200, { ok: true, dados: { html: "<p>Veja <b>oi</b></p>" } });
+      return padrao(url, init);
+    };
+  });
+
+  it("(54) a recebida mostra “Assunto: …” e “Cópia: …” acima do texto; a enviada mostra também a cópia oculta e “Para”", async () => {
+    mensagensDaApi.cnv_mail = [
+      doEmail(1, "recebida", { assunto: "Pedido 42", enderecosAdicionais: [{ tipo: "copia", endereco: "socio@empresa.com" }] }),
+      doEmail(2, "enviada", {
+        assunto: "Re: Pedido 42",
+        enderecosAdicionais: [
+          { tipo: "para", endereco: "financeiro@empresa.com" },
+          { tipo: "copiaOculta", endereco: "diretoria@empresa.com" },
+        ],
+      }),
+    ];
+    montar({ conversaId: "cnv_mail" });
+    await fioPronto("texto do e-mail 1");
+    expect(within(fio()).getByText("Assunto: Pedido 42")).toBeTruthy();
+    expect(within(fio()).getByText("Cópia: socio@empresa.com")).toBeTruthy();
+    expect(within(fio()).getByText("Assunto: Re: Pedido 42")).toBeTruthy();
+    expect(within(fio()).getByText("Para: financeiro@empresa.com")).toBeTruthy();
+    expect(within(fio()).getByText("Cópia oculta: diretoria@empresa.com")).toBeTruthy();
+    // O assunto vem ANTES do texto na bolha.
+    const bolha = within(fio()).getByText("Assunto: Pedido 42").closest("div") as HTMLElement;
+    expect(bolha.textContent?.indexOf("Assunto: Pedido 42")).toBeLessThan(bolha.textContent?.indexOf("texto do e-mail 1") ?? -1);
+  });
+
+  it("(55) a Mensagem com corpoHtml tem “Ver e-mail formatado”; clicar pede o HTML e abre a moldura isolada, e o <b> não entra no DOM da aplicação", async () => {
+    mensagensDaApi.cnv_mail = [doEmail(1, "recebida", { corpoHtml: { objectKey: "workspace/ws/entrada/m1.html", tamanhoBytes: 40 } })];
+    montar({ conversaId: "cnv_mail" });
+    await fioPronto("texto do e-mail 1");
+    expect(pediuCorpoHtml()).toBe(false);
+    fireEvent.click(within(fio()).getByRole("button", { name: "Ver e-mail formatado" }));
+
+    await waitFor(() => expect(quadros()).toHaveLength(1));
+    expect(fetchMock.mock.calls.some((c) => String(c[0]) === "http://api/mensagens/cnv_mail_m1/corpo-html")).toBe(true);
+    const quadro = quadros()[0] as HTMLIFrameElement;
+    expect(quadro.getAttribute("sandbox")).toBe("");
+    expect(quadro.getAttribute("referrerpolicy")).toBe("no-referrer");
+    expect(quadro.getAttribute("title")).toBe("E-mail formatado");
+    expect(quadro.getAttribute("srcdoc")?.startsWith('<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:; style-src \'unsafe-inline\'">')).toBe(true);
+    expect(quadro.getAttribute("srcdoc")).toContain("<b>oi</b>");
+    expect(document.querySelector("b")).toBeNull();
+  });
+
+  it("(56) sem corpoHtml o botão não aparece e nada é pedido", async () => {
+    montar({ conversaId: "cnv_mail" });
+    await fioPronto("texto do e-mail 1");
+    expect(screen.queryByRole("button", { name: "Ver e-mail formatado" })).toBeNull();
+    expect(pediuCorpoHtml()).toBe(false);
+  });
+
+  it("(57) quem escreveu que não é o Contato da Conversa aparece como “De: …”; o próprio Contato não", async () => {
+    mensagensDaApi.cnv_mail = [
+      doEmail(1, "recebida", { remetenteExterno: "Ana@Exemplo.com" }),
+      doEmail(2, "recebida", { remetenteExterno: "colega@empresa.com" }),
+    ];
+    montar({ conversaId: "cnv_mail" });
+    await fioPronto("texto do e-mail 1");
+    expect(within(fio()).getByText("De: colega@empresa.com")).toBeTruthy();
+    expect(within(fio()).queryByText(/^De: ana@exemplo\.com$/i)).toBeNull();
+    expect(within(fio()).getAllByText(/^De: /)).toHaveLength(1);
+  });
+
+  it("(58) no WhatsApp nada disso aparece: nem assunto, nem “De:”, nem e-mail formatado", async () => {
+    identificadoresDaApi = [identificador("whatsapp")];
+    conversasDaApi = [novaConversa("cnv_suporte", "chn_suporte", { ultimaRecebidaEm: "2026-10-11T09:00:00.000Z" })];
+    mensagensDaApi = {
+      cnv_suporte: [
+        { ...novaMensagem("cnv_suporte", "chn_suporte", 1, "recebida", "2026-10-11T09:00:00.000Z"), remetenteExterno: "5511888880000", corpoHtml: { objectKey: "workspace/ws/entrada/x.html", tamanhoBytes: 1 } },
+      ],
+    };
+    montar({ conversaId: "cnv_suporte" });
+    await fioPronto("cnv_suporte mensagem");
+    expect(within(fio()).queryByText(/^Assunto:/)).toBeNull();
+    expect(within(fio()).queryByText(/^De:/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Ver e-mail formatado" })).toBeNull();
+  });
+});
