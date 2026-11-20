@@ -59,7 +59,7 @@ import { adicionarNotaAoContato } from "@/dados/crm/notas";
 import { criarTarefaConversacional } from "@/dados/crm/tarefas-conversacionais";
 import { createTask } from "@n1/dominio/operations";
 import { capacidadesDoCanal } from "@n1/dominio/crm/capacidades";
-import { FRASE_SO_RESPONDE, fraseDaJanelaBloqueada } from "@n1/dominio/crm/mensagens";
+import { FRASE_SO_RESPONDE, fraseDaJanelaBloqueada, maxAnexosDoCanal, validarTamanhoDoEmail } from "@n1/dominio/crm/mensagens";
 import { assuntoDaResposta } from "@n1/dominio/crm/fio-de-email";
 import { statusCategory } from "@n1/dominio/derive";
 import {
@@ -233,8 +233,8 @@ export function ConversationThread({
   const [copia, setCopia] = useState("");
   const [copiaOculta, setCopiaOculta] = useState("");
   const [errosDoEmail, setErrosDoEmail] = useState<ErrosDosCamposDoEmail>({});
-  // O arquivo escolhido para a próxima Mensagem; o progresso é o do envio ao bucket (0 a 100).
-  const [anexo, setAnexo] = useState<{ readonly arquivo: File; readonly progresso: number } | null>(null);
+  // Os arquivos escolhidos para a próxima Mensagem (um só, fora do e-mail); o progresso é o do envio de cada um ao bucket (0 a 100).
+  const [anexos, setAnexos] = useState<readonly { readonly arquivo: File; readonly progresso: number }[]>([]);
   const [anexando, setAnexando] = useState(false);
   const seletoresDeArquivo = useRef<Partial<Record<CategoriaDeMidia, HTMLInputElement | null>>>({});
   const [registro, setRegistro] = useState<"nota" | "tarefa" | "meet" | null>(
@@ -305,7 +305,7 @@ export function ConversationThread({
   if (canalSelecionado !== canalVisto) {
     setCanalVisto(canalSelecionado);
     setRegistro(null);
-    setAnexo(null);
+    setAnexos([]);
     setPara("");
     setCopia("");
     setCopiaOculta("");
@@ -463,6 +463,8 @@ export function ConversationThread({
   const capacidades = canal ? capacidadesDoCanal({ channelType: canal.tipo, provider: canal.provedor }) : undefined;
   // D-16-10: só as categorias de arquivo e os tipos que o Canal da aba envia (`sendableMediaTypes`).
   const tiposDoCanal = capacidades ? tiposAceitosParaOCanal(capacidades.sendableMediaTypes) : [];
+  // D-17-18: quantos arquivos a Mensagem deste Canal leva (10 no e-mail, 1 nos outros).
+  const limiteDeArquivos = capacidades ? maxAnexosDoCanal(capacidades) : 1;
   const categoriasDoCanal = CATEGORIAS_DE_ARQUIVO.map((c) => ({
     ...c,
     tipos: tiposDoCanal.filter((tipo) => categoriaDaMidia(tipo) === c.categoria),
@@ -531,9 +533,9 @@ export function ConversationThread({
             } Sincronize os modelos na ficha do Canal ou aprove um na Meta.`
           : comSeletorDeModelo
             ? (escolhaDeModelo.pedido === undefined ? escolhaDeModelo.motivo : motivoDeConexao)
-            : anexo && !conversa
+            : anexos.length > 0 && !conversa
               ? "Abra a Conversa com uma Mensagem antes de anexar um arquivo."
-              : draft.trim() === "" && !anexo
+              : draft.trim() === "" && anexos.length === 0
                 ? conversa
                   ? "Escreva a mensagem antes de enviar."
                   : "Escreva a primeira Mensagem antes de enviar."
@@ -574,25 +576,56 @@ export function ConversationThread({
     setCanalAtivo(canalId);
     onCanalChange?.(canalId);
     setDraft("");
-    setAnexo(null);
+    setAnexos([]);
     limparEnderecosDoEmail();
     reiniciarModelo();
     setErro(null);
     setAviso(`Respondendo por ${escolhido ? rotuloDoCanalNasTabelas(escolhido) : "outro Canal"}.`);
   };
 
-  /** O arquivo escolhido é pré-conferido (tipo do Canal e teto); a api confere de novo ao pedir o ticket. */
-  const escolherArquivo = (arquivo: File | undefined) => {
-    if (!arquivo) return;
+  /*
+    Os arquivos escolhidos são pré-conferidos (tipo do Canal e teto de cada um); a api confere de novo ao pedir o ticket.
+    Fora do e-mail a Mensagem leva UM arquivo e o último escolhido substitui o anterior, como sempre foi. No e-mail (D-17-18)
+    a lista cresce até `maxAnexosDoCanal` e a soma não passa de 20 MB: o arquivo que estouraria um dos dois limites não entra,
+    e a frase diz qual, ANTES de qualquer ticket ou envio ao bucket.
+  */
+  const escolherArquivos = (escolhidos: readonly File[]) => {
+    if (escolhidos.length === 0) return;
     setAviso(null);
-    const recusa = recusaDoAnexoDaMensagem(arquivo, tiposDoCanal);
-    if (recusa) {
-      setErro(recusa);
+    if (limiteDeArquivos <= 1) {
+      const [arquivo] = escolhidos;
+      const recusa = arquivo ? recusaDoAnexoDaMensagem(arquivo, tiposDoCanal) : undefined;
+      if (recusa || !arquivo) {
+        setErro(recusa ?? null);
+        return;
+      }
+      setErro(null);
+      setAnexos([{ arquivo, progresso: 0 }]);
+      setAnexando(false);
       return;
     }
-    setErro(null);
-    setAnexo({ arquivo, progresso: 0 });
-    setAnexando(false);
+    let lista = anexos;
+    let recusa: string | undefined;
+    for (const arquivo of escolhidos) {
+      const doTipo = recusaDoAnexoDaMensagem(arquivo, tiposDoCanal);
+      if (doTipo) {
+        recusa ??= doTipo;
+        continue;
+      }
+      if (lista.length >= limiteDeArquivos) {
+        recusa ??= `${capacidades?.hasSubjectAndCopies ? "Um e-mail" : "Uma Mensagem"} leva até ${limiteDeArquivos} arquivos.`;
+        break;
+      }
+      const soma = capacidades?.hasSubjectAndCopies ? validarTamanhoDoEmail([...lista.map((a) => a.arquivo.size), arquivo.size]) : undefined;
+      if (soma && !soma.ok) {
+        recusa ??= soma.error;
+        continue;
+      }
+      lista = [...lista, { arquivo, progresso: 0 }];
+    }
+    setAnexos(lista);
+    setErro(recusa ?? null);
+    if (recusa === undefined) setAnexando(false);
   };
 
   /** A falha vira a frase da api (janela fechada, sem consentimento, Canal arquivado…) e o texto fica no campo. */
@@ -638,31 +671,43 @@ export function ConversationThread({
           bytes sobem direto ao bucket pela URL assinada e só então a Mensagem sai com a referência do
           arquivo. Se o arquivo não chega ao bucket nada é gravado e ele continua escolhido.
         */
-        let anexos: ReferenciaDeAnexoEnviado[] | undefined;
-        if (anexo && !pedidoDeModelo) {
-          const ticket = await pedirTicketDeAnexo({
-            conversaId: conversa.id,
-            nome: anexo.arquivo.name,
-            tipoDeMidia: normalizarTipoDeMidia(anexo.arquivo.type),
-            tamanhoBytes: anexo.arquivo.size,
-          });
-          const subiu = await enviarBytesAoBucket(ticket.uploadUrl, anexo.arquivo, (progresso) =>
-            setAnexo((atual) => (atual ? { ...atual, progresso } : atual)),
-          );
-          if (!subiu) {
-            setAnexo((atual) => (atual ? { ...atual, progresso: 0 } : atual));
+        let anexosEnviados: ReferenciaDeAnexoEnviado[] | undefined;
+        if (anexos.length > 0 && !pedidoDeModelo) {
+          // D-17-18: o teto de 20 MB do e-mail é conferido de novo aqui, antes de pedir o primeiro ticket (T-17-68).
+          const soma = capacidades?.hasSubjectAndCopies ? validarTamanhoDoEmail(anexos.map((a) => a.arquivo.size)) : undefined;
+          if (soma && !soma.ok) {
             setAviso(null);
-            setErro("O arquivo não chegou ao armazenamento. Tente de novo.");
+            setErro(soma.error);
             return;
           }
-          anexos = [{ submissionId: ticket.submissionId, objectId: ticket.objectId }];
+          // Em sequência, um ticket e um envio ao bucket por arquivo; falhou um, nada é gravado e a lista toda segue escolhida.
+          const referencias: ReferenciaDeAnexoEnviado[] = [];
+          for (const { arquivo } of anexos) {
+            const ticket = await pedirTicketDeAnexo({
+              conversaId: conversa.id,
+              nome: arquivo.name,
+              tipoDeMidia: normalizarTipoDeMidia(arquivo.type),
+              tamanhoBytes: arquivo.size,
+            });
+            const progredir = (progresso: number) =>
+              setAnexos((atual) => atual.map((item) => (item.arquivo === arquivo ? { ...item, progresso } : item)));
+            const subiu = await enviarBytesAoBucket(ticket.uploadUrl, arquivo, progredir);
+            if (!subiu) {
+              progredir(0);
+              setAviso(null);
+              setErro("O arquivo não chegou ao armazenamento. Tente de novo.");
+              return;
+            }
+            referencias.push({ submissionId: ticket.submissionId, objectId: ticket.objectId });
+          }
+          anexosEnviados = referencias;
         }
         const enviada = await enviarMensagem({
           conversaId: conversa.id,
           direcao: "enviada",
-          conteudo: pedidoDeModelo ? "" : anexo && draft.trim() === "" ? "" : draft,
+          conteudo: pedidoDeModelo ? "" : anexos.length > 0 && draft.trim() === "" ? "" : draft,
           ...(pedidoDeModelo ? { modeloId: pedidoDeModelo.modeloId, variaveis: pedidoDeModelo.variaveis } : {}),
-          ...(anexos ? { anexos } : {}),
+          ...(anexosEnviados ? { anexos: anexosEnviados } : {}),
           ...(citando ? { emRespostaAId: citando.id } : {}),
           // 17-15 (D-17-19): só o e-mail leva assunto e cópias; nos outros Canais o corpo é o de sempre.
           ...(comEmail && assunto.trim() !== "" ? { assunto: assunto.trim() } : {}),
@@ -670,7 +715,7 @@ export function ConversationThread({
         });
         setRecemEnviada(enviada.id);
         setRespondendoA(null);
-        setAnexo(null);
+        setAnexos([]);
         limparEnderecosDoEmail();
         setAviso("Mensagem enviada.");
       } else {
@@ -695,6 +740,8 @@ export function ConversationThread({
       setConfirmandoEnvio(false);
     }
   };
+
+  const nomesDosArquivos = anexos.map((a) => a.arquivo.name).join(", ");
 
   /** O clique em Enviar (ou Enter): no e-mail, endereço inválido para aqui, ao lado do campo, antes da confirmação. */
   const pedirEnvio = () => {
@@ -790,11 +837,11 @@ export function ConversationThread({
           className="app-base rounded-[var(--r-controle)] px-3 py-2"
           style={{ background: "var(--superficie-2)", color: "var(--texto)" }}
         >
-          {comSeletorDeModelo ? escolhaDeModelo.texto : draft.trim() !== "" ? draft : anexo ? `Arquivo: ${anexo.arquivo.name}` : ""}
+          {comSeletorDeModelo ? escolhaDeModelo.texto : draft.trim() !== "" ? draft : anexos.length > 0 ? `${anexos.length > 1 ? "Arquivos" : "Arquivo"}: ${nomesDosArquivos}` : ""}
         </p>
-        {!comSeletorDeModelo && draft.trim() !== "" && anexo ? (
+        {!comSeletorDeModelo && draft.trim() !== "" && anexos.length > 0 ? (
           <p className="app-sm mt-2" style={{ color: "var(--texto-3)" }}>
-            Com o arquivo {anexo.arquivo.name}
+            Com {anexos.length > 1 ? "os arquivos" : "o arquivo"} {nomesDosArquivos}
           </p>
         ) : null}
       </ConfirmDialog>
@@ -1526,12 +1573,14 @@ export function ConversationThread({
                   }}
                   type="file"
                   hidden
+                  // D-17-18: só o Canal que leva vários arquivos numa Mensagem deixa escolher mais de um de uma vez.
+                  multiple={limiteDeArquivos > 1}
                   aria-label={`Escolher ${rotulo.toLowerCase()}`}
                   accept={tipos.join(",")}
                   onChange={(evento) => {
-                    const arquivo = evento.target.files?.[0];
+                    const escolhidos = Array.from(evento.target.files ?? []);
                     evento.target.value = "";
-                    escolherArquivo(arquivo);
+                    escolherArquivos(escolhidos);
                   }}
                 />
               ))}
@@ -1573,24 +1622,31 @@ export function ConversationThread({
                 </div>
               ) : null}
 
-              {anexo ? (
-                <p
-                  className="item-solto app-sm mb-2"
-                  data-estatico="true"
-                  style={{ color: "var(--texto-3)" }}
-                >
-                  <Icone de={Paperclip} tamanho="xs" />
-                  <span className="min-w-0 flex-1 truncate">{anexo.arquivo.name}</span>
-                  {enviando && anexo.progresso > 0 ? <span className="shrink-0">{anexo.progresso}%</span> : null}
-                  <button
-                    type="button"
-                    disabled={enviando}
-                    onClick={() => setAnexo(null)}
-                    className="shrink-0 hover:text-[var(--texto)] hover:underline disabled:opacity-60"
-                  >
-                    Remover
-                  </button>
-                </p>
+              {anexos.length > 0 ? (
+                <ul aria-label="Arquivos para enviar" className="mb-2 flex flex-col gap-1">
+                  {anexos.map(({ arquivo, progresso }, indice) => (
+                    <li
+                      key={`${arquivo.name}:${indice}`}
+                      className="item-solto app-sm"
+                      data-estatico="true"
+                      style={{ color: "var(--texto-3)" }}
+                    >
+                      <Icone de={Paperclip} tamanho="xs" />
+                      <span className="min-w-0 flex-1 truncate">{arquivo.name}</span>
+                      {enviando && progresso > 0 ? <span className="shrink-0">{progresso}%</span> : null}
+                      <button
+                        type="button"
+                        disabled={enviando}
+                        // Com vários arquivos o botão diz de qual arquivo é; com um só segue “Remover”, como sempre foi.
+                        {...(anexos.length > 1 ? { "aria-label": `Remover ${arquivo.name}` } : {})}
+                        onClick={() => setAnexos((atual) => atual.filter((_, i) => i !== indice))}
+                        className="shrink-0 hover:text-[var(--texto)] hover:underline disabled:opacity-60"
+                      >
+                        Remover
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               ) : null}
 
             </div>
