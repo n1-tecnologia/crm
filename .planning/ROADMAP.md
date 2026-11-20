@@ -981,7 +981,7 @@ Plans:
 **Goal:** Quem usa a plataforma conecta a própria caixa de e-mail pela ficha do Canal (senha ou senha de app, ou login do Google e da Microsoft); o e-mail recebido vira Conversa no Contato do remetente e a resposta sai pela mesma caixa, no mesmo fio, com assunto, cópias e anexo. Escopo e tarefas: Sessão 9 de `docs/09-planejamento/TAREFAS-POR-SESSAO.md` (9.1 a 9.4). Decidido pelo dono em 2026-11-19: IMAP/SMTP com senha ou senha de app **e** com login OAuth; Gmail API e Microsoft Graph ficam fora.
 **Requirements**: EML-01 a EML-07 (IDs locais da fase, definidos em `17-CONTEXT.md` `<domain>`)
 **Depends on:** Phase 16
-**Plans:** 14/16 plans executed em 7 ondas (17-02, 17-04 e 17-16 têm checkpoints do dono: legitimidade dos pacotes, o formato da `017` e da credencial, e a prova com caixas reais; nenhum plano autônomo toca produção)
+**Plans:** 15/16 plans executed em 7 ondas (17-02, 17-04 e 17-16 têm checkpoints do dono: legitimidade dos pacotes, o formato da `017` e da credencial, e a prova com caixas reais; nenhum plano autônomo toca produção)
 
 Plans:
 **Wave 1**
@@ -1009,7 +1009,7 @@ Plans:
 - [x] 17-15-PLAN.md — tela: assunto, cópias, cópia oculta, vários arquivos e o e-mail formatado na moldura isolada
 
 **Wave 6** *(blocked on Wave 5 completion)*
-- [ ] 17-14-PLAN.md — tela: os três caminhos na ficha, "Outro servidor", página de retorno e a queda com motivo
+- [x] 17-14-PLAN.md — tela: os três caminhos na ficha, "Outro servidor", página de retorno e a queda com motivo
 
 **Wave 7** *(blocked on Wave 6 completion)*
 - [ ] 17-16-PLAN.md — produção com o leitor desligado, documentos das camadas, gate e a prova com caixas reais (checkpoint do dono)
