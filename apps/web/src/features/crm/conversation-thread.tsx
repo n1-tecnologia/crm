@@ -60,6 +60,7 @@ import { criarTarefaConversacional } from "@/dados/crm/tarefas-conversacionais";
 import { createTask } from "@n1/dominio/operations";
 import { capacidadesDoCanal } from "@n1/dominio/crm/capacidades";
 import { FRASE_SO_RESPONDE, fraseDaJanelaBloqueada } from "@n1/dominio/crm/mensagens";
+import { assuntoDaResposta } from "@n1/dominio/crm/fio-de-email";
 import { statusCategory } from "@n1/dominio/derive";
 import {
   canaisDaListaNasTabelas,
@@ -85,6 +86,7 @@ import { LISTA_SEM_CANAIS } from "@n1/dominio/operations/canais";
 import { SeletorDeTipoDeTarefa } from "@/features/estrutura/seletor-de-tipo";
 import { AvatarDoContato } from "@/features/crm/avatar-do-contato";
 import { AnexoDaMensagemNoFio } from "@/features/crm/anexo-da-mensagem";
+import { CamposDoEmail, enderecosDosCampos, type ErrosDosCamposDoEmail } from "@/features/crm/campos-do-email";
 import { EstadoDaEntrega } from "@/features/crm/estado-da-entrega";
 import { CitacaoNaBolha, marcaDeEditada, MensagemApagada, ReacoesDaMensagem, resumoDaMensagem } from "@/features/crm/mensagem-alterada-no-fio";
 import { SeletorDeCanalDeResposta } from "@/features/crm/seletor-de-canal";
@@ -221,9 +223,16 @@ export function ConversationThread({
   */
   const [canalAtivo, setCanalAtivo] = useState<Id | null>(null);
   const [draft, setDraft] = useState("");
-  const [assunto, setAssunto] = useState("");
+  /*
+    17-15 (D-17-19) — os campos do e-mail. O assunto que a pessoa EDITOU fica preso à Conversa em que ela editou; sem edição o
+    campo mostra a sugestão (`Re: ` + o assunto da última recebida da página), que vem das Mensagens e por isso não é estado.
+    Para, Cópia e Cópia oculta limpam depois de cada envio; os `erros` são os de `enderecosDosCampos` ao tentar enviar.
+  */
+  const [assuntoEditado, setAssuntoEditado] = useState<{ readonly conversaId: string | undefined; readonly texto: string } | null>(null);
+  const [para, setPara] = useState("");
   const [copia, setCopia] = useState("");
   const [copiaOculta, setCopiaOculta] = useState("");
+  const [errosDoEmail, setErrosDoEmail] = useState<ErrosDosCamposDoEmail>({});
   // O arquivo escolhido para a próxima Mensagem; o progresso é o do envio ao bucket (0 a 100).
   const [anexo, setAnexo] = useState<{ readonly arquivo: File; readonly progresso: number } | null>(null);
   const [anexando, setAnexando] = useState(false);
@@ -297,6 +306,10 @@ export function ConversationThread({
     setCanalVisto(canalSelecionado);
     setRegistro(null);
     setAnexo(null);
+    setPara("");
+    setCopia("");
+    setCopiaOculta("");
+    setErrosDoEmail({});
     setEscolhaDeModelo(SEM_ESCOLHA);
     setGeracaoDoModelo((g) => g + 1);
     setErroDoModelo(null);
@@ -454,6 +467,16 @@ export function ConversationThread({
     ...c,
     tipos: tiposDoCanal.filter((tipo) => categoriaDaMidia(tipo) === c.categoria),
   })).filter((c) => c.tipos.length > 0);
+  /*
+    17-15 (D-17-19) — assunto e cópias só no Canal que os tem (`hasSubjectAndCopies`, o e-mail) E numa Conversa que já existe: a
+    primeira Mensagem de uma Conversa nova sai por `POST /conversas`, que não leva assunto nem cópias, e mostrar o campo ali
+    seria prometer um envio que não acontece. A sugestão do assunto é a resposta ao da última recebida da página carregada
+    (`assuntoDaResposta`, sem empilhar `Re:`); o servidor também a completa quando o assunto chega vazio (17-07).
+  */
+  const comEmail = capacidades?.hasSubjectAndCopies === true && conversa !== undefined;
+  const ultimaRecebida = [...mensagens].reverse().find((m) => m.direcao === "recebida");
+  const assuntoSugerido = assuntoDaResposta(ultimaRecebida?.assunto);
+  const assunto = assuntoEditado !== null && assuntoEditado.conversaId === conversa?.id ? assuntoEditado.texto : assuntoSugerido;
   const horasDaJanela = capacidades?.responseWindowHours;
   const abertaAte =
     horasDaJanela !== undefined && conversa?.ultimaRecebidaEm
@@ -532,6 +555,14 @@ export function ConversationThread({
     setErroDoModelo(null);
   };
 
+  /** Para, Cópia e Cópia oculta valem para UMA Mensagem: saem do campo ao enviar e ao trocar de Canal (o assunto fica). */
+  const limparEnderecosDoEmail = () => {
+    setPara("");
+    setCopia("");
+    setCopiaOculta("");
+    setErrosDoEmail({});
+  };
+
   const trocarCanalDeResposta = (canalId: Id) => {
     // 5.2.1: na ficha da Tarefa escolher outro Canal é trocar o Canal DA TAREFA (a ficha confirma e troca o Vínculo): a aba
     // e o compositor ficam onde estão até a Conversa da Tarefa mudar de fato.
@@ -544,6 +575,7 @@ export function ConversationThread({
     onCanalChange?.(canalId);
     setDraft("");
     setAnexo(null);
+    limparEnderecosDoEmail();
     reiniciarModelo();
     setErro(null);
     setAviso(`Respondendo por ${escolhido ? rotuloDoCanalNasTabelas(escolhido) : "outro Canal"}.`);
@@ -586,6 +618,13 @@ export function ConversationThread({
   */
   const enviar = async () => {
     if (enviandoRef.current || !canal) return;
+    // Os endereços já foram conferidos ao pedir o envio; conferir de novo aqui é a rede de segurança (T-17-67).
+    const enderecos = comEmail ? enderecosDosCampos({ para, copia, copiaOculta }) : undefined;
+    if (enderecos && !enderecos.ok) {
+      setErrosDoEmail(enderecos.erros);
+      setConfirmandoEnvio(false);
+      return;
+    }
     enviandoRef.current = true;
     setEnviando(true);
     setErroDoModelo(null);
@@ -625,10 +664,14 @@ export function ConversationThread({
           ...(pedidoDeModelo ? { modeloId: pedidoDeModelo.modeloId, variaveis: pedidoDeModelo.variaveis } : {}),
           ...(anexos ? { anexos } : {}),
           ...(citando ? { emRespostaAId: citando.id } : {}),
+          // 17-15 (D-17-19): só o e-mail leva assunto e cópias; nos outros Canais o corpo é o de sempre.
+          ...(comEmail && assunto.trim() !== "" ? { assunto: assunto.trim() } : {}),
+          ...(enderecos?.ok && enderecos.enderecos.length > 0 ? { enderecosAdicionais: enderecos.enderecos } : {}),
         });
         setRecemEnviada(enviada.id);
         setRespondendoA(null);
         setAnexo(null);
+        limparEnderecosDoEmail();
         setAviso("Mensagem enviada.");
       } else {
         const nova = await abrirConversa({
@@ -651,6 +694,20 @@ export function ConversationThread({
       setEnviando(false);
       setConfirmandoEnvio(false);
     }
+  };
+
+  /** O clique em Enviar (ou Enter): no e-mail, endereço inválido para aqui, ao lado do campo, antes da confirmação. */
+  const pedirEnvio = () => {
+    if (comEmail) {
+      const conferidos = enderecosDosCampos({ para, copia, copiaOculta });
+      if (!conferidos.ok) {
+        setErrosDoEmail(conferidos.erros);
+        setAviso(null);
+        return;
+      }
+    }
+    setErrosDoEmail({});
+    setConfirmandoEnvio(true);
   };
 
   /*
@@ -1438,50 +1495,21 @@ export function ConversationThread({
           Mostrar esses campos nos outros seria prometer um envio que o Canal
           não tem como fazer.
         */}
-              {capacidades?.hasSubjectAndCopies ? (
-                <div className="mb-2 grid gap-1.5">
-                  <label className="sr-only" htmlFor="assunto-mensagem">
-                    Assunto
-                  </label>
-                  <input
-                    id="assunto-mensagem"
-                    value={assunto}
-                    onChange={(evento) => setAssunto(evento.target.value)}
-                    placeholder="Assunto"
-                    className="campo"
-                  />
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <span className="min-w-0">
-                      <label className="sr-only" htmlFor="copia-mensagem">
-                        Cc
-                      </label>
-                      <input
-                        id="copia-mensagem"
-                        value={copia}
-                        onChange={(evento) => setCopia(evento.target.value)}
-                        placeholder="Cc"
-                        className="campo"
-                      />
-                    </span>
-                    <span className="min-w-0">
-                      <label
-                        className="sr-only"
-                        htmlFor="copia-oculta-mensagem"
-                      >
-                        Cco
-                      </label>
-                      <input
-                        id="copia-oculta-mensagem"
-                        value={copiaOculta}
-                        onChange={(evento) =>
-                          setCopiaOculta(evento.target.value)
-                        }
-                        placeholder="Cco"
-                        className="campo"
-                      />
-                    </span>
-                  </div>
-                </div>
+              {comEmail ? (
+                <CamposDoEmail
+                  valor={{ assunto, para, copia, copiaOculta }}
+                  desabilitado={enviando}
+                  erros={errosDoEmail}
+                  onMudar={(proximo) => {
+                    // O assunto só vira "editado" quando a pessoa o muda: até lá ele acompanha o da última recebida.
+                    if (proximo.assunto !== assunto) setAssuntoEditado({ conversaId: conversa?.id, texto: proximo.assunto });
+                    setPara(proximo.para);
+                    setCopia(proximo.copia);
+                    setCopiaOculta(proximo.copiaOculta);
+                    // Editar o campo tira o aviso dele: a pessoa já está corrigindo.
+                    setErrosDoEmail({});
+                  }}
+                />
               ) : null}
 
               {/*
@@ -1614,7 +1642,7 @@ export function ConversationThread({
                       onKeyDown={(event) => {
                         if (event.key === "Enter" && !event.shiftKey && bloqueio === undefined) {
                           event.preventDefault();
-                          setConfirmandoEnvio(true);
+                          pedirEnvio();
                         }
                       }}
                       rows={1}
@@ -1628,7 +1656,7 @@ export function ConversationThread({
 
                 <Button
                   variant="primary"
-                  onClick={() => setConfirmandoEnvio(true)}
+                  onClick={pedirEnvio}
                   disabled={bloqueio !== undefined}
                   disabledReason={bloqueio ?? ""}
                   icon={<Icone de={Send} />}
