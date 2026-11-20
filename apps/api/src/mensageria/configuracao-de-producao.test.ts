@@ -34,6 +34,15 @@ function valorAtivo(texto: string, nome: string): string | undefined {
   return atribuicoes.length === 0 ? undefined : atribuicoes[atribuicoes.length - 1]!.slice(nome.length + 1);
 }
 
+/** As variáveis do e-mail (Fase 17) que o `.env.example` traz vazias: só o dono põe valor, no `api.env` do servidor. */
+const VARIAVEIS_DO_EMAIL_SEM_VALOR = [
+  "EMAIL_OAUTH_REDIRECT_URI",
+  "GOOGLE_OAUTH_CLIENT_ID",
+  "GOOGLE_OAUTH_CLIENT_SECRET",
+  "MICROSOFT_OAUTH_CLIENT_ID",
+  "MICROSOFT_OAUTH_CLIENT_SECRET",
+] as const;
+
 function arquivosDeCodigo(pasta: string): string[] {
   return readdirSync(pasta).flatMap((nome) => {
     const caminho = join(pasta, nome);
@@ -50,6 +59,16 @@ describe("a unidade de produção (deploy/n1-crm-api.service)", () => {
 
   it("não fixa o tempo real: o padrão do código é ligado e o drop-in o desliga", () => {
     expect(valorAtivo(unidade, "TEMPO_REAL_ATIVO")).toBeUndefined();
+  });
+
+  it("EMAIL_LEITOR_ATIVO nasce em false (Fase 17, D-17-09): ligar é um drop-in do dono, depois de MENSAGERIA_WORKER_ATIVO=true", () => {
+    expect(valorAtivo(unidade, "EMAIL_LEITOR_ATIVO")).toBe("false");
+  });
+
+  it("a unidade não leva nenhum valor de login do e-mail: esses ficam só no api.env do dono", () => {
+    for (const nome of VARIAVEIS_DO_EMAIL_SEM_VALOR) {
+      expect(valorAtivo(unidade, nome)).toBeUndefined();
+    }
   });
 });
 
@@ -75,13 +94,20 @@ describe(".env.example documenta a mensageria só com valores seguros", () => {
     expect(valorAtivo(unidade, "EVOLUTION_CONFERENCIA_ATIVA")).not.toBe("true");
   });
 
+  it("EMAIL_LEITOR_ATIVO nasce em false e as cinco variáveis do login do e-mail vêm vazias (Fase 17): nunca um valor real", () => {
+    expect(valorAtivo(exemplo, "EMAIL_LEITOR_ATIVO")).toBe("false");
+    for (const nome of VARIAVEIS_DO_EMAIL_SEM_VALOR) {
+      expect(valorAtivo(exemplo, nome)).toBe("");
+    }
+  });
+
   it("toda variável da mensageria que o código lê está no exemplo (ativa ou comentada)", () => {
     const lidas = new Set<string>();
     const arquivos = [...arquivosDeCodigo(join(SRC, "mensageria")), join(SRC, "index.ts")];
     for (const arquivo of arquivos) {
       const codigo = readFileSync(arquivo, "utf8");
       for (const achado of codigo.matchAll(
-        /process\.env\.((?:MENSAGERIA_|COLETA_DE_ORFAOS|TEMPO_REAL|EVOLUTION_|API_URL_PUBLICA|UPLOAD_MAX_BYTES_MIDIA)[A-Z0-9_]*)/g,
+        /process\.env\.((?:MENSAGERIA_|EMAIL_LEITOR|EMAIL_OAUTH|GOOGLE_OAUTH|MICROSOFT_OAUTH|COLETA_DE_ORFAOS|TEMPO_REAL|EVOLUTION_|API_URL_PUBLICA|UPLOAD_MAX_BYTES_MIDIA)[A-Z0-9_]*)/g,
       )) {
         lidas.add(achado[1]!);
       }
