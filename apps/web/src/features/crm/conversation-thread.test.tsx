@@ -1600,3 +1600,145 @@ describe("ConversationThread — o e-mail leva assunto, cópia e cópia oculta a
     for (const nome of ["Assunto", "Para", "Cópia", "Cópia oculta"]) expect(screen.queryByLabelText(nome)).toBeNull();
   });
 });
+
+describe("ConversationThread — o e-mail leva até 10 arquivos e 20 MB; os outros Canais, um (17-15, D-17-18)", () => {
+  /** Um arquivo com o tamanho que o teste quiser, sem alocar os bytes. */
+  function arquivo(nome: string, tipo: string, tamanho: number): File {
+    const f = new File(["x"], nome, { type: tipo });
+    Object.defineProperty(f, "size", { value: tamanho });
+    return f;
+  }
+  const MB = 1024 * 1024;
+  const PDF = "application/pdf";
+  const abrirAnexos = () => fireEvent.click(screen.getByRole("button", { name: "Anexar" }));
+  const escolher = (categoria: string, ...fs: File[]) => fireEvent.change(screen.getByLabelText(`Escolher ${categoria}`), { target: { files: fs } });
+  const confirmarEnvio = async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
+    const dialogo = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Enviar" }));
+  };
+  const FRASE_20_MB = "O e-mail passa de 20 MB: muitos servidores recusam.";
+
+  beforeEach(() => {
+    identificadoresDaApi = [identificador("email")];
+    conversasDaApi = [novaConversa("cnv_mail", "chn_mail", { ultimaRecebidaEm: "2026-10-11T09:00:00.000Z" })];
+    mensagensDaApi = { cnv_mail: [{ ...novaMensagem("cnv_mail", "chn_mail", 1, "recebida", "2026-10-11T09:00:00.000Z", "Preciso do pedido."), assunto: "Pedido 42" }] };
+    enviarBytes.mockImplementation(async () => true);
+    let proximo = 0;
+    const padrao = rotaPadrao;
+    rotaPadrao = async (url, init) => {
+      if ((init?.method ?? "GET") === "POST" && new URL(url).pathname === "/mensagens/anexos") {
+        proximo += 1;
+        return resposta(200, { ok: true, dados: { submissionId: `sub_${proximo}`, objectId: `obj_${proximo}`, uploadUrl: `https://armazem.test/upload/obj_${proximo}` } });
+      }
+      return padrao(url, init);
+    };
+  });
+
+  it("(48) três arquivos (PDF, CSV e PNG): os três na barra, cada um removível; o envio sobe um por um e manda `anexos` de três itens", async () => {
+    montar({ conversaId: "cnv_mail" });
+    await fioPronto("Preciso do pedido");
+    fireEvent.change(compositor(), { target: { value: "Segue." } });
+    abrirAnexos();
+    expect(screen.getByLabelText("Escolher documento").hasAttribute("multiple")).toBe(true);
+    escolher("documento", arquivo("contrato.pdf", PDF, 2048), arquivo("dados.csv", "text/csv", 1024));
+    escolher("imagem", arquivo("foto.png", "image/png", 4096));
+    for (const nome of ["contrato.pdf", "dados.csv", "foto.png"]) expect(screen.getByText(nome)).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: /^Remover / })).toHaveLength(3);
+
+    // Tirar um e voltar a pôr: a lista é editável antes do envio.
+    fireEvent.click(screen.getByRole("button", { name: "Remover dados.csv" }));
+    expect(screen.queryByText("dados.csv")).toBeNull();
+    escolher("documento", arquivo("dados.csv", "text/csv", 1024));
+    await confirmarEnvio();
+
+    await waitFor(() => expect(gravacoes().map((g) => g.caminho)).toEqual(["/mensagens/anexos", "/mensagens/anexos", "/mensagens/anexos", "/mensagens"]));
+    expect(enviarBytes).toHaveBeenCalledTimes(3);
+    expect(enviarBytes.mock.calls.map((c) => c[0])).toEqual(["https://armazem.test/upload/obj_1", "https://armazem.test/upload/obj_2", "https://armazem.test/upload/obj_3"]);
+    expect(gravacoes().slice(0, 3).map((g) => (g.corpo as { nome: string }).nome)).toEqual(["contrato.pdf", "foto.png", "dados.csv"]);
+    expect(gravacoes()[3]?.corpo).toMatchObject({
+      conversaId: "cnv_mail",
+      conteudo: "Segue.",
+      anexos: [
+        { submissionId: "sub_1", objectId: "obj_1" },
+        { submissionId: "sub_2", objectId: "obj_2" },
+        { submissionId: "sub_3", objectId: "obj_3" },
+      ],
+    });
+    await waitFor(() => expect(screen.queryByText("contrato.pdf")).toBeNull());
+  });
+
+  it("(49) arquivos que somam 21 MB: a frase do teto aparece e nenhum pedido sai; o que cabe continua escolhido", async () => {
+    montar({ conversaId: "cnv_mail" });
+    await fioPronto("Preciso do pedido");
+    abrirAnexos();
+    escolher("documento", arquivo("a.pdf", PDF, 11 * MB), arquivo("b.pdf", PDF, 10 * MB));
+    expect(screen.getByRole("alert").textContent).toContain(FRASE_20_MB);
+    expect(screen.getByText("a.pdf")).toBeTruthy();
+    expect(screen.queryByText("b.pdf")).toBeNull();
+    expect(gravacoes()).toEqual([]);
+    expect(enviarBytes).not.toHaveBeenCalled();
+  });
+
+  it("(50) o 11º arquivo: “Um e-mail leva até 10 arquivos.”", async () => {
+    montar({ conversaId: "cnv_mail" });
+    await fioPronto("Preciso do pedido");
+    abrirAnexos();
+    escolher("documento", ...Array.from({ length: 10 }, (_, i) => arquivo(`doc${i + 1}.pdf`, PDF, 1024)));
+    expect(screen.getAllByRole("button", { name: /^Remover / })).toHaveLength(10);
+    escolher("documento", arquivo("doc11.pdf", PDF, 1024));
+    expect(screen.getByRole("alert").textContent).toContain("Um e-mail leva até 10 arquivos.");
+    expect(screen.queryByText("doc11.pdf")).toBeNull();
+    expect(gravacoes()).toEqual([]);
+  });
+
+  it("(51) falha no bucket no segundo arquivo: nada é gravado, a lista inteira continua para tentar de novo e o envio seguinte sobe tudo", async () => {
+    let chamadas = 0;
+    enviarBytes.mockImplementation(async () => {
+      chamadas += 1;
+      return chamadas !== 2;
+    });
+    montar({ conversaId: "cnv_mail" });
+    await fioPronto("Preciso do pedido");
+    fireEvent.change(compositor(), { target: { value: "Segue." } });
+    abrirAnexos();
+    escolher("documento", arquivo("a.pdf", PDF, 1024), arquivo("b.pdf", PDF, 1024), arquivo("c.pdf", PDF, 1024));
+    await confirmarEnvio();
+
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("O arquivo não chegou ao armazenamento."));
+    expect(gravacoes().map((g) => g.caminho)).not.toContain("/mensagens");
+    for (const nome of ["a.pdf", "b.pdf", "c.pdf"]) expect(screen.getByText(nome)).toBeTruthy();
+
+    await confirmarEnvio();
+    await waitFor(() => expect(gravacoes().map((g) => g.caminho)).toContain("/mensagens"));
+    expect(gravacoes().at(-1)?.corpo).toMatchObject({ anexos: [{ objectId: expect.any(String) }, { objectId: expect.any(String) }, { objectId: expect.any(String) }] });
+  });
+
+  it("(52) 20 MB exatos passam; um byte a mais já é recusado, sem nenhum pedido à api", async () => {
+    montar({ conversaId: "cnv_mail" });
+    await fioPronto("Preciso do pedido");
+    abrirAnexos();
+    escolher("documento", arquivo("a.pdf", PDF, 10 * MB), arquivo("b.pdf", PDF, 10 * MB));
+    expect(screen.queryByRole("alert")).toBeNull();
+    // 20 MB exatos passam; um byte a mais não.
+    escolher("documento", arquivo("c.pdf", PDF, 1));
+    expect(screen.getByRole("alert").textContent).toContain(FRASE_20_MB);
+    expect(gravacoes()).toEqual([]);
+  });
+
+  it("(53) WhatsApp: o seletor continua com um arquivo (sem `multiple`) e o segundo substitui o primeiro", async () => {
+    identificadoresDaApi = [identificador("whatsapp")];
+    conversasDaApi = [novaConversa("cnv_suporte", "chn_suporte", { ultimaRecebidaEm: "2026-10-11T09:00:00.000Z" })];
+    mensagensDaApi = { cnv_suporte: [novaMensagem("cnv_suporte", "chn_suporte", 1, "recebida", "2026-10-11T09:00:00.000Z")] };
+    montar({ conversaId: "cnv_suporte" });
+    await fioPronto("cnv_suporte mensagem");
+    abrirAnexos();
+    expect(screen.getByLabelText("Escolher imagem").hasAttribute("multiple")).toBe(false);
+    escolher("imagem", arquivo("um.png", "image/png", 1024));
+    escolher("imagem", arquivo("dois.png", "image/png", 1024));
+    expect(screen.queryByText("um.png")).toBeNull();
+    expect(screen.getByText("dois.png")).toBeTruthy();
+    // No WhatsApp o botão segue chamado só “Remover” (o fluxo de hoje não muda).
+    expect(screen.getByRole("button", { name: "Remover" })).toBeTruthy();
+  });
+});
