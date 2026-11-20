@@ -1501,3 +1501,102 @@ describe("ConversationThread — Mensagem de modelo no WhatsApp oficial (7.3.5)"
     expect(pediuModelosDoSuporte).toBe(false);
   });
 });
+
+describe("ConversationThread — o e-mail leva assunto, cópia e cópia oculta ao servidor (17-15, D-17-19)", () => {
+  const confirmarEnvio = async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
+    const dialogo = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Enviar" }));
+  };
+
+  beforeEach(() => {
+    // Só o e-mail alcança este Contato: o fio abre direto na Conversa de e-mail.
+    identificadoresDaApi = [identificador("email")];
+    conversasDaApi = [novaConversa("cnv_mail", "chn_mail", { ultimaRecebidaEm: "2026-10-11T09:00:00.000Z" })];
+    mensagensDaApi = {
+      cnv_mail: [
+        { ...novaMensagem("cnv_mail", "chn_mail", 1, "recebida", "2026-10-11T09:00:00.000Z", "Preciso do pedido."), assunto: "Pedido 42" },
+      ],
+    };
+  });
+
+  it("(43) mostra Assunto já preenchido com “Re: Pedido 42”, Para, Cópia e Cópia oculta", async () => {
+    montar({ conversaId: "cnv_mail" });
+    await fioPronto("Preciso do pedido");
+    expect((screen.getByLabelText("Assunto") as HTMLInputElement).value).toBe("Re: Pedido 42");
+    for (const nome of ["Para", "Cópia", "Cópia oculta"]) expect(screen.getByLabelText(nome)).toBeTruthy();
+  });
+
+  it("(44) o envio leva assunto e enderecosAdicionais ao POST /mensagens; o sucesso limpa texto e cópias e mantém o assunto", async () => {
+    montar({ conversaId: "cnv_mail" });
+    await fioPronto("Preciso do pedido");
+    fireEvent.change(compositor(), { target: { value: "Segue." } });
+    fireEvent.change(screen.getByLabelText("Cópia"), { target: { value: "socio@empresa.com" } });
+    fireEvent.change(screen.getByLabelText("Cópia oculta"), { target: { value: "diretoria@empresa.com" } });
+    await confirmarEnvio();
+
+    await waitFor(() => expect(gravacoes().map((g) => g.caminho)).toEqual(["/mensagens"]));
+    expect(gravacoes()[0]?.corpo).toEqual({
+      conversaId: "cnv_mail",
+      direcao: "enviada",
+      conteudo: "Segue.",
+      assunto: "Re: Pedido 42",
+      enderecosAdicionais: [
+        { tipo: "copia", endereco: "socio@empresa.com" },
+        { tipo: "copiaOculta", endereco: "diretoria@empresa.com" },
+      ],
+    });
+    await waitFor(() => expect((compositor() as HTMLTextAreaElement).value).toBe(""));
+    expect((screen.getByLabelText("Cópia") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Cópia oculta") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Assunto") as HTMLInputElement).value).toBe("Re: Pedido 42");
+  });
+
+  it("(45) cada campo aceita vários endereços separados por vírgula ou ponto e vírgula, e o assunto editado é o que sai", async () => {
+    montar({ conversaId: "cnv_mail" });
+    await fioPronto("Preciso do pedido");
+    fireEvent.change(compositor(), { target: { value: "Segue." } });
+    fireEvent.change(screen.getByLabelText("Assunto"), { target: { value: "Outro assunto" } });
+    fireEvent.change(screen.getByLabelText("Para"), { target: { value: "a@empresa.com; b@empresa.com" } });
+    fireEvent.change(screen.getByLabelText("Cópia"), { target: { value: "C@Empresa.com, d@empresa.com," } });
+    await confirmarEnvio();
+
+    await waitFor(() => expect(gravacoes()).toHaveLength(1));
+    expect(gravacoes()[0]?.corpo).toMatchObject({
+      assunto: "Outro assunto",
+      enderecosAdicionais: [
+        { tipo: "para", endereco: "a@empresa.com" },
+        { tipo: "para", endereco: "b@empresa.com" },
+        { tipo: "copia", endereco: "c@empresa.com" },
+        { tipo: "copia", endereco: "d@empresa.com" },
+      ],
+    });
+  });
+
+  it("(46) endereço inválido em Cópia: “Confira o endereço: x@” ao lado do campo e nada é enviado", async () => {
+    montar({ conversaId: "cnv_mail" });
+    await fioPronto("Preciso do pedido");
+    fireEvent.change(compositor(), { target: { value: "Segue." } });
+    fireEvent.change(screen.getByLabelText("Cópia"), { target: { value: "socio@empresa.com, x@" } });
+    fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
+
+    await waitFor(() => expect(screen.getByText("Confira o endereço: x@")).toBeTruthy());
+    expect(screen.getByLabelText("Cópia").getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(gravacoes()).toEqual([]);
+    // Corrigir o campo tira o aviso e libera o envio.
+    fireEvent.change(screen.getByLabelText("Cópia"), { target: { value: "socio@empresa.com" } });
+    expect(screen.queryByText("Confira o endereço: x@")).toBeNull();
+    await confirmarEnvio();
+    await waitFor(() => expect(gravacoes()).toHaveLength(1));
+  });
+
+  it("(47) no WhatsApp nenhum dos quatro campos aparece", async () => {
+    identificadoresDaApi = [identificador("whatsapp")];
+    conversasDaApi = [novaConversa("cnv_suporte", "chn_suporte", { ultimaRecebidaEm: "2026-10-11T09:00:00.000Z" })];
+    mensagensDaApi = { cnv_suporte: [novaMensagem("cnv_suporte", "chn_suporte", 1, "recebida", "2026-10-11T09:00:00.000Z")] };
+    montar({ conversaId: "cnv_suporte" });
+    await fioPronto("cnv_suporte mensagem");
+    for (const nome of ["Assunto", "Para", "Cópia", "Cópia oculta"]) expect(screen.queryByLabelText(nome)).toBeNull();
+  });
+});
