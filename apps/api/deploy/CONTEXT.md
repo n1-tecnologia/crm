@@ -52,7 +52,7 @@ sem valor em várias linhas (é o `carregarEnv()` que lê). Dono `n1crm`, modo 6
 **Não vão nele** — o serviço já define, e o que o serviço define vence o
 arquivo: `HOST`, `PORT`, `TRUST_PROXY`, `TZ`, os três workers
 (`AGENTE_CONTAS_A_PAGAR_ATIVO`, `OUTBOX_WORKER_ATIVO`, `AUTOMACOES_WORKER_ATIVO`) e os
-dois da mensageria (`MENSAGERIA_WORKER_ATIVO`, `COLETA_DE_ORFAOS_ATIVA`).
+três da mensageria (`MENSAGERIA_WORKER_ATIVO`, `COLETA_DE_ORFAOS_ATIVA` e, desde a Fase 17, `EMAIL_LEITOR_ATIVO`).
 
 **Muda em relação ao do notebook:**
 
@@ -78,6 +78,7 @@ Mudou o arquivo? Reinicie (como root): `systemctl restart n1-crm-api`.
 | Voltar uma versão | `ln -sfn /opt/n1-crm/releases/<sha> /opt/n1-crm/current && systemctl restart n1-crm-api` |
 | Ligar os workers | `systemctl edit n1-crm-api` → `[Service]` + `Environment=OUTBOX_WORKER_ATIVO=true` (e desligar no notebook: dois processando o mesmo outbox duplicam envio) |
 | Ligar a mensageria | drop-in `mensageria.conf`, como root, só do dono: ver "Mensageria (Fase 16)", abaixo |
+| Ligar o leitor de e-mail | drop-in `email.conf`, como root, só do dono, DEPOIS da mensageria: ver "E-mail (Fase 17)", abaixo |
 | Reiniciar | `systemctl restart n1-crm-api`: a api sai sozinha, em menos de 20 s, e o `journalctl` mostra as linhas `encerramento: …` (ver "O desligamento", abaixo) |
 
 **O desligamento (Fase 16, 16-18, T-16-28).** O SIGTERM do `systemctl restart`/`stop` (e o SIGINT) roda um tratador
@@ -517,6 +518,72 @@ integração inteira (o Canal oficial fica sem provedor, e nada é dado como env
 a lista de modelos (cinco modelos, três enviáveis; componentes BODY, HEADER texto e imagem, FOOTER, BUTTONS e um CAROUSEL).
 **Ainda não provado com a Meta real:** o envio e os códigos de erro dele, o webhook (nenhum chegou ainda), o download de mídia com o
 token, o aviso `message_template_status_update` e a paginação dos modelos (a conta de teste cabe numa página). Modelos com cabeçalho de mídia ou variável em botão aparecem na lista mas o CRM ainda não os envia.
+
+## E-mail (Fase 17)
+
+O `apps/api` ganha o quarto provedor real da mensageria: ele **lê** a caixa por IMAP e **envia** por SMTP (ver
+`src/mensageria/provedores/email/CONTEXT.md`). **Nada disso lê uma caixa sozinho em produção:** a unidade
+`n1-crm-api.service` fixa `EMAIL_LEITOR_ATIVO=false`, e a `017` só entra quando o dono publica. Conectar uma caixa e enviar
+já funcionam sem a flag; sem ela, **nada entra por e-mail**.
+
+**As variáveis** (só os NOMES aqui; os valores ficam no `api.env` do servidor, modo 600, e nunca vão por conversa, e-mail nem captura de tela):
+
+| Variável | Para quê |
+|---|---|
+| `EMAIL_LEITOR_ATIVO` | `true` liga o leitor (uma sessão IMAP em IDLE por Canal conectado). Fixada em `false` na unidade; ligar é o drop-in `email.conf`. Só tem efeito junto com `MENSAGERIA_WORKER_ATIVO=true`: sem o processador de entrada a fila só enche, e o `index.ts` avisa o motivo no log |
+| `EMAIL_OAUTH_REDIRECT_URI` | a URI de retorno do login: `https://<web>/crm/caixa-de-entrada/configuracoes/canais/email/retorno`. Tem de ser IGUAL, letra por letra, à cadastrada no Google e na Microsoft (a api só aceita a desta variável). Sem ela, nenhum botão de login aparece (a conexão por senha de app segue valendo) |
+| `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | o par do cliente OAuth do Google (aplicativo da Web). Sem o par completo, o botão "Entrar com o Google" não aparece |
+| `MICROSOFT_OAUTH_CLIENT_ID`, `MICROSOFT_OAUTH_CLIENT_SECRET` | o par do registro de aplicativo da Microsoft. Sem o par completo, o botão "Entrar com a Microsoft" não aparece |
+
+A senha de cada caixa NÃO vai ao `api.env`: entra pelo formulário da ficha do Canal e fica cifrada no cofre (`COFRE_CHAVE`
+é exigida para conectar e para o provedor existir). O mesmo vale para o token de renovação do login.
+
+**Nos painéis (só o dono).** Google Cloud Console: tela de consentimento externa com o escopo `https://mail.google.com/`,
+os usuários de teste e a URI de retorno igual a `EMAIL_OAUTH_REDIRECT_URI`; **em modo de teste a conexão cai a cada 7
+dias** até o Google verificar o app (escopo restrito), e a ficha mostra a queda com o motivo. Microsoft Entra: permissões
+delegadas `IMAP.AccessAsUser.All`, `SMTP.Send` e `offline_access` do recurso Office 365 Exchange Online, e a URI de retorno
+da Web igual a `EMAIL_OAUTH_REDIRECT_URI`.
+
+**Publicar a `017` (só o dono, com backup antes).** A `017` cria `plataforma.email_contas`, `plataforma.cursores_de_canal` e a
+coluna `plataforma.mensagens.corpo_html`; é aditiva e, depois de aplicada, imutável (voltar seria uma `018`).
+
+1. Backup manual do schema `plataforma` (`pg_dump -Fc --schema=plataforma --no-owner --no-acl`), restaurado num Postgres
+   descartável para conferir as contagens, como antes da `013`.
+2. `npm run migrar -w @n1/api -- --seco`: lista cada migração como `aplicada` ou `pendente` sem escrever nada. Só a `017`
+   deve aparecer `pendente`.
+3. `publicar.sh` (o `instalar-release.sh` roda `migrar` e `banco:conceder`). **Só o `publicar.sh` do dono aplica a `017`
+   em produção.**
+
+**Ligar o leitor (só o dono, como root, na VPS), nesta ordem.** O drop-in não mexe no arquivo da unidade, então um
+`publicar.sh` depois não o desfaz:
+
+```bash
+# 1. a mensageria precisa estar ligada ANTES (mensageria.conf, ver "Mensageria (Fase 16)")
+# 2. o leitor de e-mail
+install -d /etc/systemd/system/n1-crm-api.service.d
+printf '[Service]\nEnvironment=EMAIL_LEITOR_ATIVO=true\n' > /etc/systemd/system/n1-crm-api.service.d/email.conf
+systemctl daemon-reload && systemctl restart n1-crm-api
+journalctl -u n1-crm-api -n 30   # esperado: "leitor de e-mail ativo"; sem MENSAGERIA_WORKER_ATIVO, um aviso diz o motivo
+```
+
+Para desligar, troque para `false` (ou apague o arquivo) e `systemctl restart n1-crm-api`.
+
+**O orçamento de conexões.** Cada processo da api usa **10 do pool + 1 do ouvinte do tempo real + 1 do leitor de e-mail**
+(a conexão dedicada que guarda a trava consultiva de cada Canal, fora do pool). Confira o limite do pooler do Supabase
+antes de ligar. As sessões IMAP dos Canais são conexões de saída para o provedor da caixa, não do banco.
+
+**O bucket e o HTML.** O corpo HTML de um e-mail recebido sobe ao bucket como objeto `text/html`. Antes de ligar o leitor,
+como `n1crm`: `cd /opt/n1-crm/current && npm run storage:conferir -w @n1/api` diz se o bucket aceita o tipo. Se recusar, a
+Mensagem entra só com o texto (o HTML não é guardado).
+
+**A rede de saída.** A api só abre conexão de e-mail para as portas IMAP 993 e 143 e SMTP 465 e 587, e recusa qualquer
+endereço interno, de nuvem ou de metadados (a lista está em `rede.ts`, `REDES_IPV4` e `REDES_IPV6`). Uma hospedagem de
+e-mail cujo servidor resolva para um endereço dessas faixas é recusada.
+
+**A confirmar na prova real (sem data):** a revogação do token da Microsoft ao desconectar (A9: a Microsoft não tem endpoint
+de revogação, o token fica só apagado do nosso lado); se o SMTP do Microsoft 365 com senha ainda é aceito (A11: há uma
+retirada anunciada do login básico, sem data confirmada aqui); a autoridade `common` do login da Microsoft para contas
+pessoais e de trabalho (A12). O roteiro é o `17-PROVA-REAL.md` da fase.
 
 ## Por que assim
 

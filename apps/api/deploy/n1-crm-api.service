@@ -41,6 +41,12 @@ Environment=AUTOMACOES_WORKER_ATIVO=false
 # passa a responder 503 e a tela relê a cada 5 s).
 Environment=MENSAGERIA_WORKER_ATIVO=false
 Environment=COLETA_DE_ORFAOS_ATIVA=false
+# E-mail (Fase 17): EMAIL_LEITOR_ATIVO liga o leitor das caixas de e-mail, que soma UMA conexão
+# fixa ao banco por processo, fora do pool de 10 (10 + 1 do ouvinte + 1 do leitor). Só liga com
+# MENSAGERIA_WORKER_ATIVO=true (o leitor grava na fila que o processador de entrada esvazia).
+# Nasce desligada: ligar é um drop-in como root, só do dono (`email.conf`, ver
+# apps/api/deploy/CONTEXT.md, seção "E-mail (Fase 17)").
+Environment=EMAIL_LEITOR_ATIVO=false
 
 Restart=always
 RestartSec=5
