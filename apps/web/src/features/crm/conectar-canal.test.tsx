@@ -225,12 +225,17 @@ describe("08-08 — a página de orientação do provedor (D-07, D-08)", () => {
     expect(router.push).toHaveBeenCalledWith(`${DESTINO}/canais/${ID_DO_CANAL}?conectar=1`);
   });
 
-  it("o e-mail segue como estava: a pílula antiga e a ficha aberta sem `?conectar=1`", async () => {
+  it("Fase 17: o e-mail conecta pela ficha: a pílula nova, os três caminhos descritos e a ficha aberta sem `?conectar=1`", async () => {
     const pagina = await ConectarProvedorPage({ params: Promise.resolve({ provedor: "email-imap-smtp" }) });
     render(provedores(pagina));
 
-    expect(screen.getByText("disponível quando a integração chegar")).toBeTruthy();
-    expect(screen.queryByText("na ficha do Canal, depois de criar")).toBeNull();
+    expect(screen.getByText("na ficha do Canal, depois de criar")).toBeTruthy();
+    expect(screen.queryByText("disponível quando a integração chegar")).toBeNull();
+    const orientacao = ORIENTACAO_DO_PROVEDOR["email-imap-smtp"];
+    expect(screen.getByText(orientacao.espacoReservado.texto)).toBeTruthy();
+    expect(orientacao.espacoReservado.texto).toMatch(/Entrar com o Google.*Entrar com a Microsoft.*Outro servidor/);
+    // Nenhum campo de servidor ou senha nesta página (D-03): quem pede é a ficha do Canal.
+    expect(screen.queryByLabelText(/^Senha/)).toBeNull();
 
     fireEvent.change(screen.getByLabelText(/^Nome/), { target: { value: "Suporte" } });
     fireEvent.change(screen.getByLabelText(/^Endereço de e-mail/), { target: { value: "suporte@exemplo.com.br" } });

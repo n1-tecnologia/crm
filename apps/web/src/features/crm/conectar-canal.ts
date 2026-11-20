@@ -7,7 +7,8 @@
  * O layout fica; o conteúdo do `espacoReservado` troca quando a integração com
  * o provedor chegar. Credenciais não são pedidas AQUI (D-03): nada neste arquivo
  * vira campo de formulário. O token do WhatsApp oficial (Sessão 7) é pedido na
- * ficha do Canal, depois de criá-lo (`PainelDoTokenDoWhatsApp`).
+ * ficha do Canal, depois de criá-lo (`PainelDoTokenDoWhatsApp`); a caixa de e-mail
+ * (Fase 17) também: a ficha abre `PainelDoEmail`, com os três caminhos de entrada.
  */
 
 import type { ProvedorDeCanal } from "@n1/dominio/types/crm";
@@ -59,13 +60,14 @@ export const ORIENTACAO_DO_PROVEDOR: Readonly<Record<ProvedorDeCanal, Orientacao
   "email-imap-smtp": {
     quandoUsar: "Para receber e responder e-mails de uma caixa que já existe, com assunto e cópias.",
     passos: [
-      "Tenha o endereço e a senha (ou senha de aplicativo) da caixa de e-mail.",
-      "Anote o servidor de entrada IMAP: endereço, porta e segurança (SSL/TLS).",
-      "Anote o servidor de saída SMTP: endereço, porta e segurança.",
+      "Crie o Canal aqui com o endereço da caixa. Depois, na ficha do Canal, use “Conectar”.",
+      "Escolha como entrar: “Entrar com o Google”, “Entrar com a Microsoft” (quando o servidor oferece) ou “Outro servidor”.",
+      "Em “Outro servidor”, use o usuário e a senha da caixa (no Gmail, uma senha de app). Para um domínio próprio, tenha à mão o servidor IMAP (porta 993 ou 143) e o SMTP (porta 465 ou 587).",
     ],
     espacoReservado: {
-      titulo: "Servidores IMAP e SMTP",
-      texto: "Os dados dos servidores de entrada e saída são pedidos aqui quando a integração chegar.",
+      titulo: "Entrar na caixa",
+      texto:
+        "Depois de criar o Canal, a ficha dele tem o botão “Conectar”, com três caminhos: “Entrar com o Google”, “Entrar com a Microsoft” e “Outro servidor”. A senha fica cifrada no servidor e não volta à tela.",
     },
   },
 };

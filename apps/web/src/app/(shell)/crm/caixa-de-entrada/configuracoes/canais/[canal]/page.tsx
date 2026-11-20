@@ -47,6 +47,9 @@
  * painel do token (`PainelDoTokenDoWhatsApp`), onde se cola o ID do número, o ID da conta do WhatsApp Business e o token do
  * usuário do sistema da Meta; a api confere o número, guarda o token cifrado e conecta o Canal. Conectado, a ficha mostra o
  * número e a conta lidos da api (`useNumeroDoWhatsAppOficial`): o token nunca volta. Desconectar apaga o token guardado.
+ * Fase 17 — o e-mail conecta DE VERDADE pela ficha: "Conectar" abre o painel do e-mail (`PainelDoEmail`), com "Entrar com o Google",
+ * "Entrar com a Microsoft" (só quando o servidor oferece) e "Outro servidor" (usuário e senha ou senha de app). Conectado, a ficha
+ * mostra o endereço e o jeito de entrar; caído, o motivo da queda e "Entrar de novo" (`ContaDoEmailNaFicha`). A senha nunca volta.
  * A seção "Mensagens de modelo" lista os modelos que a Meta aprovou para o Canal (`useModelosDoCanal`), com o estado, o motivo
  * da rejeição e o que o CRM ainda não envia; "Sincronizar com a Meta" (só para quem pode conectar o Canal) relê a lista.
  */
@@ -62,6 +65,7 @@ import {
   editarCanal,
   simularConexaoDoCanal,
   useCanal,
+  useContaDoEmail,
   useContaDoInstagram,
   useNumeroDoWhatsAppOficial,
 } from "@/dados/crm/canais";
@@ -74,6 +78,7 @@ import { capacidadesDoCanal, type ForaDaJanela } from "@n1/dominio/crm/capacidad
 import type { EstadoDeModelo, ModeloNaLista } from "@n1/dominio/crm/modelos";
 import { PROVEDORES } from "@n1/dominio/provedores-de-canal";
 import { irParaForaDoApp } from "@/features/crm/ir-para-fora";
+import { ContaDoEmailNaFicha, PainelDoEmail } from "@/features/crm/painel-do-email";
 import { PainelDoQrCode } from "@/features/crm/painel-do-qrcode";
 import { PainelDoTokenDoWhatsApp } from "@/features/crm/painel-do-token";
 import { MarcaDeConexaoSimulada, SeloDeOrigem, SeloDoProvedor } from "@/features/crm/selo-do-provedor";
@@ -154,6 +159,7 @@ function FichaDoCanal({ channel }: { readonly channel: CanalNaFicha }) {
   const [arquivando, setArquivando] = useState(false);
   const [qrAberto, setQrAberto] = useState(false);
   const [tokenAberto, setTokenAberto] = useState(false);
+  const [emailAberto, setEmailAberto] = useState(false);
   const recusaDeEditar = usePodeNoCrm("editar", "canal");
   const recusaDeSimular = usePodeNoCrm("simular_conexao", "canal");
   const recusaDeConectar = usePodeNoCrm("conectar", "canal");
@@ -177,6 +183,18 @@ function FichaDoCanal({ channel }: { readonly channel: CanalNaFicha }) {
   const aoConectarPorToken = useCallback(() => {
     void rehidratar();
     setAviso({ texto: "WhatsApp oficial conectado.", erro: false });
+  }, [rehidratar]);
+  // Fase 17: o e-mail conecta pelo painel dos três caminhos. Com a caixa caída (a conta segue guardada), a linha da conta já
+  // oferece "Entrar de novo": o "Conectar" do topo não repete o botão.
+  const ehEmail = channel.provedor === "email-imap-smtp";
+  const contaDoEmail = useContaDoEmail(channel.id, { pausado: !ehEmail });
+  const emailCaido = ehEmail && channel.conexao !== "conectada" && (contaDoEmail.data?.conta ?? null) !== null;
+  const conectaPorEmail = ehEmail && channel.estado === "ativo" && !conectadoDeVerdade && recusaDeConectar === undefined;
+  const abrirEmail = useCallback(() => setEmailAberto(true), []);
+  const fecharEmail = useCallback(() => setEmailAberto(false), []);
+  const aoConectarPorEmail = useCallback(() => {
+    void rehidratar();
+    setAviso({ texto: "Caixa de e-mail conectada.", erro: false });
   }, [rehidratar]);
   // O número é o `total` da api; a página (limite 20) só existe para a conta ser barata.
   const conversas = useConversas({ canalId: channel.id, limite: 20 });
@@ -313,6 +331,9 @@ function FichaDoCanal({ channel }: { readonly channel: CanalNaFicha }) {
                   <span className="identificador">{channel.identificadorExterno}</span>
                 </RecordRow>
                 {ehWhatsAppOficial && conectadoDeVerdade ? <NumeroDoWhatsAppOficial canalId={channel.id} /> : null}
+                {ehEmail ? (
+                  <ContaDoEmailNaFicha canal={channel} {...(conectaPorEmail ? { onEntrarDeNovo: abrirEmail } : {})} />
+                ) : null}
                 {ehInstagram && conectadoDeVerdade ? (
                   <RecordRow label="Conectado como">
                     <ContaConectadaDoInstagram canalId={channel.id} usuarioDoCanal={channel.identificadorExterno} />
@@ -379,10 +400,15 @@ function FichaDoCanal({ channel }: { readonly channel: CanalNaFicha }) {
                       {channel.conexao === "com_erro" ? "Reconectar" : "Conectar"}
                     </Button>
                   ) : null}
+                  {conectaPorEmail && !emailCaido ? (
+                    <Button variant="primary" onClick={abrirEmail}>
+                      Conectar
+                    </Button>
+                  ) : null}
                   {!ehInstagram && podeSimularConexao(channel) && recusaDeSimular === undefined ? (
                     <Button
                       // No WhatsApp a conexão de verdade é o QR code (não oficial) ou o token (oficial); simular fica como ação secundária (só onde o servidor permite).
-                      {...(conectaPorQr || conectaPorToken ? {} : { variant: "primary" as const })}
+                      {...(conectaPorQr || conectaPorToken || conectaPorEmail ? {} : { variant: "primary" as const })}
                       onClick={() => void executar(() => simularConexaoDoCanal(channel.id), "Conexão simulada.")}
                       carregando={ocupado}
                       disabledReason="Enviando…"
@@ -410,7 +436,9 @@ function FichaDoCanal({ channel }: { readonly channel: CanalNaFicha }) {
                     ? `O botão abre o login do Instagram: entre com a conta @${channel.identificadorExterno} e autorize o acesso às mensagens do Direct. Desconectar apaga a autorização guardada.`
                     : conectaPorQr
                       ? "O botão mostra um QR code: no celular do número do Canal, abra o WhatsApp › Aparelhos conectados › Conectar um aparelho e leia. Desconectar tira o aparelho da lista."
-                      : ehWhatsAppOficial
+                      : ehEmail
+                        ? "O botão abre os caminhos para entrar na caixa: com o Google, com a Microsoft (quando o servidor oferece) ou com outro servidor, usando o usuário e a senha (ou a senha de app). A senha fica cifrada no servidor e não volta à tela. Desconectar esquece a caixa e a autorização guardada."
+                        : ehWhatsAppOficial
                         ? "O botão pede o ID do número, o ID da conta do WhatsApp Business e o token do usuário do sistema da Meta. O token fica cifrado no servidor e não volta à tela. Desconectar apaga o token guardado."
                         : channel.ligadoAoProvedor
                         ? FRASE_DO_CANAL_REAL
@@ -473,6 +501,8 @@ function FichaDoCanal({ channel }: { readonly channel: CanalNaFicha }) {
       {qrAberto ? <PainelDoQrCode canal={channel} onFechar={fecharQrCode} onConectado={aoConectarPorQr} /> : null}
       {/* Idem: montado só enquanto aberto, e fechar apaga o que foi colado (o token não fica no estado). */}
       {tokenAberto ? <PainelDoTokenDoWhatsApp canal={channel} onFechar={fecharToken} onConectado={aoConectarPorToken} /> : null}
+      {/* Idem para o e-mail: fechar apaga a senha digitada. */}
+      {emailAberto ? <PainelDoEmail canal={channel} onFechar={fecharEmail} onConectado={aoConectarPorEmail} /> : null}
     </div>
   );
 }

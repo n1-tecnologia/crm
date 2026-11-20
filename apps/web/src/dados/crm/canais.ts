@@ -192,3 +192,70 @@ export function useContaDoInstagram(id: string, opcoes: { readonly pausado?: boo
     { shouldRetryOnError: valeRepetir, revalidateOnFocus: false },
   );
 }
+
+/** O servidor de e-mail como a api o guarda: só endereço e porta. */
+export interface ServidorDoEmail {
+  readonly host: string;
+  readonly porta: number;
+}
+
+/** O que a pessoa digita em "Outro servidor". A senha só passa por aqui: vai no corpo do `POST` e nunca para uma chave de SWR. */
+export interface EntradaDoEmailPorSenha {
+  readonly usuario: string;
+  readonly senha: string;
+  /** Só o NOME: quem escolhe host e porta é o servidor (D-17-07). Exclui `imap` e `smtp`. */
+  readonly predefinicao?: "gmail" | "outlook";
+  readonly imap?: ServidorDoEmail;
+  readonly smtp?: ServidorDoEmail;
+}
+
+/**
+ * Fase 17 (9.2.4): conecta o Canal de e-mail com usuário e senha (ou senha de app). A api confere o IMAP e o SMTP antes de
+ * gravar e devolve o Canal `conectada`. A senha NUNCA volta; uma recusa (422 `CONEXAO_RECUSADA`, com `campo` `imap` ou `smtp`)
+ * sobe como `ErroDeApi` e a tela segue como estava.
+ */
+export function conectarEmailPorSenha(id: string, entrada: EntradaDoEmailPorSenha): Promise<Canal> {
+  return gravar(`${chaveDoCanal(id)}/email/conectar`, "POST", entrada);
+}
+
+export type ServicoDeLoginDoEmail = "google" | "microsoft";
+
+/** A URL da janela de login do Google ou da Microsoft. Quem chama leva o navegador para lá; a volta cai em `canais/email/retorno`. */
+export async function autorizarEmail(id: string, servico: ServicoDeLoginDoEmail): Promise<string> {
+  const resposta = await chamarCrm<{ ok: true; dados: { url: string } }>(`${chaveDoCanal(id)}/email/oauth/${servico}/autorizar`, {
+    method: "POST",
+  });
+  return resposta.dados.url;
+}
+
+/** O código e o `state` que voltaram do login. A api troca, confere a caixa e conecta o Canal. Nada disso fica em chave de SWR. */
+export function concluirConexaoDoEmail(entrada: { readonly codigo: string; readonly state: string }): Promise<Canal> {
+  return gravar("/canais/email/oauth/concluir", "POST", entrada);
+}
+
+/** A conta de e-mail ligada ao Canal, sem segredo nenhum: é o que a ficha mostra. */
+export interface ContaDoEmail {
+  readonly endereco: string;
+  readonly tipoDeLogin: "senha" | "google" | "microsoft";
+  readonly imap: ServidorDoEmail;
+  readonly smtp: ServidorDoEmail;
+  readonly conectadaEm: string;
+  /** Preenchido quando a caixa caiu (a senha foi trocada, a autorização foi retirada): a frase pronta, para mostrar como texto. */
+  readonly motivoDaQueda: string | null;
+  readonly caiuEm: string | null;
+}
+
+export interface ContaDoEmailNaResposta {
+  readonly conta: ContaDoEmail | null;
+  /** Quais botões de login este servidor oferece: só aparecem os que estão configurados. */
+  readonly servicosDisponiveis: { readonly google: boolean; readonly microsoft: boolean };
+}
+
+/** Fase 17: a conta do Canal de e-mail e os serviços de login disponíveis. `pausado` não lê nada (Canal de outro provedor). */
+export function useContaDoEmail(id: string, opcoes: { readonly pausado?: boolean } = {}) {
+  return useSWR<ContaDoEmailNaResposta, Error>(
+    opcoes.pausado ? null : `${chaveDoCanal(id)}/email/conta`,
+    async (chave: string) => (await chamarCrm<{ ok: true; dados: ContaDoEmailNaResposta }>(chave)).dados,
+    { shouldRetryOnError: valeRepetir, revalidateOnFocus: false },
+  );
+}

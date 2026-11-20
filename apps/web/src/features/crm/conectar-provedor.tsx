@@ -33,8 +33,13 @@ import { Button, CorpoDeTela, Field, PageHeader, Painel, Pilula, Select, TextInp
 
 const DESTINO = "/crm/caixa-de-entrada/configuracoes";
 
-/** Os provedores que já falam com o mundo (Sessão 8, Sessão 4 e Sessão 7): o espaço reservado vira instrução. */
-const PROVEDORES_COM_INTEGRACAO: ReadonlySet<ProvedorDeCanal> = new Set<ProvedorDeCanal>(["instagram-graph", "whatsapp-nao-oficial", "whatsapp-cloud"]);
+/** Os provedores que já falam com o mundo (Sessão 8, Sessão 4, Sessão 7 e Fase 17): o espaço reservado vira instrução. */
+const PROVEDORES_COM_INTEGRACAO: ReadonlySet<ProvedorDeCanal> = new Set<ProvedorDeCanal>([
+  "instagram-graph",
+  "whatsapp-nao-oficial",
+  "whatsapp-cloud",
+  "email-imap-smtp",
+]);
 
 /** Os que abrem a ficha com o painel de conexão já aberto (`?conectar=1`): o QR code (Sessão 4) e o token (Sessão 7). */
 const ABRE_O_PAINEL_NA_FICHA: ReadonlySet<ProvedorDeCanal> = new Set<ProvedorDeCanal>(["whatsapp-nao-oficial", "whatsapp-cloud"]);

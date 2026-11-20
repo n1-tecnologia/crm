@@ -195,9 +195,9 @@ describe("08-09 — a ficha do Canal relacional", () => {
   });
 
   it("CR-01 (16-17): Canal ligado a um provedor e desconectado: sem Simular conexão, com a frase de como reconectar", async () => {
-    // O WhatsApp oficial (Sessão 7) e o não oficial (Sessão 4) ganharam o botão Conectar, e o Instagram tem o login dele: a frase
-    // do CR-01 segue sendo o caminho de reconectar dos provedores que ainda não conectam pela tela (o e-mail).
-    await montar("uuid-1", canalRelacional({ tipo: "email", provedor: "email-imap-smtp", ligadoAoProvedor: true, conexao: "desconectada" }));
+    // Os quatro provedores conectam pela tela (o e-mail, na Fase 17): a frase do CR-01 fica para o Canal já ligado que o botão
+    // Conectar do QR code não alcança (aqui, o não oficial conectado).
+    await montar("uuid-1", canalRelacional({ ligadoAoProvedor: true, conexao: "conectada" }));
 
     expect(await screen.findByRole("heading", { name: /Suporte do Zap/ })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Simular conexão" })).toBeNull();
@@ -396,7 +396,7 @@ describe("Sessão 4 — a ficha do WhatsApp não oficial conecta lendo um QR cod
     expect(screen.queryByRole("button", { name: "Conectar" })).toBeNull();
   });
 
-  it("outros provedores não ganham Conectar: o Instagram tem o login dele e o e-mail nem simulação em produção", async () => {
+  it("outros provedores não ganham o Conectar do QR code: o Instagram tem o login dele; o e-mail tem o painel dele (Fase 17), sem simulação em produção", async () => {
     await montar("uuid-1", semSimulacao({ tipo: "instagram", provedor: "instagram-graph", identificadorExterno: "loja.n1" }));
     expect(await screen.findByRole("button", { name: "Conectar com o Instagram" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Conectar" })).toBeNull();
@@ -404,7 +404,7 @@ describe("Sessão 4 — a ficha do WhatsApp não oficial conecta lendo um QR cod
 
     await montar("uuid-1", semSimulacao({ tipo: "email", provedor: "email-imap-smtp" }));
     expect(await screen.findByRole("heading", { name: /Suporte do Zap/ })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Conectar" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Conectar" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Simular conexão" })).toBeNull();
   });
 
@@ -697,5 +697,136 @@ describe("Sessão 7 — as Mensagens de modelo na ficha do WhatsApp oficial (7.3
     expect(screen.getByText("Este tipo de Canal não exige modelo para enviar.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Sincronizar com a Meta" })).toBeNull();
     expect(pedidosDeModelos()).toHaveLength(0);
+  });
+});
+
+describe("Fase 17 — a ficha do Canal de e-mail conecta a caixa e mostra a conta", () => {
+  const SENHA = "senha-de-teste-Zx9!";
+  const email = (sobre: Partial<CanalNaFicha> = {}) =>
+    canalRelacional({
+      tipo: "email",
+      provedor: "email-imap-smtp",
+      identificadorExterno: "vendas@empresa.com.br",
+      simulacaoPermitida: false,
+      ...sobre,
+    });
+  const SEM_CONTA = { ok: true, dados: { conta: null, servicosDisponiveis: { google: false, microsoft: false } } };
+  const contaDaCaixa = (sobre: Record<string, unknown> = {}) => ({
+    ok: true,
+    dados: {
+      conta: {
+        endereco: "vendas@empresa.com.br",
+        tipoDeLogin: "senha",
+        imap: { host: "imap.empresa.com.br", porta: 993 },
+        smtp: { host: "smtp.empresa.com.br", porta: 465 },
+        conectadaEm: "2026-11-18T10:00:00.000Z",
+        motivoDaQueda: null,
+        caiuEm: null,
+        ...sobre,
+      },
+      servicosDisponiveis: { google: false, microsoft: false },
+    },
+  });
+  const posts = (caminho: string) => chamadasRest().filter(([url, init]) => url === `http://api${caminho}` && init?.method === "POST");
+
+  it("Conectar abre o painel do e-mail; 'Outro servidor' com a senha certa conecta, fecha, re-hidrata e avisa", async () => {
+    rotas["GET /canais/uuid-1/email/conta"] = () => resposta(200, SEM_CONTA);
+    rotas["POST /canais/uuid-1/email/conectar"] = () => resposta(200, { ok: true, dados: email({ conexao: "conectada", ligadoAoProvedor: true }) });
+    await montar("uuid-1", email());
+
+    fireEvent.click(await screen.findByRole("button", { name: "Conectar" }));
+    const dialogo = await screen.findByRole("alertdialog");
+    expect(within(dialogo).getByText("Conectar a caixa de e-mail")).toBeTruthy();
+    // O QR code e o token não são deste Canal; sem Google e Microsoft no servidor, só "Outro servidor".
+    expect(within(dialogo).queryByRole("button", { name: "Entrar com o Google" })).toBeNull();
+    expect(posts("/canais/uuid-1/email/conectar")).toHaveLength(0);
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Outro servidor" }));
+
+    fireEvent.change(within(dialogo).getByLabelText(/^Senha ou senha de app/), { target: { value: SENHA } });
+    fireEvent.change(within(dialogo).getByLabelText(/^Servidor IMAP/), { target: { value: "imap.empresa.com.br" } });
+    fireEvent.change(within(dialogo).getByLabelText(/^Servidor SMTP/), { target: { value: "smtp.empresa.com.br" } });
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Conectar" }));
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    const enviados = posts("/canais/uuid-1/email/conectar");
+    expect(enviados).toHaveLength(1);
+    expect(JSON.parse(enviados[0]![1]!.body as string)).toEqual({
+      usuario: "vendas@empresa.com.br",
+      senha: SENHA,
+      imap: { host: "imap.empresa.com.br", porta: 993 },
+      smtp: { host: "smtp.empresa.com.br", porta: 465 },
+    });
+    expect(await screen.findByText("Caixa de e-mail conectada.")).toBeTruthy();
+    expect(hidratar).toHaveBeenCalled();
+    expect(chamadasRest().some(([url]) => String(url).includes(SENHA))).toBe(false);
+  });
+
+  it("Membro não vê Conectar (a tela só esconde; quem barra é o servidor)", async () => {
+    rotas["GET /canais/uuid-1/email/conta"] = () => resposta(200, SEM_CONTA);
+    await montar("uuid-1", email(), "mem_julia");
+    expect(await screen.findByRole("heading", { name: /Suporte do Zap/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Conectar" })).toBeNull();
+  });
+
+  it("o texto da ficha explica os caminhos e a senha, sem a frase antiga do 'quando a integração chegar'", async () => {
+    rotas["GET /canais/uuid-1/email/conta"] = () => resposta(200, SEM_CONTA);
+    await montar("uuid-1", email());
+    expect(await screen.findByText(/O botão abre os caminhos para entrar na caixa/)).toBeTruthy();
+    expect(screen.queryByText(FRASE_DO_CANAL_REAL)).toBeNull();
+  });
+
+  it("conectada com senha: 'Conectada: endereço (senha)' e os servidores; nenhum campo de senha nem de usuário", async () => {
+    rotas["GET /canais/uuid-1/email/conta"] = () => resposta(200, contaDaCaixa());
+    await montar("uuid-1", email({ conexao: "conectada", ligadoAoProvedor: true }));
+
+    const linha = await screen.findByText(/^Conectada:/);
+    expect(linha.textContent).toBe("Conectada: vendas@empresa.com.br (senha)");
+    expect(screen.getByText("imap.empresa.com.br:993")).toBeTruthy();
+    expect(screen.getByText("smtp.empresa.com.br:465")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Conectar" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Entrar de novo" })).toBeNull();
+    expect(document.querySelector("input[type=password]")).toBeNull();
+    expect(screen.queryByLabelText(/^Usuário/)).toBeNull();
+  });
+
+  it("conectada pelo Google e pela Microsoft: o jeito de entrar aparece", async () => {
+    rotas["GET /canais/uuid-1/email/conta"] = () => resposta(200, contaDaCaixa({ tipoDeLogin: "microsoft" }));
+    await montar("uuid-1", email({ conexao: "conectada", ligadoAoProvedor: true }));
+    expect((await screen.findByText(/^Conectada:/)).textContent).toBe("Conectada: vendas@empresa.com.br (Microsoft)");
+    cleanup();
+
+    rotas["GET /canais/uuid-1/email/conta"] = () => resposta(200, contaDaCaixa({ tipoDeLogin: "google" }));
+    await montar("uuid-1", email({ conexao: "conectada", ligadoAoProvedor: true }));
+    expect((await screen.findByText(/^Conectada:/)).textContent).toBe("Conectada: vendas@empresa.com.br (Google)");
+  });
+
+  it("caída: 'Desconectada' com o motivo como TEXTO e 'Entrar de novo', que abre o painel; não repete o Conectar do topo", async () => {
+    const motivo = "O servidor IMAP recusou o usuário ou a senha: conecte a caixa de novo. <b>x</b>";
+    rotas["GET /canais/uuid-1/email/conta"] = () =>
+      resposta(200, contaDaCaixa({ motivoDaQueda: motivo, caiuEm: "2026-11-18T12:00:00.000Z" }));
+    await montar("uuid-1", email({ conexao: "desconectada", ligadoAoProvedor: true }));
+
+    expect(await screen.findByText(motivo)).toBeTruthy();
+    // O HTML do motivo é texto: nenhum elemento `b` nasce.
+    expect(document.querySelector("b")).toBeNull();
+    expect(screen.getByText("Desconectada")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Conectar" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Entrar de novo" }));
+    const dialogo = await screen.findByRole("alertdialog");
+    expect(within(dialogo).getByText("Conectar a caixa de e-mail")).toBeTruthy();
+  });
+
+  it("desconectada sem conta: só Conectar, sem 'Entrar de novo'", async () => {
+    rotas["GET /canais/uuid-1/email/conta"] = () => resposta(200, SEM_CONTA);
+    await montar("uuid-1", email());
+    expect(await screen.findByRole("button", { name: "Conectar" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Entrar de novo" })).toBeNull();
+    expect(screen.queryByText("Desconectada")).toBeNull();
+  });
+
+  it("os outros provedores não leem a conta do e-mail", async () => {
+    await montar("uuid-1", canalRelacional());
+    expect(await screen.findByRole("heading", { name: /Suporte do Zap/ })).toBeTruthy();
+    expect(chamadasRest().some(([url]) => String(url).includes("/email/"))).toBe(false);
   });
 });
