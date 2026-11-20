@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 17
 current_phase_name: "E-mail: conectar a caixa, receber e enviar (Sessão 9)"
 status: executing
-stopped_at: Completed 17-13-PLAN.md
-last_updated: "2026-11-20T00:35:59.627Z"
+stopped_at: Completed 17-15-PLAN.md
+last_updated: "2026-11-20T00:46:40.014Z"
 last_activity: 2026-11-19
 last_activity_desc: Phase 17 execution started
-state_head: 3ddc5a93ed067bd340f0b197b744c1b77292f01d
+state_head: 2982d3fad7d6ea5b64c83b74dd9c9ec0efba4e04
 progress:
   total_phases: 17
   completed_phases: 6
   total_plans: 310
-  completed_plans: 303
+  completed_plans: 304
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 17 (E-mail: conectar a caixa, receber e enviar (Sessão 9)) — EXECUTING
-Plan: 14 of 16 (17-01 a 17-13 executados; faltam 17-14, 17-15 e 17-16)
+Plan: 15 of 16 (17-01 a 17-13 executados; faltam 17-14, 17-15 e 17-16)
 Status: Ready to execute
 Last activity: 2026-11-19 — Phase 17 execution started
 
@@ -522,6 +522,7 @@ Progress: [██████░░░░] 63%
 | Phase 17 P12 | 55min | 3 tasks | 14 files |
 | Phase 17 P10 | 50min | 3 tasks | 10 files |
 | Phase 17 P13 | 12min | 3 tasks | 10 files |
+| Phase 17 P15 | 10min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -893,6 +894,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 17]: 17-10: a trava por Canal do leitor de e-mail usa hashtextextended (64 bits) numa conexao pg.Client dedicada fora do pool; recusou_login e acesso permanente derrubam o Canal e param a sessao, o resto so reconecta com espera crescente
 - [Phase 17]: Google (17-13, EML-02): a ausência de email_verified conta como não verificado; só email_verified verdadeiro deixa o e-mail do id_token valer, e a caixa continua provada pelo login XOAUTH2. — Evita aceitar como prova um e-mail que o Google não confirmou; o que o id_token não traz fica a cargo da prova XOAUTH2, como na Microsoft (17-13-SUMMARY, key-decisions).
 - [Phase 17]: Google (17-13): só invalid_grant (inclui os 7 dias do modo de teste) derruba a conexão; invalid_client e erro desconhecido ficam transitórios. — Entrar de novo não resolve segredo trocado no painel nem falha desconhecida; derrubar o Canal nesses casos esconderia a causa (17-13-SUMMARY, key-decisions).
+- [Phase 17]: 17-15: os campos de assunto e copias do e-mail so aparecem numa Conversa existente (POST /conversas e strict e nao leva assunto nem copias)
+- [Phase 17]: 17-15: o e-mail formatado e um iframe sandbox vazio com srcDoc, no-referrer e CSP como primeira coisa do documento; links dentro dele nao abrem
 
 ### Pending Todos
 
@@ -954,6 +957,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-20T00:35:53.289Z
-Stopped at: Completed 17-13-PLAN.md
+Last session: 2026-11-20T00:46:39.712Z
+Stopped at: Completed 17-15-PLAN.md
 Resume file: None
