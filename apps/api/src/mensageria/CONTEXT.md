@@ -339,6 +339,25 @@ nem por login. Fora das 24 h, e antes da primeira mensagem do Contato, só sai M
 (`plataforma.modelos_de_mensagem`, migração `016`). Nunca falou com a Meta real. Tudo em
 [`provedores/whatsapp-cloud/CONTEXT.md`](provedores/whatsapp-cloud/CONTEXT.md).
 
+## O e-mail (`provedores/email/`)
+
+O `ProvedorDeMensageria` do Canal `email-imap-smtp` (Sessão 9, Fase 17), o quarto provedor real e o primeiro que **busca**:
+declara `semWebhook: true` (o contrato exige que `verificarChamada` recuse toda chamada) e a entrada é um **leitor** dentro do
+`apps/api`, uma sessão IMAP em IDLE por Canal conectado, que põe cada e-mail na fila `webhooks_recebidos` com o cursor da
+caixa na mesma transação (`enfileirarEmailEAvancar`). Dali em diante é o caminho de sempre: o processador de entrada, a busca
+do fio por `In-Reply-To` e `References` em `receberMensagem` (só no Canal de e-mail), o tempo real. O evento da fila pode
+trazer `anexosGuardados` (`RecebidaDoProvedor`): o leitor já subiu os arquivos pela guarda de mídia, e o processador os grava
+sem baixar nada. A saída é o outbox e o worker de saída (SMTP, com a cópia oculta só no envelope; o desfecho ambíguo nunca é
+reenviado). Três caminhos de conexão: senha de app, Google e Microsoft (login OAuth, com a volta na web como no Instagram).
+
+**`EMAIL_LEITOR_ATIVO=true` liga o leitor, e SÓ junto com `MENSAGERIA_WORKER_ATIVO=true`: sem ela, nada entra por e-mail**
+(conectar e enviar funcionam; o `index.ts` avisa o motivo). A unidade de produção a fixa em `false`; ligar é um drop-in
+(`email.conf`) do dono. O leitor soma UMA conexão fixa ao banco, fora do pool (10 + 1 do ouvinte + 1 do leitor). A migração
+`017` (`plataforma.email_contas`, `plataforma.cursores_de_canal` e `plataforma.mensagens.corpo_html`) só é aplicada pelo
+`publicar.sh` do dono. A coleta de órfãos poupa o `objectKey` do HTML (`mensagens.corpo_html`) e o de qualquer linha da fila
+ainda `pendente` ou `processando`. **Nunca falou com uma caixa real**: tudo foi provado contra dublês de IMAP, SMTP e login. Tudo em
+[`provedores/email/CONTEXT.md`](provedores/email/CONTEXT.md).
+
 ## Ligar um Canal real: `canal:ligar-evolution`
 
 `npm run canal:ligar-evolution -w @n1/api -- --canal <id> --instancia <nome> [--seco]`
@@ -437,5 +456,6 @@ código e o id interno, nunca o conteúdo. As únicas linhas de dado são as con
 | `provedores/instagram/` (`provedor.ts`, `traduzir.ts`, `entrada.ts`, `conexao.ts`, `midia.ts`, `token.ts`, `repositorio.ts`) | Sessão 8 | o Instagram, com a conexão pelo login e a desautorização da Meta |
 | `provedores/meta/assinatura.ts` | Sessão 8 | a assinatura da Meta (`X-Hub-Signature-256`) e o `signed_request` |
 | `provedores/whatsapp-cloud/` (`provedor.ts`, `cliente.ts`, `traduzir.ts`, `entrada.ts`, `conexao.ts`, `repositorio.ts`, `configuracao.ts`) | Sessão 7 | o WhatsApp oficial (Cloud API), conectado pelo token |
+| `provedores/email/` (`rede.ts`, `fabrica-de-conexao.ts`, `credencial.ts`, `conexao.ts`, `leitor.ts`, `traduzir.ts`, `entrada.ts`, `envio.ts`, `provedor.ts`, `html.ts`, `oauth/`) | Sessão 9 (Fase 17) | o e-mail (IMAP e SMTP), conectado por senha de app, Google ou Microsoft; `semWebhook`, leitor atrás de `EMAIL_LEITOR_ATIVO` |
 | `../bootstrap/canal-ligar-evolution.ts`, `canal-segredo-de-teste.ts` | 16-13, 16-02 | os dois comandos de linha da mensageria |
 | `provar-tempo-real.ts`, `provar-tempo-real.cli.ts` | 16-15 | `npm run tempo-real:provar`: uma volta de `LISTEN/NOTIFY` pelo pooler, para o dono provar a A9 |

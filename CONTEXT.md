@@ -262,6 +262,29 @@ plataforma, escolhendo um modelo aprovado do Canal (7.3): os modelos são criado
 texto); os outros aparecem na lista com o motivo. O webhook da Meta deixou de gravar o corpo no log. **Só as leituras falaram com a Meta real** (a fumaça de 2026-11-13, contra o número de teste: o número e a lista de modelos vieram no formato esperado; o envio, o webhook e a mídia seguem sem prova) e os Flows (7.4) dependem
 da Sessão 6, que não começou.
 
+A Sessão 9 (Fase 17) liga o e-mail como quarto provedor real da mensageria (`apps/api/src/mensageria/provedores/email/`, ver o
+`CONTEXT.md` de lá): a api LÊ a caixa por IMAP e ENVIA por SMTP, e o Canal conecta por três caminhos pela ficha (senha de app, Entrar
+com o Google, Entrar com a Microsoft). Ele busca em vez de ser chamado (`semWebhook` no contrato): um leitor em IDLE, uma sessão por
+Canal, põe cada e-mail na fila de entrada, e o fio vem de `In-Reply-To` e `References` (uma troca de e-mails fica numa Conversa só).
+As rotas por recurso são `POST /canais/:id/email/conectar`, `POST /canais/:id/email/oauth/:servico/autorizar`,
+`POST /canais/email/oauth/concluir`, `GET /canais/:id/email/conta` e `GET /mensagens/:id/corpo-html`; a tela traz o assunto, as
+cópias e até 10 arquivos (20 MB) na resposta e o e-mail formatado numa moldura `<iframe sandbox>`. A migração `017`
+(`apps/api/migracoes/017-email.sql`: `plataforma.email_contas`, `plataforma.cursores_de_canal` e `plataforma.mensagens.corpo_html`)
+**só é aplicada pelo `publicar.sh` do dono, depois de backup do schema `plataforma`** (ver "E-mail (Fase 17)" em
+`apps/api/deploy/CONTEXT.md`); nada foi publicado nem aplicado fora de um Postgres de teste. **`EMAIL_LEITOR_ATIVO`** nasce `false` na
+unidade de produção e só liga como drop-in do dono, DEPOIS de `MENSAGERIA_WORKER_ATIVO=true`: sem ela, nada entra por e-mail (conectar
+e enviar funcionam). As variáveis novas (só os nomes: `EMAIL_LEITOR_ATIVO`, `EMAIL_OAUTH_REDIRECT_URI`, `GOOGLE_OAUTH_CLIENT_ID`,
+`GOOGLE_OAUTH_CLIENT_SECRET`, `MICROSOFT_OAUTH_CLIENT_ID`, `MICROSOFT_OAUTH_CLIENT_SECRET`) ficam no `api.env`. **Tudo foi provado contra
+dublês de IMAP, SMTP e login; nenhuma caixa real foi tocada.** O que só a prova real decide (roteiro em
+`.planning/phases/17-e-mail-conectar-a-caixa-receber-e-enviar-sess-o-9/17-PROVA-REAL.md`, do dono): a cópia em Enviados no Gmail e no
+Microsoft 365 (A4 e A5), o IDLE e a trava atrás do pooler de produção, o login do Google em modo de teste (a conexão cai a cada 7 dias
+até o Google verificar o app), a Microsoft (autoridade `common`, revogação, retirada do login básico no SMTP, alias diferente do
+endereço principal), se o bucket real aceita `text/html` e o e-mail formatado num navegador de verdade. **O que não faz:** começar um
+e-mail novo pela plataforma com assunto e cópias (`POST /conversas` não os leva; só a resposta os leva); um e-mail que chega com o
+Canal caído não é importado na reconexão (D-17-08); o e-mail só com assunto ou HTML grava o assunto, ou `(sem texto)`, em `conteudo`;
+links dentro do e-mail formatado não abrem. As decisões automáticas D-17-07 (guarda de rede), D-17-08, D-17-10 e D-17-15 aguardam o
+dono.
+
 ## Comandos
 
 Todos rodam da raiz:
