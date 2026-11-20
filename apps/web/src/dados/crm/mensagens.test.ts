@@ -23,7 +23,7 @@ vi.mock("./cliente-crm", async (original) => {
 });
 
 import { ErroDeApi, invalidarCrm } from "./cliente-crm";
-import { chaveDasMensagens, chaveDoAnexo, enviarMensagem, pedirTicketDeAnexo, reenviarMensagem, useMensagens, useUrlDoAnexo } from "./mensagens";
+import { chaveDasMensagens, chaveDoAnexo, chaveDoCorpoHtml, enviarMensagem, pedirTicketDeAnexo, reenviarMensagem, useCorpoHtml, useMensagens, useUrlDoAnexo } from "./mensagens";
 
 function resposta(status: number, corpo: unknown): Response {
   return { ok: status >= 200 && status < 300, status, json: async () => corpo } as Response;
@@ -173,5 +173,34 @@ describe("pedirTicketDeAnexo e enviarMensagem com anexos (16-11, 3.9.5 / D-16-10
     await enviarMensagem(entrada);
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(init.body).toBe(JSON.stringify(entrada));
+  });
+});
+
+describe("useCorpoHtml (17-15, D-17-13)", () => {
+  it("(f) a chave é /mensagens/<id>/corpo-html", () => {
+    expect(chaveDoCorpoHtml("m1")).toBe("/mensagens/m1/corpo-html");
+    expect(chaveDoCorpoHtml("m 1/x")).toBe("/mensagens/m%201%2Fx/corpo-html");
+  });
+
+  it("(f) ativo: pede GET /mensagens/<id>/corpo-html e devolve o HTML que a api já limpou", async () => {
+    fetchMock.mockResolvedValue(resposta(200, { ok: true, dados: { html: "<p>oi</p>" } }));
+    const { result } = renderHook(() => useCorpoHtml("m1", true), { wrapper: envoltorio });
+    await waitFor(() => expect(result.current.data?.dados.html).toBe("<p>oi</p>"));
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit | undefined];
+    expect(url).toBe("http://api/mensagens/m1/corpo-html");
+    expect(init?.method ?? "GET").toBe("GET");
+  });
+
+  it("(f) inativo (o botão ainda não foi clicado): nenhuma chamada à rede", () => {
+    renderHook(() => useCorpoHtml("m1", false), { wrapper: envoltorio });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("(f) 404 (sem HTML guardado) sobe como ErroDeApi e não é repetido", async () => {
+    fetchMock.mockResolvedValue(resposta(404, { ok: false, error: "Esta Mensagem não tem e-mail formatado.", codigo: "SEM_CORPO_HTML" }));
+    const { result } = renderHook(() => useCorpoHtml("m1", true), { wrapper: envoltorio });
+    await waitFor(() => expect(result.current.error).toBeInstanceOf(ErroDeApi));
+    expect((result.current.error as ErroDeApi).status).toBe(404);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

@@ -1784,7 +1784,7 @@ describe("ConversationThread — o fio do e-mail mostra assunto, cópias, quem e
     expect(within(fio()).getByText("Para: financeiro@empresa.com")).toBeTruthy();
     expect(within(fio()).getByText("Cópia oculta: diretoria@empresa.com")).toBeTruthy();
     // O assunto vem ANTES do texto na bolha.
-    const bolha = within(fio()).getByText("Assunto: Pedido 42").closest("div") as HTMLElement;
+    const bolha = within(fio()).getByText("Assunto: Pedido 42").closest(".app-base") as HTMLElement;
     expect(bolha.textContent?.indexOf("Assunto: Pedido 42")).toBeLessThan(bolha.textContent?.indexOf("texto do e-mail 1") ?? -1);
   });
 

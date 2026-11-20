@@ -94,6 +94,30 @@ export function useUrlDoAnexo(mensagemId: string, indice: number, baixado: boole
   );
 }
 
+export interface RespostaDoCorpoHtml {
+  readonly ok: true;
+  /** O HTML do e-mail que a api já limpou (17-11). Nunca vai ao DOM da aplicação: só ao `srcDoc` da moldura isolada. */
+  readonly dados: { readonly html: string };
+}
+
+/** `/mensagens/<id>/corpo-html` — a chave de SWR do HTML limpo do e-mail recebido. */
+export function chaveDoCorpoHtml(mensagemId: string): string {
+  return `/mensagens/${encodeURIComponent(mensagemId)}/corpo-html`;
+}
+
+/**
+ * O HTML limpo de um e-mail recebido (`GET /mensagens/:id/corpo-html`, D-17-13). Só pede quando `ativo` (a pessoa clicou em
+ * "Ver e-mail formatado"): a maioria dos e-mails nunca é aberta assim. O corpo não muda e a api responde `no-store`, então o
+ * foco da janela não revalida; 404 (sem HTML guardado) e 403 não melhoram ao repetir.
+ */
+export function useCorpoHtml(mensagemId: string, ativo: boolean) {
+  return useSWR<RespostaDoCorpoHtml, Error>(
+    ativo ? chaveDoCorpoHtml(mensagemId) : null,
+    (chave: string) => chamarCrm<RespostaDoCorpoHtml>(chave),
+    { revalidateOnFocus: false, shouldRetryOnError: valeRepetir },
+  );
+}
+
 export interface PedidoDeTicketDeAnexo {
   readonly conversaId: string;
   readonly nome: string;

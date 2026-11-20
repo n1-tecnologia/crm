@@ -87,6 +87,7 @@ import { SeletorDeTipoDeTarefa } from "@/features/estrutura/seletor-de-tipo";
 import { AvatarDoContato } from "@/features/crm/avatar-do-contato";
 import { AnexoDaMensagemNoFio } from "@/features/crm/anexo-da-mensagem";
 import { CamposDoEmail, enderecosDosCampos, type ErrosDosCamposDoEmail } from "@/features/crm/campos-do-email";
+import { CabecalhoDoEmailNoFio, CorpoDoEmail } from "@/features/crm/corpo-do-email";
 import { EstadoDaEntrega } from "@/features/crm/estado-da-entrega";
 import { CitacaoNaBolha, marcaDeEditada, MensagemApagada, ReacoesDaMensagem, resumoDaMensagem } from "@/features/crm/mensagem-alterada-no-fio";
 import { SeletorDeCanalDeResposta } from "@/features/crm/seletor-de-canal";
@@ -479,6 +480,8 @@ export function ConversationThread({
   const ultimaRecebida = [...mensagens].reverse().find((m) => m.direcao === "recebida");
   const assuntoSugerido = assuntoDaResposta(ultimaRecebida?.assunto);
   const assunto = assuntoEditado !== null && assuntoEditado.conversaId === conversa?.id ? assuntoEditado.texto : assuntoSugerido;
+  // D-17-15: o "De:" só aparece quando quem escreveu NÃO é o Contato da Conversa (um colega dele que respondeu no fio).
+  const emailsDoContato = new Set((identificadores ?? []).filter((i) => i.tipo === "email").map((i) => i.valor.trim().toLowerCase()));
   const horasDaJanela = capacidades?.responseWindowHours;
   const abertaAte =
     horasDaJanela !== undefined && conversa?.ultimaRecebidaEm
@@ -1439,12 +1442,27 @@ export function ConversationThread({
                                 nomeDoContato={nomeDoContato}
                               />
                             ) : null}
+                            {/* 17-15: no e-mail, quem escreveu (se não é o Contato), o assunto e as cópias vêm acima do texto. */}
+                            {capacidades?.hasSubjectAndCopies ? (
+                              <CabecalhoDoEmailNoFio
+                                mensagem={mensagem}
+                                de={
+                                  mensagem.direcao === "recebida" &&
+                                  mensagem.remetenteExterno !== null &&
+                                  !emailsDoContato.has(mensagem.remetenteExterno.trim().toLowerCase())
+                                    ? mensagem.remetenteExterno
+                                    : null
+                                }
+                              />
+                            ) : null}
                             {/* T-15-50: o texto vem de terceiros e entra como texto do React, nunca como HTML. */}
                             {mensagem.conteudo || mensagem.anexos.length === 0 ? (
                               <p className="whitespace-pre-wrap">
                                 {mensagem.conteudo ?? ""}
                               </p>
                             ) : null}
+                            {/* D-17-13: o HTML do e-mail só existe dentro da moldura isolada do `CorpoDoEmail`, pedido sob demanda. */}
+                            {capacidades?.hasSubjectAndCopies && mensagem.corpoHtml ? <CorpoDoEmail mensagemId={mensagem.id} /> : null}
                             {/* 3.9.5: o anexo vem da URL assinada de `GET /mensagens/:id/anexos/:indice`; a legenda é o `conteudo`. */}
                             {mensagem.anexos.length > 0 ? (
                               <div className={cn("flex flex-col gap-2", mensagem.conteudo ? "mt-2" : "")}>
