@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 17 (E-mail: conectar a caixa, receber e enviar (Sessão 9)) — EXECUTING
-Plan: 16 of 16 (17-01 a 17-13 executados; faltam 17-14, 17-15 e 17-16)
+Plan: 16 of 16 (17-01 a 17-15 executados; falta o 17-16)
 Status: Ready to execute
 Last activity: 2026-11-19 — Phase 17 execution started
 
